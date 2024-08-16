@@ -109,7 +109,7 @@ if __name__ == "__main__":
     genes = create_network_gene_ids(args["probe_gene_network"], args["output_links"])
     mark_seed_genes(args["seed_gene_scores"], args["output_genes"], genes)
 
-    #calculate_features(args["output_links"], args["output_genes"], args["nedbit_features"])
+    calculate_features(args["output_links"], args["output_genes"], args["nedbit_features"])
     
     assign_initial_labels(args["nedbit_features"], args["nedbit_header"], args["output_gene_ranking"], args["quantile_1"], args["quantile_2"])
 

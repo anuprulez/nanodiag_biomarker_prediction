@@ -21,7 +21,7 @@ def load_illumina_arrays(arrays_path, mapper_path):
     #GSE175758_GEO_processed = base_path + "GSE175758_GEO_processed.txt"
     df_GSE175758_GEO_processed = pd.read_csv(arrays_path, sep="\t")
 
-    df_GSE175758_GEO_processed = df_GSE175758_GEO_processed[:10000]
+    #df_GSE175758_GEO_processed = df_GSE175758_GEO_processed[:10000]
 
     print(df_GSE175758_GEO_processed.head())
 
@@ -255,21 +255,15 @@ def merge_patients(clean_probes):
     signals_do_d8_res_no_res = signals_do_d8_res_no_res.loc[commmon_patients]
     print(signals_do_d8_res_no_res.head())
 
-    # Cell 102
-    #df = signals_do_d8_res_no_res[:, signals_do_d8_res_no_res.columns[1:]]
     df_reset_signals_do_d8_res_no_res = signals_do_d8_res_no_res.reset_index(drop=True)
     print(df_reset_signals_do_d8_res_no_res)
 
-    # Cell 103
     df_reset_signals_do_d8_res_no_res.to_csv("data/output/" + "merged_signals.csv", sep="\t", index=None)
     print(df_reset_signals_do_d8_res_no_res.head())
 
 
 
 if __name__ == "__main__":
-    ## def load_illumina_arrays(arrays_path, mapper_path)
-    ## def filter_probes(snp_probes_path, processed_arrays)
-    ## def merge_patients(clean_probes)
     arg_parser = argparse.ArgumentParser()
     
     arg_parser.add_argument("-ap", "--arrays_path", required=True, help="Illumina arrays path")

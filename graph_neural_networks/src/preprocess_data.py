@@ -32,15 +32,15 @@ def replace_name_by_ids(dataframe, col_index, mapper):
 def merge_features(config):
     print("Reading NedBit features...")
     df_nebit_features = pd.read_csv(config["nedbit_features"], sep=",")
-    nebit_features = df_nebit_features.iloc[:, 3:]
+    #nebit_features = df_nebit_features.iloc[:, 3:]
     print(df_nebit_features)
 
-    netshort = np.array(nebit_features["NetShort"].tolist())
+    netshort = np.array(df_nebit_features["NetShort"].tolist())
     netshort = netshort.reshape(-1, 1)
     print(len(netshort), netshort.shape)
     transformer = RobustScaler().fit(netshort)
     norm_netshort = transformer.transform(netshort)
-    nebit_features["NetShort"] = norm_netshort
+    df_nebit_features["NetShort"] = norm_netshort
     
     feature_names = df_nebit_features["name"].tolist()
     print("Reading {}".format(config["merged_signals"]))

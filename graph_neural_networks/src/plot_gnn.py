@@ -116,15 +116,15 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
 
 def plot_features(features, labels, config):
     plot_local_path = config["plot_local_path"]
-    n_neighbors=10 #10 #5
-    min_dist=0.99 #0.99 #0.3
+    n_neighbors=20 #10 #5
+    min_dist=0.8 #0.99 #0.3
     metric='correlation'
     labels = [int(item) for item in labels]
     embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation').fit_transform(features)
     data = {"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels}
     df = pd.DataFrame(data)
     plt.figure(figsize=(8, 6))
-    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, palette="viridis", s=50, alpha=1.0)
+    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, palette="viridis", s=50, alpha=0.9)
     plt.title("UMAP Visualization of NedBit + DNA Methylation features")
     plt.savefig(plot_local_path + "umap_nedbit_dnam_features.pdf")
 

@@ -73,7 +73,9 @@ def mark_seed_genes(seed_genes_path, genes_path, gene):
 def calculate_features(links_data_path, genes_data_path, nedbit_path):
     # nedbit_features_calculator out_links out_genes nedbit_features
     # nedbit-features-calculator
+    
     print("calculating nedbit features ...")
+    print(links_data_path, genes_data_path, nedbit_path)
     result = subprocess.run(['nedbit-features-calculator', links_data_path, genes_data_path, nedbit_path], capture_output=True, text=True)
     print(result.stdout)
     if result.stderr:

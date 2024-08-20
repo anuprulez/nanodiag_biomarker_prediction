@@ -1,3 +1,4 @@
+import sys
 
 import plot_gnn
 
@@ -29,11 +30,30 @@ def replace_name_by_ids(dataframe, col_index, mapper):
     return dataframe
 
 
+def scale_features(list_feature_names, df_features):
+
+    for feature_name in list_feature_names:
+        print("Scaling: {}".format(feature_name))
+        feature_val = np.array(df_features[feature_name].tolist())
+        feature_val = feature_val.reshape(-1, 1)
+        print(len(feature_val), feature_val.shape)
+        transformer = RobustScaler().fit(feature_val)
+        norm_feature_val = transformer.transform(feature_val)
+        df_features[feature_name] = norm_feature_val
+        
+    return df_features
+
+
 def merge_features(config):
     print("Reading NedBit features...")
     df_nebit_features = pd.read_csv(config["nedbit_features"], sep=",")
     #nebit_features = df_nebit_features.iloc[:, 3:]
     print(df_nebit_features)
+
+    #print("scaling features")
+    #sfeatures = config["scale_features"].split(",")
+    #df_nebit_features = scale_features(sfeatures, df_nebit_features)
+    #print(df_nebit_features)
 
     netshort = np.array(df_nebit_features["NetShort"].tolist())
     netshort = netshort.reshape(-1, 1)
@@ -52,8 +72,10 @@ def merge_features(config):
     dnam_features = dnam_signals_transpose.iloc[:, 1:]
 
     df_nebit_dnam_features = pd.concat([df_nebit_features, dnam_features], axis=1)
-    nebit_dnam_features_embeddings = df_nebit_dnam_features.iloc[:, 3:]
+    print(df_nebit_dnam_features)
+    nebit_dnam_features_embeddings = df_nebit_dnam_features.iloc[:, 2:]
     print(nebit_dnam_features_embeddings)
+
     print("Assigning labels...")
     df_apu_labels = pd.read_csv(config["out_gene_rankings"], sep=" ", header=None)
     print(df_apu_labels)
@@ -72,6 +94,7 @@ def merge_features(config):
     df_nebit_dnam_features.to_csv(config["nedbit_dnam_features"], sep=",", index=None)
     print("Plotting UMAP using raw features")
     plot_gnn.plot_features(nebit_dnam_features_embeddings, labels, config)
+    sys.exit()
     return nebit_dnam_features_embeddings, labels
 
 

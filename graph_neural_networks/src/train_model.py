@@ -212,6 +212,8 @@ def create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, conf
     loaded_model = model #load_model(config, saved_model_path, compact_data)
     final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(loaded_model, compact_data)
     torch.save(pred_labels, data_local_path + 'pred_labels.pt')
+    torch.save(compact_data, data_local_path + 'data.pt')
+    torch.save(model, data_local_path + "model.pt")
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     print("==============")
     extract_node_embeddings(model, compact_data, model_activation, config)

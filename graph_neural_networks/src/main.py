@@ -6,14 +6,14 @@ import xai_explainer
 config = {
     "SEED": 32,
     "n_edges": 2000000,
-    "n_epo": 5,
+    "n_epo": 4,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,
-    "gene_dim": 39,
+    "gene_dim": 40,
     "hidden_dim": 128,
     "learning_rate": 0.0001,
-    "scale_features": "NetShort",
+    "scale_features": "degree,ring,NetShort",
     "out_links": "../../pu_label_propagation/data/output/out_links.csv",
     "out_genes": "../../pu_label_propagation/data/output/out_genes.csv",
     "out_gene_rankings": "../../pu_label_propagation/data/output/out_gene_rankings.csv",
@@ -29,8 +29,8 @@ config = {
 
 def run_training():
     compact_data, feature_n, mapped_f_name, out_genes = preprocess_data.read_files(config)
-    #trained_model, data = train_model.create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, config)
-    #xai_explainer.gnn_explainer(trained_model, data, config)
+    trained_model, data = train_model.create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, config)
+    xai_explainer.gnn_explainer(trained_model, data, config)
 
 
 if __name__ == "__main__":

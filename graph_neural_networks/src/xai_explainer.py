@@ -38,14 +38,15 @@ def gnn_explainer(model, data, config):
             value=200,
         ),
     )'''
-
-    for node_i in [10841]: #10841
+    # list of ids to explore
+    explore_test_ids = [10841]
+    plot_local_path += "explainer_plots/" 
+    for node_i in explore_test_ids: #10841
         node_index = node_i
         explanation = explainer(data.x, data.edge_index, index=node_index)
         print(data.x[node_index])
         print()
         plt.figure(figsize=(8, 6))
-        plot_local_path += "explainer_plots/" 
         print(f'Generated explanations in {explanation.available_explanations}')
         #path = plot_local_path + 'feature_importance_{}.png'.format(node_index)
         #explanation.visualize_feature_importance(path, top_k=10)

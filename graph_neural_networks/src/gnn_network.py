@@ -11,12 +11,15 @@ import numpy as np
 class GPNA(torch.nn.Module):
     
     def __find_deg(self, train_dataset):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         max_degree = -1
         d = degree(train_dataset.edge_index[1], num_nodes=train_dataset.num_nodes, dtype=torch.long)
         max_degree = max(max_degree, int(d.max()))
         # Compute the in-degree histogram tensor
         deg = torch.zeros(max_degree + 1, dtype=torch.long)
+        deg = deg.to(device)
         d = degree(train_dataset.edge_index[1], num_nodes=train_dataset.num_nodes, dtype=torch.long)
+        d = d.to(device)
         deg += torch.bincount(d, minlength=deg.numel())
         return deg
 

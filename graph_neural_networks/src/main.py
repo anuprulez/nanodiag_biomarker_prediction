@@ -13,7 +13,7 @@ config = {
     "gene_dim": 40,
     "hidden_dim": 128,
     "learning_rate": 0.0001,
-    "scale_features": "degree,ring,NetShort",
+    "scale_features": "0,1,3",  #"degree,ring,NetShort",
     "out_links": "../../pu_label_propagation/data/output/out_links.csv",
     "out_genes": "../../pu_label_propagation/data/output/out_genes.csv",
     "out_gene_rankings": "../../pu_label_propagation/data/output/out_gene_rankings.csv",
@@ -21,6 +21,7 @@ config = {
     "nedbit_features": "../../pu_label_propagation/data/output/nedbit_features.csv",
     "dnam_features": "../../pu_label_propagation/data/output/dnam_features.csv",
     "nedbit_dnam_features": "../data/output/df_nebit_dnam_features.csv",
+    "nedbit_dnam_features_norm": "../data/output/df_nebit_dnam_features_norm.csv",
     "plot_local_path": "../data/output/",
     "data_local_path": "../data/output/",
     "model_local_path": "../model/"
@@ -28,9 +29,9 @@ config = {
 
 
 def run_training():
-    compact_data, feature_n, mapped_f_name, out_genes = preprocess_data.read_files(config)
-    trained_model, data = train_model.create_training_proc(compact_data, feature_n, mapped_f_name, out_genes, config)
-    xai_explainer.gnn_explainer(trained_model, data, config)
+    #preprocess_data.read_files(config)
+    train_model.train_gnn_model(config)
+    #xai_explainer.gnn_explainer(trained_model, data, config)
 
 
 if __name__ == "__main__":

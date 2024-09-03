@@ -1,6 +1,7 @@
 import sys
 
 import plot_gnn
+import utils
 
 import torch
 from torch_geometric.data import Data
@@ -8,6 +9,7 @@ from torch_geometric.data import Data
 import numpy as np
 import pandas as pd
 from sklearn.preprocessing import normalize, RobustScaler
+from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
 
 
 def load_node_csv(path, index_col, encoders=None, **kwargs):
@@ -30,40 +32,15 @@ def replace_name_by_ids(dataframe, col_index, mapper):
     return dataframe
 
 
-def scale_features(list_feature_names, df_features):
-
-    for feature_name in list_feature_names:
-        print("Scaling: {}".format(feature_name))
-        feature_val = np.array(df_features[feature_name].tolist())
-        feature_val = feature_val.reshape(-1, 1)
-        print(len(feature_val), feature_val.shape)
-        transformer = RobustScaler().fit(feature_val)
-        norm_feature_val = transformer.transform(feature_val)
-        df_features[feature_name] = norm_feature_val
-        
-    return df_features
-
-
 def merge_features(config):
     print("Reading NedBit features...")
     df_nebit_features = pd.read_csv(config["nedbit_features"], sep=",")
     print(df_nebit_features)
-
-    print("scaling features")
-    sfeatures = config["scale_features"].split(",")
-    df_nebit_features = scale_features(sfeatures, df_nebit_features)
-    print(df_nebit_features)
-
-    '''netshort = np.array(df_nebit_features["NetShort"].tolist())
-    netshort = netshort.reshape(-1, 1)
-    print(len(netshort), netshort.shape)
-    transformer = RobustScaler().fit(netshort)
-    norm_netshort = transformer.transform(netshort)
-    df_nebit_features["NetShort"] = norm_netshort'''
-    
     feature_names = df_nebit_features["name"].tolist()
     print("Reading {}".format(config["merged_signals"]))
     df_merged_signals = pd.read_csv(config["merged_signals"], sep="\t", engine="c")
+    #fake_merged_signals = np.zeros((34, 11756)) #pd.read_csv(config["merged_signals"], sep="\t", engine="c")
+    #df_fake_merged_signals = pd.DataFrame(fake_merged_signals, columns=feature_names)
     dnam_signals = df_merged_signals[feature_names]
     dnam_signals_transpose = dnam_signals.transpose()
     dnam_signals_transpose.to_csv(config["dnam_features"])
@@ -91,16 +68,15 @@ def merge_features(config):
     labels = df_labels["labels"].tolist()
     df_nebit_dnam_features["labels"] = labels
     df_nebit_dnam_features.to_csv(config["nedbit_dnam_features"], sep=",", index=None)
-    print("Plotting UMAP using raw features")
-    plot_gnn.plot_features(nebit_dnam_features_embeddings, labels, config)
-    return nebit_dnam_features_embeddings, labels
+    return nebit_dnam_features_embeddings, labels, df_nebit_dnam_features
 
 
 def read_files(config):
     '''
     Read raw data files and create Pytorch dataset
     '''
-    naipu_dnam_features, labels = merge_features(config)
+    sfeatures = config["scale_features"].split(",")
+    naipu_dnam_features, labels, df_features = merge_features(config)
     data_local_path = config["data_local_path"]
     n_edges = config["n_edges"]
     print("Probe genes relations")
@@ -125,7 +101,6 @@ def read_files(config):
     print(mapped_feature_names)
     print()
     print("Mapped links before sampling")
-    #links_relation_probes = relations_probe_ids[:n_edges]
     print(relations_probe_ids[:n_edges])
     print("Mapped links after sampling")
     links_relation_probes = relations_probe_ids.sample(n_edges)
@@ -139,19 +114,24 @@ def read_files(config):
     links_relation_probes = links_relation_probes.drop_duplicates()
     print(links_relation_probes)
     print()
-    print("Creating X and Y")
-    x = naipu_dnam_features
-    y = labels
-    # shift labels from 1...5 to 0..4
-    y = [int(i) - 1 for i in y]
-    y = torch.tensor(y, dtype=torch.long)
-    # create data object
-    print("Features")
-    print(x)
-    x = torch.tensor(x.to_numpy(), dtype=torch.float)
-    edge_index = torch.tensor(links_relation_probes.to_numpy(), dtype=torch.long)
-    # set up Pytorch geometric dataset
-    compact_data = Data(x=x, edge_index=edge_index.t().contiguous())
-    # set up true labels
-    compact_data.y = y
-    return compact_data, feature_names, mapped_feature_names, out_genes
+
+    print("df_features")
+    print(df_features)
+
+    # separate train and test nodes
+    lst_mapped_f_name = np.array(feature_names.index)
+    print(lst_mapped_f_name)
+    complete_rand_index = [item for item in range(len(feature_names.index))]
+    tr_index, te_index = train_test_split(complete_rand_index, shuffle=True, test_size=0.33, random_state=42)
+    tr_nodes = lst_mapped_f_name[tr_index]
+    te_nodes = lst_mapped_f_name[te_index]
+    print("tr_nodes: ", len(tr_nodes), tr_index[:5], tr_nodes[:5])
+    print("te_nodes: ", len(te_nodes), te_index[:5], te_nodes[:5])
+    print("intersection: ", list(set(tr_nodes).intersection(set(te_nodes))))
+
+    df_tr_nodes = pd.DataFrame(tr_nodes, columns=["training_node_ids"])
+    df_tr_nodes.to_csv(data_local_path + "training_node_ids.csv", index=None)
+
+    df_te_nodes = pd.DataFrame(te_nodes, columns=["test_node_ids"])
+    df_te_nodes.to_csv(data_local_path + "test_node_ids.csv", index=None)
+    utils.create_gnn_data(naipu_dnam_features, labels, links_relation_probes, mapped_feature_names, te_index, te_nodes, config)

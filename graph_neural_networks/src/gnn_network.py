@@ -42,6 +42,7 @@ class GPNA(torch.nn.Module):
         self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
         self.batch_norm3 = BatchNorm1d(hidden_dim)
         self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
+        self.model_activation = dict()
 
     def forward(self, x, edge_index):
         h = self.pnaconv1(x, edge_index)

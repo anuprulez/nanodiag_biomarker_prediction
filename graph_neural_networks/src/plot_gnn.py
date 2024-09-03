@@ -114,7 +114,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     plt.savefig(plot_local_path + "KDE_positive__NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
 
 
-def plot_features(features, labels, config):
+def plot_features(features, labels, config, title, flag):
     plot_local_path = config["plot_local_path"]
     n_neighbors=20 #10 #5
     min_dist=0.8 #0.99 #0.3
@@ -125,8 +125,8 @@ def plot_features(features, labels, config):
     df = pd.DataFrame(data)
     plt.figure(figsize=(8, 6))
     sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, palette="viridis", s=50, alpha=0.9)
-    plt.title("UMAP Visualization of NedBit + DNA Methylation features")
-    plt.savefig(plot_local_path + "umap_nedbit_dnam_features.pdf")
+    plt.title(title)
+    plt.savefig(plot_local_path + "umap_nedbit_dnam_features_{}.pdf".format(flag))
 
 
 def plot_node_embed(features, labels, config, feature_type):

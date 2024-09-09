@@ -39,8 +39,8 @@ def merge_features(config):
     feature_names = df_nebit_features["name"].tolist()
     print("Reading {}".format(config["merged_signals"]))
     df_merged_signals = pd.read_csv(config["merged_signals"], sep="\t", engine="c")
-    #fake_merged_signals = np.zeros((34, 11756)) #pd.read_csv(config["merged_signals"], sep="\t", engine="c")
-    #df_fake_merged_signals = pd.DataFrame(fake_merged_signals, columns=feature_names)
+    #fake_merged_signals = np.zeros((80, 26898)) #pd.read_csv(config["merged_signals"], sep="\t", engine="c")
+    #df_merged_signals = pd.DataFrame(fake_merged_signals, columns=feature_names)
     dnam_signals = df_merged_signals[feature_names]
     dnam_signals_transpose = dnam_signals.transpose()
     dnam_signals_transpose.to_csv(config["dnam_features"])
@@ -105,19 +105,12 @@ def read_files(config):
     print("Mapped links after sampling")
     links_relation_probes = relations_probe_ids.sample(n_edges)
     print(links_relation_probes)
-    print("Add cg01550473_HSPA6 to links")
-    cg01550473_HSPA6 = relations_probe_ids[(relations_probe_ids.loc[:, 0] == 10841) | (relations_probe_ids.loc[:, 1] == 10841)]
-    cg01550473_HSPA6.reset_index(drop=True, inplace=True)
     links_relation_probes.reset_index(drop=True, inplace=True)
-    print(cg01550473_HSPA6)
-    links_relation_probes = pd.concat([links_relation_probes, cg01550473_HSPA6], axis=0, ignore_index=True)
     links_relation_probes = links_relation_probes.drop_duplicates()
     print(links_relation_probes)
     print()
-
     print("df_features")
     print(df_features)
-
     # separate train and test nodes
     lst_mapped_f_name = np.array(feature_names.index)
     print(lst_mapped_f_name)

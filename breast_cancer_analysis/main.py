@@ -5,7 +5,7 @@ import train_model
 
 config = {
     "SEED": 32,
-    "n_edges": 1500000,
+    "n_edges": 1576515,
     "n_epo": 4,
     "k_folds": 5,
     "batch_size": 128,

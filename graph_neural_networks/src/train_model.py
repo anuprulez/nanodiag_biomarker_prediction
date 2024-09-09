@@ -128,7 +128,6 @@ def train_gnn_model(config):
 
     data = torch.load(config["data_local_path"] + 'data.pt')
     tr_nodes = pd.read_csv(data_local_path + "training_node_ids.csv", sep="\t")
-    print(tr_nodes)
     tr_node_ids = tr_nodes["training_node_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
@@ -189,19 +188,16 @@ def train_gnn_model(config):
         print("Epoch {}: Val accuracy: {}".format(str(epoch+1), str(np.mean(val_acc_fold))))
         print("Epoch {}: Test accuracy: {}".format(str(epoch+1), str(np.mean(te_acc))))
         print()
-    #saved_model_path = save_model(model, config)
     print("==============")
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    loaded_model = model #load_model(config, saved_model_path, data)
-    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(loaded_model, data)
+    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(model, data)
     torch.save(pred_labels, data_local_path + 'pred_labels.pt')
     torch.save(model, data_local_path + "model.pt")
+    saved_model_path = save_model(model, config)
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))
     print("==============")
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.analyse_ground_truth_pos(loaded_model, data, out_genes, all_pred, config)
-    
-    #return model, data
+    plot_gnn.analyse_ground_truth_pos(model, data, out_genes, all_pred, config)

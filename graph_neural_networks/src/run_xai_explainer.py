@@ -16,7 +16,7 @@ config = {
     "gene_dim": 40,
     "hidden_dim": 128,
     "learning_rate": 0.0001,
-    "scale_features": "degree,ring,NetShort",
+    "scale_features": "0,1,3",  #"degree,ring,NetShort",
     "out_links": "../../pu_label_propagation/data/output/out_links.csv",
     "out_genes": "../../pu_label_propagation/data/output/out_genes.csv",
     "out_gene_rankings": "../../pu_label_propagation/data/output/out_gene_rankings.csv",
@@ -24,13 +24,13 @@ config = {
     "nedbit_features": "../../pu_label_propagation/data/output/nedbit_features.csv",
     "dnam_features": "../../pu_label_propagation/data/output/dnam_features.csv",
     "nedbit_dnam_features": "../data/output/df_nebit_dnam_features.csv",
+    "nedbit_dnam_features_norm": "../data/output/df_nebit_dnam_features_norm.csv",
     "plot_local_path": "../data/output/",
     "data_local_path": "../data/output/",
     "model_local_path": "../model/"
 }
 
 def load_model(model_path, data):
-    #model = gnn_network.GCN(config)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = data.to(device)
     model = gnn_network.GPNA(config, data)
@@ -62,24 +62,9 @@ def gnn_explainer(model, data):
             value=10,
         )
     )
-    '''explainer = Explainer(
-        model=model,
-        algorithm=CaptumExplainer('IntegratedGradients'),
-        explanation_type='model',
-        model_config=dict(
-            mode='multiclass_classification',
-            task_level='node',
-            return_type='log_probs',
-        ),
-        node_mask_type='attributes',
-        edge_mask_type='object',
-        threshold_config=dict(
-            threshold_type='topk',
-            value=200,
-        ),
-    )'''
+
     data_local_path = config["data_local_path"]
-    df_test_ids = pd.read_csv(data_local_path + "pos_likely_pos.csv", sep=",")
+    df_test_ids = pd.read_csv(data_local_path + "pred_likely_pos.csv", sep=",")
     explore_test_ids = df_test_ids["test_probe_ids"].tolist()
     explore_test_ids = [int(item) for item in explore_test_ids]
     explore_test_ids.append(10841)

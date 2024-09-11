@@ -8,26 +8,26 @@ import gnn_network
 
 config = {
     "SEED": 32,
-    "n_edges": 2000000,
+    "n_edges": 1576515,
     "n_epo": 4,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,
-    "gene_dim": 40,
+    "gene_dim": 86,
     "hidden_dim": 128,
     "learning_rate": 0.0001,
     "scale_features": "0,1,3",  #"degree,ring,NetShort",
-    "out_links": "../../pu_label_propagation/data/output/out_links.csv",
-    "out_genes": "../../pu_label_propagation/data/output/out_genes.csv",
-    "out_gene_rankings": "../../pu_label_propagation/data/output/out_gene_rankings.csv",
-    "merged_signals": "../../process_illumina_arrays/data/output/merged_signals.csv",
-    "nedbit_features": "../../pu_label_propagation/data/output/nedbit_features.csv",
-    "dnam_features": "../../pu_label_propagation/data/output/dnam_features.csv",
-    "nedbit_dnam_features": "../data/output/df_nebit_dnam_features.csv",
-    "nedbit_dnam_features_norm": "../data/output/df_nebit_dnam_features_norm.csv",
-    "plot_local_path": "../data/output/",
-    "data_local_path": "../data/output/",
-    "model_local_path": "../model/"
+    "out_links": "data/out_links_bc.csv",
+    "out_genes": "data/out_genes_bc.csv",
+    "out_gene_rankings": "data/out_gene_rankings_bc.csv",
+    "merged_signals": "data/combined_pos_neg_signals_bc.csv",
+    "nedbit_features": "data/nedbit_features_bc.csv",
+    "dnam_features": "data/dnam_features_bc.csv",
+    "nedbit_dnam_features": "data/df_nebit_dnam_features_bc.csv",
+    "nedbit_dnam_features_norm": "data/df_nebit_dnam_features_norm.csv",
+    "plot_local_path": "data/",
+    "data_local_path": "data/",
+    "model_local_path": "model/"
 }
 
 def load_model(model_path, data):
@@ -64,10 +64,10 @@ def gnn_explainer(model, data):
     )
 
     data_local_path = config["data_local_path"]
-    df_test_ids = pd.read_csv(data_local_path + "pred_likely_pos.csv", sep=",")
-    explore_test_ids = df_test_ids["test_probe_ids"].tolist()
-    explore_test_ids = [int(item) for item in explore_test_ids]
-    explore_test_ids.append(10841)
+    df_test_ids = pd.read_csv(data_local_path + "pred_likely_pos_no_training_genes_probes_bc.csv", sep="\t")
+    #explore_test_ids = df_test_ids["probe_gene_ids"].tolist()
+    #explore_test_ids = [int(item) for item in explore_test_ids]
+    explore_test_ids = [3520] #explore_test_ids[:2]
     plot_local_path = config["plot_local_path"]
     plot_local_path += "explainer_plots/" 
     for node_i in explore_test_ids:
@@ -86,5 +86,5 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config["data_local_path"] + 'data.pt')
     data = data.to(device)
-    model = load_model(config["model_local_path"] + "trained_model_edges_2000000_epo_4.ptm", data) 
+    model = load_model(config["model_local_path"] + "trained_model_edges_1576515_epo_4.ptm", data) 
     gnn_explainer(model, data)

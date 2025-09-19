@@ -126,7 +126,7 @@ def train_gnn_model(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 
-    data = torch.load(config["data_local_path"] + 'data.pt')
+    data = torch.load(config["data_local_path"] + 'data.pt', weights_only=False)
     tr_nodes = pd.read_csv(data_local_path + "training_node_ids.csv", sep="\t")
     tr_node_ids = tr_nodes["training_node_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)

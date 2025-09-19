@@ -10,6 +10,10 @@ import plot_gnn
 
 
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
+    print("Creating test masks...")
+    print(out_genes)
+    print("mapped_node_ids:", mapped_node_ids, len(mapped_node_ids))
+    print("mask list: ", mask_list, len(mask_list))
     gene_names = out_genes.loc[:, 1]
     gene_ids = out_genes.loc[:, 0]
     updated_mask_list = list()
@@ -30,6 +34,7 @@ def create_test_masks(mapped_node_ids, mask_list, out_genes):
             probe_genes.append(m_name.values[0][1])
             probe_genes_ids.append(m_name.values[0][0])
     mask = mapped_node_ids.index.isin(updated_mask_list)
+    print("Test mask:", mask, len(mask))
     return torch.tensor(mask, dtype=torch.bool), probe_genes, probe_genes_ids
 
 
@@ -47,8 +52,9 @@ def scale_features(list_feature_names, df_features):
     return df_features
     
 
-def create_gnn_data(features, labels, l_probes, mapped_feature_names, te_indices, te_nodes, config):
+def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating X and Y")
+    print("te_nodes:", te_nodes, len(te_nodes))
     data_local_path = config["data_local_path"]
     sfeatures_ids = config["scale_features"].split(",")
     sfeatures_ids = [int(i) for i in sfeatures_ids]
@@ -73,7 +79,10 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_names, te_indices
     # set up true labels
     data.y = y
 
-    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_names, te_nodes, out_genes)
+    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
+
+    print("After creating test masks")
+    print(len(data.test_mask), len(test_probe_genes), test_probe_genes[:5], len(test_probe_ids), test_probe_ids[:5])
 
     df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
     df_test_probe_genes.to_csv(data_local_path + "test_probe_genes.csv", index=None)

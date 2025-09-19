@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import torch
 from torch_geometric.explain import Explainer, GNNExplainer, GraphMaskExplainer, CaptumExplainer
 from torch_geometric.data import Data
@@ -11,9 +12,11 @@ from tqdm import tqdm
 
 import gnn_network
 
+base_path = "data_19_Sept_25/outputs/"
+
 config = {
     "SEED": 32,
-    "n_edges": 1576515,
+    "n_edges": 40000,
     "n_epo": 4,
     "k_folds": 5,
     "batch_size": 128,
@@ -22,16 +25,16 @@ config = {
     "hidden_dim": 128,
     "learning_rate": 0.0001,
     "scale_features": "0,1,3",  #"degree,ring,NetShort",
-    "out_links": "data/out_links_bc.csv",
-    "out_genes": "data/out_genes_bc.csv",
-    "out_gene_rankings": "data/out_gene_rankings_bc.csv",
-    "merged_signals": "data/combined_pos_neg_signals_bc.csv",
-    "nedbit_features": "data/nedbit_features_bc.csv",
-    "dnam_features": "data/dnam_features_bc.csv",
-    "nedbit_dnam_features": "data/df_nebit_dnam_features_bc.csv",
+    "out_links": f"{base_path}/out_links_bc.csv",
+    "out_genes": f"{base_path}/out_genes_bc.csv",
+    "out_gene_rankings": f"{base_path}/out_gene_rankings_bc.csv",
+    "merged_signals": f"{base_path}/combined_pos_neg_signals_bc.csv",
+    "nedbit_features": f"{base_path}/nedbit_features_bc.csv",
+    "dnam_features": f"{base_path}/dnam_features_bc.csv",
+    "nedbit_dnam_features": f"{base_path}/df_nebit_dnam_features_bc.csv",
     "nedbit_dnam_features_norm": "data/df_nebit_dnam_features_norm.csv",
-    "plot_local_path": "data/",
-    "data_local_path": "data/",
+    "plot_local_path": f"{base_path}",
+    "data_local_path": f"{base_path}",
     "model_local_path": "model/"
 }
 
@@ -133,7 +136,7 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
     for node in sub_nodes_with_idxs:
         idx = sub_nodes_with_idxs[node]
         print("Node idx: {}".format(idx))
-        subg_nodes, subg_edge_index, subg_mapping, subg_edge_mask = k_hop_subgraph(idx, 1, edge_index)
+        subg_nodes, subg_edge_index, _, _ = k_hop_subgraph(idx, 1, edge_index)
         if idx not in subg_numnodes_d:
             subg_numnodes_d[idx] = [len(subg_nodes), subg_edge_index.shape[1]]
 
@@ -233,21 +236,76 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     #plt.show()
 
+def collect_pred_labels():
+    base_path = "data_19_Sept_25/outputs/"
+    nedbit_path = "df_nebit_dnam_features_bc.csv"
+    df_nebit_features = pd.read_csv(base_path + nedbit_path, sep=",")
+    print(df_nebit_features.head())
+    df_test_probe_genes = pd.read_csv(base_path + "test_probe_genes.csv", sep=",")
+    print(df_test_probe_genes.head())
+    probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
+    df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
+    df_nebit_features_test.reset_index(drop=True, inplace=True)
+    nebit_features = df_nebit_features_test.iloc[:, 2:-1]
+    print(nebit_features.head())
+    nebit_features_norm = scale_features(["degree", "ring", "NetShort"], nebit_features)
+
+    feature_name = df_nebit_features_test.iloc[:, 0]
+    labels = df_nebit_features_test.iloc[:, -1]
+
+    df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
+    print(df_labels.head())
+    feature_names = df_labels["feature_name"].tolist()
+    nebit_dnam_features = nebit_features
+    df_nebit_dnam_features = nebit_dnam_features
+    df_nebit_dnam_features["labels"] = labels
+    df_nebit_dnam_features["feature_names"] = df_labels["feature_name"].tolist()
+
+    true_labels = torch.load(base_path + "true_labels.pt", weights_only=False)
+    pred_labels = torch.load(base_path + "pred_labels.pt", weights_only=False)
+    true_labels = [int(item) + 1 for item in true_labels]
+    pred_labels = [int(item) + 1 for item in pred_labels]
+
+    df_labels["pred_labels"] = pred_labels
+    pred_pos = df_labels[(df_labels["labels"].isin([1])) & \
+                                    (df_labels["pred_labels"].isin([1]))]
+    
+    pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
+                                    (df_labels["pred_labels"].isin([2]))]
+    
+    print(pred_likely_pos)
+    
+
+def scale_features(list_feature_names, df_features):
+    from sklearn.preprocessing import normalize, RobustScaler
+    for feature_name in list_feature_names:
+        print("Scaling: {}".format(feature_name))
+        feature_val = np.array(df_features[feature_name].tolist())
+        feature_val = feature_val.reshape(-1, 1)
+        print(len(feature_val), feature_val.shape)
+        transformer = RobustScaler().fit(feature_val)
+        norm_feature_val = transformer.transform(feature_val)
+        df_features[feature_name] = norm_feature_val
+        
+    return df_features
+    
+
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = torch.load(config["data_local_path"] + 'data.pt')
+    data = torch.load(config["data_local_path"] + 'data.pt', weights_only=False)
     data = data.to(device)
-    model = load_model(config["model_local_path"] + "trained_model_edges_1576515_epo_4.ptm", data)
+    model = load_model(config["model_local_path"] + "trained_model_edges_40000_epo_4.ptm", data)
     #find_k_hop_subgraph(data, model)
     #gnn_explainer(model, data)
 
     plot_local_path = config["plot_local_path"]
     plot_local_path += "explainer_plots/"
-    node_i = 84
+    node_i = 3306
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'], # optional: include node attributes
                     #edge_attrs=['weight'], # optional: include edge attributes
                     to_undirected=True)
+    collect_pred_labels()
     predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=10, G=G, num_pos='all')

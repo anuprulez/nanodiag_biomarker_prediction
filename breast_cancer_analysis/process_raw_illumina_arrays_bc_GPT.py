@@ -265,8 +265,7 @@ def process_arrays(
 
     edges_path = out_dir / f"significant_gene_relation_{cohort_name}.tsv"
     # The original code wrote no header; keep that behavior:
-    filtered_edges = edges[:50000]
-    filtered_edges.to_csv(edges_path, sep="\t", header=False, index=False)
+    edges.to_csv(edges_path, sep="\t", header=False, index=False)
 
     # --------------------------- Seed feature importances -----------------------
     logging.info("Extracting seed feature importances...")

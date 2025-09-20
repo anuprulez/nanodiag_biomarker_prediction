@@ -127,8 +127,9 @@ def train_gnn_model(config):
     print(device)
 
     data = torch.load(config["data_local_path"] + 'data.pt', weights_only=False)
-    tr_nodes = pd.read_csv(data_local_path + "training_node_ids.csv", sep="\t")
-    tr_node_ids = tr_nodes["training_node_ids"].tolist()
+    tr_nodes = pd.read_csv(data_local_path + "training_probe_genes.csv", sep=",")
+    print(tr_nodes.head())
+    tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
     print("Initialize model")
@@ -161,6 +162,7 @@ def train_gnn_model(config):
         for fold, (train_index, val_index) in enumerate(kfold.split(tr_node_ids)):
             val_node_ids = tr_node_ids[val_index]
             train_nodes_ids = tr_node_ids[train_index]
+            print(f"Epoch {epoch+1}, Fold {fold+1}: train nodes: {len(train_nodes_ids)}, val nodes: {len(val_node_ids)}")
             data.val_mask, _, _ = utils.create_test_masks(mapped_f_name, val_node_ids, out_genes)
             n_batches = int((len(train_index) + 1) / float(batch_size))
             batch_tr_loss = list()

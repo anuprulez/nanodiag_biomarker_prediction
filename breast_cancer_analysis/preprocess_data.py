@@ -39,8 +39,6 @@ def merge_features(config):
     feature_names = df_nebit_features["name"].tolist()
     print("Reading {}".format(config["merged_signals"]))
     df_merged_signals = pd.read_csv(config["merged_signals"], sep="\t", engine="c")
-    #fake_merged_signals = np.zeros((80, 26898)) #pd.read_csv(config["merged_signals"], sep="\t", engine="c")
-    #df_merged_signals = pd.DataFrame(fake_merged_signals, columns=feature_names)
     dnam_signals = df_merged_signals[feature_names]
     dnam_signals_transpose = dnam_signals.transpose()
     dnam_signals_transpose.to_csv(config["dnam_features"])
@@ -81,7 +79,7 @@ def read_files(config):
     n_edges = config["n_edges"]
     print("Probe genes relations")
     relations_probe_ids = pd.read_csv(config["out_links"], sep=" ", header=None)
-    print(relations_probe_ids)
+    print(relations_probe_ids, len(relations_probe_ids))
     print("Edges created")
     print("NAIPU and DNAM features and labels")
     print(naipu_dnam_features)
@@ -96,9 +94,9 @@ def read_files(config):
     feature_names = out_genes.iloc[:, 1]
     print(feature_names)
     print()
-    print("Mapped feature names to ids")
-    mapped_feature_names = out_genes.loc[:, 0]
-    print(mapped_feature_names)
+    print("Mapped ids of feature names")
+    mapped_feature_ids = out_genes.loc[:, 0]
+    print(mapped_feature_ids)
     print()
     print("Mapped links before sampling")
     print(relations_probe_ids[:n_edges])
@@ -119,12 +117,11 @@ def read_files(config):
     tr_nodes = lst_mapped_f_name[tr_index]
     te_nodes = lst_mapped_f_name[te_index]
     print("tr_nodes: ", len(tr_nodes), tr_index[:5], tr_nodes[:5])
+    print("sorted tr_nodes: ", sorted(tr_nodes)[:5])
     print("te_nodes: ", len(te_nodes), te_index[:5], te_nodes[:5])
+    print("sorted te_nodes: ", sorted(te_nodes)[:5])
     print("intersection: ", list(set(tr_nodes).intersection(set(te_nodes))))
 
-    df_tr_nodes = pd.DataFrame(tr_nodes, columns=["training_node_ids"])
-    df_tr_nodes.to_csv(data_local_path + "training_node_ids.csv", index=None)
-
-    df_te_nodes = pd.DataFrame(te_nodes, columns=["test_node_ids"])
-    df_te_nodes.to_csv(data_local_path + "test_node_ids.csv", index=None)
-    utils.create_gnn_data(naipu_dnam_features, labels, links_relation_probes, mapped_feature_names, te_index, te_nodes, config)
+    #df_te_nodes = pd.DataFrame(te_nodes, columns=["test_node_ids"])
+    #df_te_nodes.to_csv(data_local_path + "test_node_ids.csv", index=None)
+    utils.create_gnn_data(naipu_dnam_features, labels, links_relation_probes, mapped_feature_ids, te_nodes, config)

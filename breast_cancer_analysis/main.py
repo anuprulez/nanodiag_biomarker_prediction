@@ -6,8 +6,8 @@ base_path = "data_19_Sept_25/outputs/"
 
 config = {
     "SEED": 32,
-    "n_edges": 40000,
-    "n_epo": 4,
+    "n_edges": 1576516,
+    "n_epo": 20,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,
@@ -22,7 +22,7 @@ config = {
     "nedbit_features": f"{base_path}/nedbit_features_bc.csv",
     "dnam_features": f"{base_path}/dnam_features_bc.csv",
     "nedbit_dnam_features": f"{base_path}/df_nebit_dnam_features_bc.csv",
-    "nedbit_dnam_features_norm": "data/df_nebit_dnam_features_norm.csv",
+    "nedbit_dnam_features_norm": f"{base_path}/df_nebit_dnam_features_norm.csv",
     "plot_local_path": f"{base_path}",
     "data_local_path": f"{base_path}",
     "model_local_path": "model/"

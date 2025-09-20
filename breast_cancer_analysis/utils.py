@@ -50,6 +50,17 @@ def scale_features(list_feature_names, df_features):
         df_features[feature_name] = norm_feature_val
         
     return df_features
+
+
+def filter_tr_genes(test_probe_ids, out_genes):
+    print("Filtering training genes...")
+    tr_genes_names = list()
+    tr_gene_ids = list()
+    for i, item in out_genes.iterrows():
+        if item[0] not in test_probe_ids:
+            tr_gene_ids.append(item[0])
+            tr_genes_names.append(item[1])
+    return tr_gene_ids, tr_genes_names
     
 
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
@@ -82,10 +93,18 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
 
     print("After creating test masks")
+
+    print(out_genes.head())
     print(len(data.test_mask), len(test_probe_genes), test_probe_genes[:5], len(test_probe_ids), test_probe_ids[:5])
 
     df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
     df_test_probe_genes.to_csv(data_local_path + "test_probe_genes.csv", index=None)
+
+    tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
+    df_tr_probe_genes = pd.DataFrame(zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"])
+    df_tr_probe_genes.to_csv(data_local_path + "training_probe_genes.csv", index=None)
+
+    print(f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}")
 
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]

@@ -61,11 +61,13 @@ def predict_data_test(model, data):
     model = model.cuda()
     out = model(data.x, data.edge_index)
     pred = out.argmax(dim=1)
+    probs = F.softmax(out, dim=1)
+    pred_max_probs = probs[data.test_mask].max(dim=1).values
     pred_labels = pred[data.test_mask]
     true_labels = data.y[data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(data.test_mask.sum()))
-    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred
+    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred, pred_max_probs.cpu().detach().numpy()
 
 
 def extract_node_embeddings(model, data, model_activation, config):
@@ -181,7 +183,7 @@ def train_gnn_model(config):
             val_acc_fold.append(val_acc)
 
         print("-------------------")
-        te_acc, _, _, _ = predict_data_test(model, data)
+        te_acc, *_ = predict_data_test(model, data)
         te_acc_epo.append(te_acc)
         tr_loss_epo.append(np.mean(tr_loss_fold))
         val_acc_epo.append(np.mean(val_acc_fold))
@@ -194,8 +196,9 @@ def train_gnn_model(config):
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    final_test_acc, pred_labels, true_labels, all_pred = predict_data_test(model, data)
+    final_test_acc, pred_labels, true_labels, all_pred, all_pred_prob = predict_data_test(model, data)
     torch.save(pred_labels, data_local_path + 'pred_labels.pt')
+    torch.save(all_pred_prob, data_local_path + 'pred_probs.pt')
     torch.save(model, data_local_path + "model.pt")
     saved_model_path = save_model(model, config)
     print("CV Test acc after {} epochs: {}".format(n_epo, final_test_acc))

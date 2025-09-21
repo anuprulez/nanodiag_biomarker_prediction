@@ -7,7 +7,7 @@ base_path = "data_19_Sept_25/outputs/"
 config = {
     "SEED": 32,
     "n_edges": 1576516,
-    "n_epo": 20,
+    "n_epo": 10,
     "k_folds": 5,
     "batch_size": 128,
     "num_classes": 5,

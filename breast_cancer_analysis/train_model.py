@@ -62,12 +62,13 @@ def predict_data_test(model, data):
     out = model(data.x, data.edge_index)
     pred = out.argmax(dim=1)
     probs = F.softmax(out, dim=1)
+    te_probs = probs[data.test_mask].cpu().detach().numpy()
     pred_max_probs = probs[data.test_mask].max(dim=1).values
     pred_labels = pred[data.test_mask]
     true_labels = data.y[data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(data.test_mask.sum()))
-    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred, pred_max_probs.cpu().detach().numpy()
+    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred, te_probs, pred_max_probs.cpu().detach().numpy()
 
 
 def extract_node_embeddings(model, data, model_activation, config):
@@ -196,7 +197,7 @@ def train_gnn_model(config):
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print("CV Training Loss after {} epochs: {}".format(str(n_epo), str(np.mean(tr_loss_epo))))
     print("CV Val acc after {} epochs: {}".format(str(n_epo), str(np.mean(val_acc_epo))))
-    final_test_acc, pred_labels, true_labels, all_pred, all_pred_prob = predict_data_test(model, data)
+    final_test_acc, pred_labels, true_labels, all_pred, all_probs, all_pred_prob = predict_data_test(model, data)
     torch.save(pred_labels, data_local_path + 'pred_labels.pt')
     torch.save(all_pred_prob, data_local_path + 'pred_probs.pt')
     torch.save(model, data_local_path + "model.pt")
@@ -205,4 +206,5 @@ def train_gnn_model(config):
     print("==============")
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
+    plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)
     plot_gnn.analyse_ground_truth_pos(model, data, out_genes, all_pred, config)

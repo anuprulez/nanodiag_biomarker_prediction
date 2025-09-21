@@ -3,6 +3,7 @@ import seaborn as sns
 import umap
 from sklearn.metrics import precision_recall_curve, PrecisionRecallDisplay, roc_curve, roc_auc_score, \
 RocCurveDisplay, average_precision_score, confusion_matrix
+from sklearn.preprocessing import label_binarize
 
 import numpy as np
 import pandas as pd
@@ -59,9 +60,50 @@ def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 
     
     # Show plot
     plt.tight_layout()
-    #plt.show()
     plt.grid(True)
     plt.savefig(plot_local_path + "Confusion_matrix_NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
+
+def plot_precision_recall(y_true, y_scores, pred_probs, config):
+    plot_local_path = config["plot_local_path"]
+    n_edges = config["n_edges"]
+    n_epo = config["n_epo"]
+    n_classes = len(np.unique(y_true))
+
+    # Binarize the labels for one-vs-rest
+    y_true_bin = label_binarize(y_true, classes=np.arange(n_classes))
+
+    # Store precision-recall for each class
+    precision = dict()
+    recall = dict()
+    avg_precision = dict()
+
+    for i in range(n_classes):
+        precision[i], recall[i], _ = precision_recall_curve(y_true_bin[:, i], y_scores[:, i])
+        avg_precision[i] = average_precision_score(y_true_bin[:, i], y_scores[:, i])
+
+    # Micro-average (aggregate across all classes)
+    precision["micro"], recall["micro"], _ = precision_recall_curve(y_true_bin.ravel(),
+                                                                    y_scores.ravel())
+    avg_precision["micro"] = average_precision_score(y_true_bin, y_scores, average="micro")
+
+    # --- Plotting ---
+    plt.figure(figsize=(8, 6))
+
+    # Plot each class curve
+    colors = ["blue", "green", "red"]
+    for i, color in zip(range(n_classes), colors):
+        plt.plot(recall[i], precision[i], color=color, lw=2, label=f"Class {i} (AP = {avg_precision[i]:.2f})")
+
+    # Plot micro-average curve
+    plt.plot(recall["micro"], precision["micro"], color="gold", lw=2, linestyle="--", label=f"Micro-average (AP = {avg_precision['micro']:.2f})")
+
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.title("Multiclass Precision–Recall Curves")
+    plt.legend(loc="best")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(plot_local_path + "Precision_recall_{}_N_Epochs_{}.pdf".format(n_edges, n_epo), dpi=200)
 
 
 def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):

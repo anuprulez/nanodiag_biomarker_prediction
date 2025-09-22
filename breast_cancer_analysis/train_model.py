@@ -72,7 +72,7 @@ def predict_data_test(model, data):
 
 
 def extract_node_embeddings(model, data, model_activation, config):
-    data_local_path = config["data_local_path"]
+    data_local_path = config.p_data #["data_local_path"]
     conv_name = "PNAConv"
     activation_name = "BatchNorm1d"
     bn4_activation = model_activation[activation_name]
@@ -96,8 +96,8 @@ def extract_node_embeddings(model, data, model_activation, config):
 
 
 def save_model(model, config):
-    model_local_path = config["model_local_path"]
-    model_path = "{}/trained_model_edges_{}_epo_{}.ptm".format(model_local_path, config["n_edges"], config["n_epo"])
+    model_local_path = config.p_model #["model_local_path"]
+    model_path = "{}/trained_model_edges_{}_epo_{}.ptm".format(model_local_path, config.n_edges, config.n_epo)
     torch.save(model.state_dict(), model_path)
     return model_path
 
@@ -117,19 +117,19 @@ def train_gnn_model(config):
     '''
     Create network architecture and assign loss, optimizers ...
     '''
-    learning_rate = config["learning_rate"]
-    k_folds = config["k_folds"]
-    n_epo = config["n_epo"]
-    batch_size = config["batch_size"]
-    plot_local_path = config["plot_local_path"]
-    data_local_path = config["data_local_path"]
-    out_genes = pd.read_csv(config["out_genes"], sep=" ", header=None)
+    learning_rate = config.learning_rate #["learning_rate"]
+    k_folds = config.k_folds #["k_folds"]
+    n_epo = config.n_epo #["n_epo"]
+    batch_size = config.batch_size #["batch_size"]
+    #plot_local_path = config.p_path #["plot_local_path"]
+    data_local_path = config.p_data #["data_local_path"]
+    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(device)
 
-    data = torch.load(config["data_local_path"] + 'data.pt', weights_only=False)
+    data = torch.load(config.p_data + 'data.pt', weights_only=False)
     tr_nodes = pd.read_csv(data_local_path + "training_probe_genes.csv", sep=",")
     print(tr_nodes.head())
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
@@ -155,13 +155,14 @@ def train_gnn_model(config):
     tr_loss_epo = list()
     te_acc_epo = list()
     val_acc_epo = list()
-
+    
     # loop over epochs
     print("Start epoch training...")
     for epoch in range(n_epo):
         tr_loss_fold = list()
         val_acc_fold = list()
         kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+        #skfold = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
         for fold, (train_index, val_index) in enumerate(kfold.split(tr_node_ids)):
             val_node_ids = tr_node_ids[val_index]
             train_nodes_ids = tr_node_ids[train_index]

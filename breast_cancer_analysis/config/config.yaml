@@ -1,0 +1,26 @@
+SEED: 32
+n_edges: 1576516 # all edges 1576516
+n_epo: 5
+k_folds: 5
+batch_size: 128
+num_classes: 5
+gene_dim: 86
+hidden_dim: 128
+learning_rate: 0.0001
+test_size: 0.33
+scale_features: "0,1,3"
+n_neighbors: 20
+min_dist: 0.8
+metric: "correlation"
+p_base: data_19_Sept_25/outputs/
+p_out_links: ${p_base}out_links_bc.csv
+p_out_genes: ${p_base}out_genes_bc.csv
+p_out_gene_rankings: ${p_base}out_gene_rankings_bc.csv
+p_merged_signals: ${p_base}combined_pos_neg_signals_bc.csv
+p_nedbit_features: ${p_base}nedbit_features_bc.csv
+p_dnam_features: ${p_base}dnam_features_bc.csv
+p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc.csv
+p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
+p_plot: ${p_base}
+p_data: ${p_base}
+p_model: model/

@@ -9,13 +9,16 @@ import numpy as np
 import plot_gnn
 
 
+def read_csv(csv_path, sep=",", engine="c", header=None):
+    df = pd.read_csv(csv_path, sep=sep, header=header, engine=engine)
+    return df
+
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
     print("Creating test masks...")
     print(out_genes)
     print("mapped_node_ids:", mapped_node_ids, len(mapped_node_ids))
     print("mask list: ", mask_list, len(mask_list))
     gene_names = out_genes.loc[:, 1]
-    gene_ids = out_genes.loc[:, 0]
     updated_mask_list = list()
     probes = dict()
     probe_genes = list()
@@ -66,10 +69,10 @@ def filter_tr_genes(test_probe_ids, out_genes):
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating X and Y")
     print("te_nodes:", te_nodes, len(te_nodes))
-    data_local_path = config["data_local_path"]
-    sfeatures_ids = config["scale_features"].split(",")
+    p_data = config.p_data
+    sfeatures_ids = config.scale_features.split(",") #config["scale_features"].split(",")
     sfeatures_ids = [int(i) for i in sfeatures_ids]
-    out_genes = pd.read_csv(config["out_genes"], sep=" ", header=None)
+    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     print(features)
     labels = np.array(labels)
     
@@ -98,11 +101,11 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     print(len(data.test_mask), len(test_probe_genes), test_probe_genes[:5], len(test_probe_ids), test_probe_ids[:5])
 
     df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
-    df_test_probe_genes.to_csv(data_local_path + "test_probe_genes.csv", index=None)
+    df_test_probe_genes.to_csv(p_data + "test_probe_genes.csv", index=None)
 
     tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
     df_tr_probe_genes = pd.DataFrame(zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"])
-    df_tr_probe_genes.to_csv(data_local_path + "training_probe_genes.csv", index=None)
+    df_tr_probe_genes.to_csv(p_data + "training_probe_genes.csv", index=None)
 
     print(f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}")
 
@@ -144,7 +147,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     print()
     print(test_x.shape, test_x)
     
-    torch.save(data, data_local_path + 'data.pt')
+    torch.save(data, p_data + 'data.pt')
 
     # save normalized data
     preprocessed_data = data.x.detach()
@@ -152,7 +155,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     df_preprocessed_data = pd.DataFrame(preprocessed_data.numpy())
     print(df_preprocessed_data)
     df_preprocessed_data["labels"] = preprocessed_data_labels.numpy()
-    df_preprocessed_data.to_csv(config["nedbit_dnam_features_norm"], sep=",", index=None)
+    df_preprocessed_data.to_csv(config.p_nedbit_dnam_features_norm, sep=",", index=None)
 
     print("Plotting UMAP using raw features")
     plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")

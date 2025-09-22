@@ -10,10 +10,11 @@ import pandas as pd
 
 
 def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
-    plot_local_path = config["plot_local_path"]
-    k_folds = config["k_folds"]
-    n_edges = config["n_edges"]
-    n_epo = config["n_epo"]
+    plot_local_path = config.p_plot
+    n_edges = config.n_edges
+    n_epo = config.n_epo
+    k_folds = config.k_folds
+
     
     plt.figure()
     x_val = np.arange(n_epo)
@@ -39,9 +40,9 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
 
 
 def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 3, 4, 5]):
-    plot_local_path = config["plot_local_path"]
-    n_edges = config["n_edges"]
-    n_epo = config["n_epo"]
+    plot_local_path = config.p_plot
+    n_edges = config.n_edges
+    n_epo = config.n_epo
     # Calculate confusion matrix
     true_labels = [int(item) + 1 for item in true_labels]
     predicted_labels = [int(item) + 1 for item in predicted_labels]
@@ -64,10 +65,11 @@ def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 
     plt.savefig(plot_local_path + "Confusion_matrix_NPPI_{}_NEpochs_{}.pdf".format(n_edges, n_epo), dpi=200)
 
 def plot_precision_recall(y_true, y_scores, pred_probs, config):
-    plot_local_path = config["plot_local_path"]
-    n_edges = config["n_edges"]
-    n_epo = config["n_epo"]
+    plot_local_path = config.p_plot
+    n_edges = config.n_edge
+    n_epo = config.n_epo
     n_classes = len(np.unique(y_true))
+    print(f"Number of classes: {n_classes}")
 
     # Binarize the labels for one-vs-rest
     y_true_bin = label_binarize(y_true, classes=np.arange(n_classes))
@@ -90,16 +92,15 @@ def plot_precision_recall(y_true, y_scores, pred_probs, config):
     plt.figure(figsize=(8, 6))
 
     # Plot each class curve
-    colors = ["blue", "green", "red"]
-    for i, color in zip(range(n_classes), colors):
-        plt.plot(recall[i], precision[i], color=color, lw=2, label=f"Class {i} (AP = {avg_precision[i]:.2f})")
+    for i in range(n_classes):
+        plt.plot(recall[i], precision[i], lw=2, label=f"Class {i} (AP = {avg_precision[i]:.2f})")
 
     # Plot micro-average curve
     plt.plot(recall["micro"], precision["micro"], color="gold", lw=2, linestyle="--", label=f"Micro-average (AP = {avg_precision['micro']:.2f})")
 
     plt.xlabel("Recall")
     plt.ylabel("Precision")
-    plt.title("Multiclass Precision–Recall Curves")
+    plt.title("Multiclass Precision–Recall Curve")
     plt.legend(loc="best")
     plt.grid(True)
     plt.tight_layout()
@@ -107,9 +108,9 @@ def plot_precision_recall(y_true, y_scores, pred_probs, config):
 
 
 def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
-    plot_local_path = config["plot_local_path"]
-    n_edges = config["n_edges"]
-    n_epo = config["n_epo"]
+    plot_local_path = config.p_plot
+    n_edges = config.n_edges
+    n_epo = config.n_epo
     ground_truth_pos_genes = out_genes[out_genes.iloc[:, 2] > 0]
     ground_truth_pos_gene_ids = ground_truth_pos_genes.iloc[:, 0].tolist()
     test_index = [index for index, item in enumerate(compact_data.test_mask) if item == True]
@@ -157,12 +158,12 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
 
 
 def plot_features(features, labels, config, title, flag):
-    plot_local_path = config["plot_local_path"]
-    n_neighbors=20 #10 #5
-    min_dist=0.8 #0.99 #0.3
-    metric='correlation'
+    plot_local_path = config.p_plot
+    n_neighbors = config.n_neighbor
+    min_dist= config.min_dist
+    metric = config.metric
     labels = [int(item) for item in labels]
-    embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation').fit_transform(features)
+    embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric=metric).fit_transform(features)
     data = {"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels}
     df = pd.DataFrame(data)
     plt.figure(figsize=(8, 6))
@@ -172,12 +173,12 @@ def plot_features(features, labels, config, title, flag):
 
 
 def plot_node_embed(features, labels, config, feature_type):
-    plot_local_path = config["plot_local_path"]
-    n_neighbors=20 #10 #5
-    min_dist=0.8 #0.99 #0.3
-    metric='correlation'
+    plot_local_path = config.p_plot
+    n_neighbors = config.n_neighbors
+    min_dist= config.min_dist
+    metric = config.metric
     labels = [int(item) + 1 for item in labels]
-    embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric='correlation').fit_transform(features)
+    embeddings = umap.UMAP(n_neighbors=n_neighbors, min_dist=min_dist, metric=metric).fit_transform(features)
     print("Embeddings shape: ", embeddings.shape)
     data = {"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels}
     df = pd.DataFrame(data)

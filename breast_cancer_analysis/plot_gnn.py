@@ -159,7 +159,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
 
 def plot_features(features, labels, config, title, flag):
     plot_local_path = config.p_plot
-    n_neighbors = config.n_neighbor
+    n_neighbors = config.n_neighbors
     min_dist= config.min_dist
     metric = config.metric
     labels = [int(item) for item in labels]

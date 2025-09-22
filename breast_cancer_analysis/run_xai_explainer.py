@@ -9,43 +9,17 @@ from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx, k_hop_subgraph
 import itertools
 from tqdm import tqdm
+from omegaconf.omegaconf import OmegaConf
 
 import gnn_network
 
-base_path = "data_19_Sept_25/outputs/"
-
-config = {
-    "SEED": 32,
-    "n_edges": 40000,
-    "n_epo": 4,
-    "k_folds": 5,
-    "batch_size": 128,
-    "num_classes": 5,
-    "gene_dim": 86,
-    "hidden_dim": 128,
-    "learning_rate": 0.0001,
-    "scale_features": "0,1,3",  #"degree,ring,NetShort",
-    "out_links": f"{base_path}/out_links_bc.csv",
-    "out_genes": f"{base_path}/out_genes_bc.csv",
-    "out_gene_rankings": f"{base_path}/out_gene_rankings_bc.csv",
-    "merged_signals": f"{base_path}/combined_pos_neg_signals_bc.csv",
-    "nedbit_features": f"{base_path}/nedbit_features_bc.csv",
-    "dnam_features": f"{base_path}/dnam_features_bc.csv",
-    "nedbit_dnam_features": f"{base_path}/df_nebit_dnam_features_bc.csv",
-    "nedbit_dnam_features_norm": f"{base_path}/df_nebit_dnam_features_norm.csv",
-    "plot_local_path": f"{base_path}",
-    "data_local_path": f"{base_path}",
-    "model_local_path": "model/"
-}
 
 def load_model(model_path, data):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = data.to(device)
     model = gnn_network.GPNA(config, data)
     model = model.to(device)
-    
     print(model)
-    
     model.load_state_dict(
         torch.load(model_path, map_location=device)
     )
@@ -53,8 +27,8 @@ def load_model(model_path, data):
 
 
 def gnn_explainer(model, data, topk=10):
-    plot_local_path = config["plot_local_path"]
     print("Running GNN explanation...")
+    plot_local_path = config.p_plot
     explainer = Explainer(
         model=model,
         algorithm=GNNExplainer(epochs=200),
@@ -71,40 +45,18 @@ def gnn_explainer(model, data, topk=10):
             value=topk,
         )
     )
-
-    data_local_path = config["data_local_path"]
+    data_local_path = config.p_data
     df_test_ids = pd.read_csv(data_local_path + "pred_likely_pos_no_training_genes_probes_bc.csv", sep="\t")
-    #explore_test_ids = df_test_ids["probe_gene_ids"].tolist()
-    #explore_test_ids = [int(item) for item in explore_test_ids]
-    explore_test_ids = [84] #explore_test_ids[:2]
-    plot_local_path = config["plot_local_path"]
+    explore_test_ids = [84]
     plot_local_path += "explainer_plots/" 
     for node_i in explore_test_ids:
         print("Generating subgraph for {}".format(node_i))
         path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
-        # predict_candidate_genes_gnn_explainer(model, dataset, predictions, path, explanation_nodes_ratio=1, masks_for_seed=10, G=None, num_pos='all'):
-        '''node_index = node_i
+        node_index = node_i
         explanation = explainer(data.x, data.edge_index, index=node_index)
         print(f'Generated explanations in {explanation.available_explanations}')
-        plt.figure(figsize=(8, 6))
-        plt.grid(True)
-        
-        
-        subgraph = explanation.get_explanation_subgraph()
-        print(subgraph)
-        G = to_networkx(subgraph, to_undirected=True)
-        plt.figure(figsize=(6, 6))
-        pos = nx.spring_layout(G, seed=7)
-        nx.draw(
-            G, pos,
-            with_labels=True,
-        )
-        #plt.show()
-        plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
-        #plot_with_explanation(explanation, path)
-        #explanation.visualize_graph(path=path, backend="networkx")
+        explanation.visualize_graph(path=path, backend="networkx")
         print(f"Subgraph visualization plot has been saved to '{path}'")
-        print("----")'''
 
 
 def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explanation_nodes_ratio=1, \
@@ -234,36 +186,29 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
     pos = nx.spring_layout(k)
     nx.draw(k, pos=pos, with_labels = True)
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
-    #plt.show()
 
 def collect_pred_labels():
-    base_path = "data_19_Sept_25/outputs/"
-    nedbit_path = "df_nebit_dnam_features_bc.csv"
-    df_nebit_features = pd.read_csv(base_path + nedbit_path, sep=",")
-    print(df_nebit_features.head())
-    df_test_probe_genes = pd.read_csv(base_path + "test_probe_genes.csv", sep=",")
-    print(df_test_probe_genes.head())
+    print("Collecting datasets ...")
+    p_test_probe_genes = config.p_base + "test_probe_genes.csv"
+    p_nedbit_path = config.p_base + "df_nebit_dnam_features_bc.csv"
+    df_nebit_features = pd.read_csv(p_nedbit_path, sep=",")
+    df_test_probe_genes = pd.read_csv(p_test_probe_genes, sep=",")
     probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
     df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
     df_nebit_features_test.reset_index(drop=True, inplace=True)
     nebit_features = df_nebit_features_test.iloc[:, 2:-1]
-    print(nebit_features.head())
-    nebit_features_norm = scale_features(["degree", "ring", "NetShort"], nebit_features)
-
     feature_name = df_nebit_features_test.iloc[:, 0]
     labels = df_nebit_features_test.iloc[:, -1]
-
     df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
-    print(df_labels.head())
-    feature_names = df_labels["feature_name"].tolist()
     nebit_dnam_features = nebit_features
     df_nebit_dnam_features = nebit_dnam_features
     df_nebit_dnam_features["labels"] = labels
     df_nebit_dnam_features["feature_names"] = df_labels["feature_name"].tolist()
 
-    true_labels = torch.load(base_path + "true_labels.pt", weights_only=False)
-    pred_labels = torch.load(base_path + "pred_labels.pt", weights_only=False)
-    pred_probs = torch.load(base_path + "pred_probs.pt", weights_only=False)
+    
+    true_labels = torch.load(config.p_base + "true_labels.pt", weights_only=False)
+    pred_labels = torch.load(config.p_base + "pred_labels.pt", weights_only=False)
+    pred_probs = torch.load(config.p_base + "pred_probs.pt", weights_only=False)
     true_labels = [int(item) + 1 for item in true_labels]
     pred_labels = [int(item) + 1 for item in pred_labels]
 
@@ -275,9 +220,8 @@ def collect_pred_labels():
     pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
                                     (df_labels["pred_labels"].isin([2]))]
     
-    print(pred_likely_pos)
-    pred_likely_pos.to_csv(config["data_local_path"] + "pred_likely_pos.csv", sep="\t", index=None)
-    df_out_genes = pd.read_csv(config["data_local_path"] + "out_genes_bc.csv", sep=" ", header=None)
+    pred_likely_pos.to_csv(config.p_data  + "pred_likely_pos.csv", sep="\t", index=None)
+    df_out_genes = pd.read_csv(config.p_data + "out_genes_bc.csv", sep=" ", header=None)
 
     l_genes = list()
     l_probes = list()
@@ -287,7 +231,6 @@ def collect_pred_labels():
         l_probes.append(rvals[0])
         l_genes.append(rvals[1])
         match = df_out_genes[df_out_genes.iloc[:, 1] == row.values[0]]
-        print(row.values[0], match[0].values[0])
         gene_id = match[0].values[0]
         l_gene_ids.append(gene_id)
 
@@ -295,12 +238,7 @@ def collect_pred_labels():
     pred_likely_pos["probes"] = l_probes
     pred_likely_pos["gene_ids"] = l_gene_ids
 
-    print("Pred likely pos")
-    print(pred_likely_pos)
-
-    df_tr_probe_genes = pd.read_csv(config["data_local_path"] + "training_probe_genes.csv")
-    print("Training probe genes")
-    print(df_tr_probe_genes)
+    df_tr_probe_genes = pd.read_csv(config.p_data + "training_probe_genes.csv")
     training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
     
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
@@ -314,18 +252,14 @@ def collect_pred_labels():
 
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
-    tr_probes_genes.to_csv(config["data_local_path"] + "tr_probes_genes.csv", sep="\t", index=None)
- 
-    print("Training probes and genes")
-    print(tr_probes_genes)
+    tr_probes_genes.to_csv(config.p_data + "tr_probes_genes.csv", sep="\t", index=None)
 
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])]
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])]
 
     print("Pred likely pos with no training genes/probes")
     pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
-    print(pred_likely_pos)
-    pred_likely_pos.to_csv(config["data_local_path"] + "pred_likely_pos_no_training_genes_probes_bc.csv", sep="\t", index=None)
+    pred_likely_pos.to_csv(config.p_data + "pred_likely_pos_no_training_genes_probes_bc.csv", sep="\t", index=None)
 
 
 def scale_features(list_feature_names, df_features):
@@ -338,24 +272,21 @@ def scale_features(list_feature_names, df_features):
         transformer = RobustScaler().fit(feature_val)
         norm_feature_val = transformer.transform(feature_val)
         df_features[feature_name] = norm_feature_val
-        
     return df_features
 
 if __name__ == "__main__":
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = torch.load(config["data_local_path"] + 'data.pt', weights_only=False)
-    data = data.to(device)
-    model = load_model(config["model_local_path"] + "trained_model_edges_40000_epo_4.ptm", data)
-    #find_k_hop_subgraph(data, model)
-    #gnn_explainer(model, data)
-
-    plot_local_path = config["plot_local_path"]
+    config = OmegaConf.load("../breast_cancer_analysis/config/config.yaml")
+    plot_local_path = config.p_plot
     plot_local_path += "explainer_plots/"
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    data = torch.load(config.p_data + 'data.pt', weights_only=False)
+    data = data.to(device)
+    model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
+    model = load_model(model_path, data)
     node_i = 1586
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
-                    node_attrs=['x'], # optional: include node attributes
-                    #edge_attrs=['weight'], # optional: include edge attributes
+                    node_attrs=['x'], 
                     to_undirected=True)
-    #collect_pred_labels()
-    predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=10, G=G, num_pos='all')
+    collect_pred_labels()
+    predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')

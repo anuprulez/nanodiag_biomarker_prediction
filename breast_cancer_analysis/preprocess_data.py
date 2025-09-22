@@ -1,25 +1,12 @@
-import sys
-
-import plot_gnn
-import utils
-
-import torch
-from torch_geometric.data import Data
-
 import numpy as np
 import pandas as pd
-from sklearn.preprocessing import normalize, RobustScaler
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import train_test_split
 
 import utils
+
 
 def merge_features(config):
     print("Reading Nedbit and signals features...")
-    #p_nedbit_features = config["nedbit_features"]
-    #p_dnam_features = config["dnam_features"]
-    #p_merged_signals = config["merged_signals"]
-    #p_out_gene_rankings = config["out_gene_rankings"]
-    #p_nedbit_dnam_features = config["nedbit_dnam_features"]
     df_nebit_features = utils.read_csv(config.p_nedbit_features, sep=",", header='infer', engine=None)
     feature_names = df_nebit_features["name"].tolist()
     df_merged_signals = utils.read_csv(config.p_merged_signals, sep="\t", engine="c", header='infer')
@@ -48,14 +35,10 @@ def merge_features(config):
 
 
 def read_files(config):
-    '''
+    """
     Read raw data files and create Pytorch dataset
-    '''
+    """
     naipu_dnam_features, labels = merge_features(config)
-    #n_edges = config["n_edges"]
-    #p_out_links = config["out_links"]
-    #p_out_genes = config["out_genes"]
-    #te_size = config["test_size"]
     print("Reading out links and genes...")
     relations_probe_ids = utils.read_csv(config.p_out_links, sep=" ", header=None)
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)

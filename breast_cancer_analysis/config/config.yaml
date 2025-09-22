@@ -1,6 +1,6 @@
 SEED: 32
-n_edges: 1576516 # all edges 1576516
-n_epo: 5
+n_edges: 10000 # all edges 1576516
+n_epo: 2
 k_folds: 5
 batch_size: 128
 num_classes: 5
@@ -24,3 +24,4 @@ p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: model/
+exp_epo: 2

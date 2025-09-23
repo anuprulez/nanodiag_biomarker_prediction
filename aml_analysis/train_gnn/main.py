@@ -4,7 +4,7 @@ import xai_explainer
 
 from omegaconf.omegaconf import OmegaConf
 
-config = {
+'''config = {
     "SEED": 32,
     "n_edges": 2000000,
     "n_epo": 4,
@@ -26,12 +26,11 @@ config = {
     "plot_local_path": "../data/output/",
     "data_local_path": "../data/output/",
     "model_local_path": "../model/"
-}
+}'''
 
 
 def run_training():
     config = OmegaConf.load("../config/config.yaml")
-
 
     preprocess_data.read_files(config)
     train_model.train_gnn_model(config)

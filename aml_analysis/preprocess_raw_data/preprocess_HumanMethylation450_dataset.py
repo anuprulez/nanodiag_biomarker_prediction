@@ -11,11 +11,14 @@ import os
 import time
 import sys
 import subprocess
+import random
 
 import pandas as pd
 import numpy as np
+import scanpy as sc
 
 from omegaconf.omegaconf import OmegaConf
+
 
 def load_illumina_arrays(config):
     # Cell 13
@@ -24,7 +27,7 @@ def load_illumina_arrays(config):
     # config.p_arrays, config.p_mapper
     df_GSE175758_GEO_processed = pd.read_csv(config.p_arrays, sep="\t")
 
-    df_GSE175758_GEO_processed = df_GSE175758_GEO_processed[:10000]
+    #df_GSE175758_GEO_processed = df_GSE175758_GEO_processed[:50000]
 
     print(df_GSE175758_GEO_processed.head())
 
@@ -266,7 +269,7 @@ def merge_patients(clean_probes, config):
 
 
 def load_clean_arrays(config):
-    df_merged_signals = pd.read_csv(config.p_merged_signals, sep="\t")
+    df_merged_signals = pd.read_csv(config.p_merged_signals, sep="\t", engine="c")
     print(df_merged_signals.head())
     
     features = df_merged_signals
@@ -277,8 +280,23 @@ def load_clean_arrays(config):
     return df_merged_signals
 
 
+def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
+    """
+    Select highly variable 'genes' (here: probe_gene features) using Scanpy's
+    Seurat flavor. negative_df is shape (n_samples, n_features).
+    """
+    # Scanpy expects observations (cells/samples) x variables (features)
+    adata = sc.AnnData(negative_df)
+    sc.pp.highly_variable_genes(adata, flavor="seurat", n_top_genes=n_top)
+    hv_idx = adata.var["highly_variable"].fillna(False)
+    hv_names = adata.var.index[hv_idx].tolist()
+    return negative_df[hv_names]
+
+
 def extract_positives_negatives(clean_signals, config): 
     # cpgs_path, genes_path, config.p_seeds_methylated_cpgs, config.p_seeds_gene_methylation_expr
+    rng = random.Random(config.SEED)
+    np.random.seed(config.SEED)
     non_rand_cpgs = pd.read_csv(config.p_seeds_methylated_cpgs, sep="\t")
     print(non_rand_cpgs.head())
     all_cols = non_rand_cpgs.columns
@@ -302,42 +320,85 @@ def extract_positives_negatives(clean_signals, config):
     all_features_names = clean_signals.columns.tolist()
     negative_cols = [x for x in all_features_names if x not in positive_probes_genes]
     print(len(all_features_names), len(negative_cols))
-    negative_signals = clean_signals[negative_cols]
-    print(negative_signals.head())
+    rng.shuffle(negative_cols)
+    df_neg_pool = clean_signals[negative_cols]
+    print(df_neg_pool.head())
 
+    print("Selecting highly variable negative features (target n=%d)...", config.size_negative)
+    df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
+    print("Selected %d negative features.", df_neg_hv.shape[1]) 
+    
+    #negative_signals = clean_signals[negative_cols]
     #size_negative = 10000 #len(positive_probes_genes)
-    balanced_negative_signals = clean_signals[negative_signals.columns[:config.size_negative]]
-    print(balanced_negative_signals.head())
+    #balanced_negative_signals = clean_signals[negative_signals.columns[:config.size_negative]]
+    #print(balanced_negative_signals.head())
 
-    negative_probes_genes = balanced_negative_signals.columns.tolist()
+    #negative_probes_genes = balanced_negative_signals.columns.tolist()
 
-    df_neg = pd.DataFrame(negative_probes_genes, columns=["negative_probes_genes"])
-    df_neg.to_csv(config.p_base + "negative_probes_genes_large.tsv", index=None)
-    print(df_neg.head())
+    #df_neg = pd.DataFrame(negative_probes_genes, columns=["negative_probes_genes"])
+    #df_neg.to_csv(config.p_base + "negative_probes_genes_large.tsv", index=None)
+    #print(df_neg.head())
 
-    positive_probes_genes = positive_probes_genes
-    df_pos = pd.DataFrame(positive_probes_genes, columns=["positive_probes_genes"])
-    df_pos.to_csv(config.p_base + "positive_probes_genes.tsv", index=None)
-    print(df_pos.head())
+    #positive_probes_genes = positive_probes_genes
+    #df_pos = pd.DataFrame(positive_probes_genes, columns=["positive_probes_genes"])
+    #df_pos.to_csv(config.p_base + "positive_probes_genes.tsv", index=None)
+    #print(df_pos.head())
 
-    probe_genes_mapping = clean_signals.columns.tolist()
-    id_range = np.arange(0, len(probe_genes_mapping))
-    df_probe_genes_mapping = pd.DataFrame(zip(probe_genes_mapping, id_range), columns=["name", "id"])
-    print(df_probe_genes_mapping.head())
+    #probe_genes_mapping = clean_signals.columns.tolist()
+    #id_range = np.arange(0, len(probe_genes_mapping))
+    #df_probe_genes_mapping = pd.DataFrame(zip(probe_genes_mapping, id_range), columns=["name", "id"])
+    #print(df_probe_genes_mapping.head())
 
-    df_probe_genes_mapping.to_csv(config.p_base + "probe_genes_mapping_id.tsv", sep="\t", index=None)
+    #df_probe_genes_mapping.to_csv(config.p_base + "probe_genes_mapping_id.tsv", sep="\t", index=None)
 
-    balanced_negative_signals.to_csv(config.p_base + "balanced_negative_signals.tsv", sep="\t", index=None)
-    positive_signals.to_csv(config.p_base + "positive_signals.tsv", sep="\t", index=None)
+    #balanced_negative_signals.to_csv(config.p_base + "balanced_negative_signals.tsv", sep="\t", index=None)
+    #positive_signals.to_csv(config.p_base + "positive_signals.tsv", sep="\t", index=None)
 
-    combined_pos_neg_signals = pd.concat([positive_signals, balanced_negative_signals], axis=1)
+    combined_pos_neg_signals = pd.concat([positive_signals, df_neg_hv], axis=1)
     combined_pos_neg_signals.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
     print(combined_pos_neg_signals.head())
 
-    transposed_matrix = np.transpose(combined_pos_neg_signals)
-    print(transposed_matrix.head())
+    edges = build_correlation_edges(combined_pos_neg_signals, threshold=config.corr_threshold)
+    
+    print("Correlation edges found: %d", len(edges))
 
-    return transposed_matrix
+    # The original code wrote no header; keep that behavior:
+    edges = edges[:10000]
+    edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
+
+    #transposed_matrix = np.transpose(combined_pos_neg_signals)
+    #print(transposed_matrix.head())
+
+    #return transposed_matrix
+
+
+def build_correlation_edges(
+    features_df: pd.DataFrame,
+    threshold: float,
+) -> pd.DataFrame:
+    """
+    Compute feature-feature correlation and return edges (In, Out)
+    where corr > threshold (excluding self-edges).
+    features_df: samples x features
+    """
+    feature_names = features_df.columns.tolist()
+    # corrcoef expects rows as variables when input is 2D array; transpose:
+    corr = np.corrcoef(features_df.T)
+    corr_df = pd.DataFrame(corr, index=feature_names, columns=feature_names)
+
+    mask = (corr_df > threshold)
+    np.fill_diagonal(mask.values, False)  # remove self-relations
+
+    in_nodes, out_nodes = [], []
+    for col in mask.columns:
+        hits = mask.index[mask[col]].tolist()
+        if hits:
+            in_nodes.extend([col] * len(hits))
+            out_nodes.extend(hits)
+
+    edges = pd.DataFrame({"In": in_nodes, "Out": out_nodes})
+    return edges
+
 
 
 def compute_correlation(extracted_features, config):
@@ -453,25 +514,14 @@ def assign_initial_labels(nedbit_path, header, output_gene_ranking_path, q1=0.05
 
 
 if __name__ == "__main__":
-    '''arg_parser = argparse.ArgumentParser()
-    
-    arg_parser.add_argument("-ap", "--arrays_path", required=True, help="Illumina arrays path")
-    arg_parser.add_argument("-mp", "--mapper_path", required=True, help="Illumina arrays mapper path")
-    arg_parser.add_argument("-snp", "--snp_probes_path", required=True, help="snp probes path")
-
-    args = vars(arg_parser.parse_args())
-
-    arrays_path = args["arrays_path"]
-    mapper_path = args["mapper_path"]
-    snp_probes_path = args["snp_probes_path"]'''
 
     config = OmegaConf.load("../config/config.yaml")
 
     ## Step 1
-    print("======== Step 1: loading datasets =============")
+    '''print("======== Step 1: loading datasets =============")
     processed_arrays, probe_mapper_full = load_illumina_arrays(config)
     clean_probes = filter_probes(config.p_snp_probes, processed_arrays, probe_mapper_full)
-    merge_patients(clean_probes, config)
+    merge_patients(clean_probes, config)'''
 
     ## Step 2
     print("======== Step 2: cleaning datasets and computing correlation =============")
@@ -486,51 +536,6 @@ if __name__ == "__main__":
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
     calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
     assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
-
-    # Step 3 python src/assign_pre_labels.py 
-    # -ppi ../process_illumina_arrays/data/output/significant_gene_relation_only_positive_corr_10000.tsv 
-    # -sg data/input/seed_features.tsv 
-    # -ol data/output/out_links.csv 
-    # -og data/output/out_genes.csv 
-    # -nf data/output/nedbit_features.csv 
-    # -nh 1 -gr data/output/out_gene_rankings.csv 
-    # -qt1 0.05 -qt2 0.2
-
-
-    ##########################
-    # python src/preprocess_HumanMethylation450_dataset.py 
-    # -ap data/input/GSE175758_GEO_processed.txt 
-    # -mp data/input/GPL13534-11288-mapper-HMBC450.txt 
-    # -snp data/input/snp_7998probes.vh20151030.txt
-
-    ##########################
-
-    '''clean_arrays_path = args["clean_arrays_path"]
-    non_rand_dem_cpgs = args["non_rand_dem"]
-    diff_exp_genes = args["diff_exp"]
-
-    clean_arrays = load_clean_arrays(clean_arrays_path)
-    features = extract_positives_negatives(non_rand_dem_cpgs, diff_exp_genes, clean_arrays)
-    compute_correlation(features)'''
-
-    # Step 2python src/create_probe_gene_network.py 
-    # -ca data/output/merged_signals.csv 
-    # -de data/input/non-randomly-demethylated-CpGs.tsv 
-    # -diex data/input/genes_symbol_methylation_expression.tsv
-
-    ##########################
-
-    # Step 3 python src/assign_pre_labels.py 
-    # -ppi ../process_illumina_arrays/data/output/significant_gene_relation_only_positive_corr_10000.tsv 
-    # -sg data/input/seed_features.tsv 
-    # -ol data/output/out_links.csv 
-    # -og data/output/out_genes.csv 
-    # -nf data/output/nedbit_features.csv 
-    # -nh 1 -gr data/output/out_gene_rankings.csv 
-    # -qt1 0.05 -qt2 0.2
-
-
-    
 
 
     

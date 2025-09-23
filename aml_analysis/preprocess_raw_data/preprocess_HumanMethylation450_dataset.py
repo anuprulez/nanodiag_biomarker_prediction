@@ -16,6 +16,7 @@ import random
 import pandas as pd
 import numpy as np
 import scanpy as sc
+import polars as pl
 
 from omegaconf.omegaconf import OmegaConf
 
@@ -269,14 +270,16 @@ def merge_patients(clean_probes, config):
 
 
 def load_clean_arrays(config):
-    df_merged_signals = pd.read_csv(config.p_merged_signals, sep="\t", engine="c")
+    #df_merged_signals = pd.read_csv(config.p_merged_signals, sep="\t", engine="c")
+    df_merged_signals = pl.read_csv(config.p_merged_signals, separator="\t")
     print(df_merged_signals.head())
     
     features = df_merged_signals
-    feature_names = features.columns.tolist()
+    feature_names = features.columns
 
     df_feature_names = pd.DataFrame(feature_names, columns=["feature_names"])
     df_feature_names.to_csv(config.p_base + "final_feature_names.tsv", index=None, sep="\t")
+    df_merged_signals = df_merged_signals.to_pandas()
     return df_merged_signals
 
 
@@ -317,7 +320,7 @@ def extract_positives_negatives(clean_signals, config):
     positive_signals = clean_signals[positive_probes_genes]
     print(positive_signals.head())
 
-    all_features_names = clean_signals.columns.tolist()
+    all_features_names = clean_signals.columns
     negative_cols = [x for x in all_features_names if x not in positive_probes_genes]
     print(len(all_features_names), len(negative_cols))
     rng.shuffle(negative_cols)
@@ -325,7 +328,9 @@ def extract_positives_negatives(clean_signals, config):
     print(df_neg_pool.head())
 
     print("Selecting highly variable negative features (target n=%d)...", config.size_negative)
+    #df_neg_pool_pd = df_neg_pool.to_pandas()
     df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
+    #df_neg_hv = df_neg_hv.to_pandas()
     print("Selected %d negative features.", df_neg_hv.shape[1]) 
     
     #negative_signals = clean_signals[negative_cols]
@@ -527,7 +532,7 @@ if __name__ == "__main__":
     print("======== Step 2: cleaning datasets and computing correlation =============")
     clean_arrays = load_clean_arrays(config)
     features = extract_positives_negatives(clean_arrays, config)
-    compute_correlation(features, config)
+    #compute_correlation(features, config)
 
     ## Step 3
 

@@ -265,15 +265,14 @@ def scale_features(list_feature_names, df_features):
     return df_features
 
 if __name__ == "__main__":
-    config = OmegaConf.load("../breast_cancer_analysis/config/config.yaml")
+    config = OmegaConf.load("../config/config.yaml")
     plot_local_path = config.p_plot
-    plot_local_path += "explainer_plots/"
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_data + 'data.pt', weights_only=False)
     data = data.to(device)
     model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
-    node_i = 1586
+    node_i = 123
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'], 

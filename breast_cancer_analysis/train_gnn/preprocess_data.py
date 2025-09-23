@@ -12,7 +12,7 @@ def merge_features(config):
     print("Reading Nedbit and signals features...")
     df_nebit_features = utils.read_csv(config.p_nedbit_features, sep=",", header='infer', engine=None)
     feature_names = df_nebit_features["name"].tolist()
-    df_merged_signals = utils.read_csv(config.p_merged_signals, sep="\t", engine="c", header='infer')
+    df_merged_signals = utils.read_csv(config.p_combined_pos_neg_signals, sep="\t", engine="c", header='infer')
     dnam_signals = df_merged_signals[feature_names]
     dnam_signals_transpose = dnam_signals.transpose()
     dnam_signals_transpose.to_csv(config.p_dnam_features)

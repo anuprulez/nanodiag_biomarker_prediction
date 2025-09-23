@@ -6,6 +6,9 @@ import utils
 
 
 def merge_features(config):
+    """
+    Merge Nedbit and DNAm features and assign labels
+    """
     print("Reading Nedbit and signals features...")
     df_nebit_features = utils.read_csv(config.p_nedbit_features, sep=",", header='infer', engine=None)
     feature_names = df_nebit_features["name"].tolist()

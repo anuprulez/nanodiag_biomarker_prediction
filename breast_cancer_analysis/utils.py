@@ -12,6 +12,9 @@ def read_csv(csv_path, sep=",", engine="c", header=None):
     df = pd.read_csv(csv_path, sep=sep, header=header, engine=engine)
     return df
 
+def detach_from_gpu(tensor):
+    return tensor.cpu().detach().numpy()
+
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
     gene_names = out_genes.loc[:, 1]
     updated_mask_list = list()

@@ -267,7 +267,6 @@ def plot_node_embed(features, labels, config, feature_type):
         random_state=umap_random_state,
     )
     embeddings = reducer.fit_transform(np.asarray(features))
-    print("Embeddings shape: ", embeddings.shape)
     df = pd.DataFrame({"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels})
 
     fig, ax = plt.subplots(figsize=(8, 6))

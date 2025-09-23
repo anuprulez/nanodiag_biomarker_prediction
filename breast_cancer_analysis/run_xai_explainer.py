@@ -1,13 +1,10 @@
 import pandas as pd
 import numpy as np
 import torch
-from torch_geometric.explain import Explainer, GNNExplainer, GraphMaskExplainer, CaptumExplainer
-from torch_geometric.data import Data
+from torch_geometric.explain import Explainer, GNNExplainer
 import matplotlib.pyplot as plt
 import networkx as nx
-from torch_geometric.data import Data
 from torch_geometric.utils import to_networkx, k_hop_subgraph
-import itertools
 from tqdm import tqdm
 from omegaconf.omegaconf import OmegaConf
 
@@ -120,7 +117,6 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
         print("Number of selected edges: {}".format(len(indices)))
 
         model.eval()
-        #model = model.cuda()
         out = model(data.x, data.edge_index)
         predictions = out.argmax(dim=1)
         print("Predictions done!")
@@ -196,16 +192,10 @@ def collect_pred_labels():
     probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
     df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
     df_nebit_features_test.reset_index(drop=True, inplace=True)
-    nebit_features = df_nebit_features_test.iloc[:, 2:-1]
     feature_name = df_nebit_features_test.iloc[:, 0]
     labels = df_nebit_features_test.iloc[:, -1]
     df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
-    nebit_dnam_features = nebit_features
-    df_nebit_dnam_features = nebit_dnam_features
-    df_nebit_dnam_features["labels"] = labels
-    df_nebit_dnam_features["feature_names"] = df_labels["feature_name"].tolist()
 
-    
     true_labels = torch.load(config.p_base + "true_labels.pt", weights_only=False)
     pred_labels = torch.load(config.p_base + "pred_labels.pt", weights_only=False)
     pred_probs = torch.load(config.p_base + "pred_probs.pt", weights_only=False)

@@ -10,6 +10,9 @@ import gnn_network
 import plot_gnn
 import utils
 
+detach = utils.detach_from_gpu
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 model_activation = {}
     
 # Define the hook function
@@ -55,13 +58,13 @@ def predict_data_test(model, data):
     out = model(data.x, data.edge_index)
     pred = out.argmax(dim=1)
     probs = F.softmax(out, dim=1)
-    te_probs = probs[data.test_mask].cpu().detach().numpy()
+    te_probs = detach(probs[data.test_mask])
     pred_max_probs = probs[data.test_mask].max(dim=1).values
     pred_labels = pred[data.test_mask]
     true_labels = data.y[data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(data.test_mask.sum()))
-    return test_acc, pred_labels.cpu().detach().numpy(), true_labels.cpu().detach().numpy(), pred, te_probs, pred_max_probs.cpu().detach().numpy()
+    return test_acc, detach(pred_labels), detach(true_labels), pred, te_probs, detach(pred_max_probs)
 
 
 def extract_node_embeddings(model, data, model_activation, config):
@@ -73,9 +76,9 @@ def extract_node_embeddings(model, data, model_activation, config):
     pred_embeddings_conv4 = conv4_activation[data.test_mask]
     pred_embeddings_batch_norm4 = bn4_activation[data.test_mask]
     true_labels = data.y[data.test_mask]
-    pred_embeddings_conv4 = pred_embeddings_conv4.cpu().detach().numpy()
-    pred_embeddings_batch_norm4 = pred_embeddings_batch_norm4.cpu().detach().numpy()
-    true_labels = true_labels.cpu().detach().numpy()
+    pred_embeddings_conv4 = detach(pred_embeddings_conv4)
+    pred_embeddings_batch_norm4 = detach(pred_embeddings_batch_norm4)
+    true_labels = detach(true_labels)
     torch.save(pred_embeddings_conv4, data_local_path + 'embed_conv.pt')
     torch.save(pred_embeddings_batch_norm4, data_local_path + 'embed_batch_norm.pt')
     torch.save(true_labels, data_local_path + 'true_labels.pt')
@@ -92,10 +95,8 @@ def save_model(model, config):
 
 
 def load_model(config, model_path, data):
-    #model = gnn_network.GCN(config)
     model = gnn_network.GPNA(config, data)
     print(model)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model.load_state_dict(
         torch.load(model_path, map_location=device)
     )
@@ -114,7 +115,7 @@ def train_gnn_model(config):
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
     
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    
     print(f"Used device: {device}")
 
     data = torch.load(config.p_data + 'data.pt', weights_only=False)
@@ -161,7 +162,7 @@ def train_gnn_model(config):
                 batch_tr_node_ids = train_nodes_ids[bat * batch_size: (bat+1) * batch_size]
                 data.batch_train_mask = create_masks(mapped_f_name, batch_tr_node_ids)
                 tr_loss = train(data, optimizer, model, criterion)
-                tr_loss = tr_loss.cpu().detach().numpy()
+                tr_loss = detach(tr_loss)
                 batch_tr_loss.append(np.round(np.mean(tr_loss), 2))
             tr_loss_fold.append(np.round(np.mean(batch_tr_loss), 2))
             # predict using trained model

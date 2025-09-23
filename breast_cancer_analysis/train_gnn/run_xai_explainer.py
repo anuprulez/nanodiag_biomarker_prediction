@@ -101,7 +101,7 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
         mean_mask = torch.zeros(edge_index.shape[1]).to('cpu')
 
         for i in range(masks_for_seed):
-            print("seed run: {}".format(i))
+            print(f"seed run: {i}/{masks_for_seed}")
             explainer = Explainer(model=model, algorithm=GNNExplainer(epochs=200), explanation_type='model', node_mask_type='attributes', \
                               edge_mask_type='object', model_config=dict(mode='multiclass_classification', task_level='node', return_type='log_probs',),)
             
@@ -182,6 +182,7 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
     pos = nx.spring_layout(k)
     nx.draw(k, pos=pos, with_labels = True)
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
+
 
 def collect_pred_labels():
     print("Collecting datasets ...")
@@ -272,7 +273,7 @@ if __name__ == "__main__":
     data = data.to(device)
     model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
-    node_i = 123
+    node_i = 1586
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'], 

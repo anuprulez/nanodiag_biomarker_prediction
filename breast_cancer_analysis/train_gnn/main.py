@@ -12,10 +12,8 @@ from omegaconf.omegaconf import OmegaConf
 def extract_preprocessed_data(config):
 
     # Your Zenodo link
-    url = config.p_processed_data #"https://zenodo.org/record/1234567/files/my_data.zip"
-    
-    #unique_id = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + str(uuid.uuid4())[:8]
-    output_dir = config.p_base #f"data_from_zenodo_{unique_id}"
+    url = config.p_processed_data
+    output_dir = config.p_base
     os.makedirs(output_dir, exist_ok=True)
 
     zip_path = os.path.join(output_dir, "download.zip")

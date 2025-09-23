@@ -1,6 +1,6 @@
 SEED: 32
-n_edges: 5000 # all edges 1576516
-n_epo: 2
+n_edges: 1576516 # all edges 1576516
+n_epo: 10
 k_folds: 5
 batch_size: 128
 num_classes: 5
@@ -12,7 +12,7 @@ scale_features: "0,1,3"
 n_neighbors: 20
 min_dist: 0.8
 metric: "correlation"
-p_base: ../data_test/
+p_base: ../data_test_new/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv
 p_out_links: ${p_base}out_links_bc.csv

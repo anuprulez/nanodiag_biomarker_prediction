@@ -215,18 +215,6 @@ def process_arrays(
     df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
     print("Selected %d negative features.", df_neg_hv.shape[1])
 
-    # Save positive/negative feature name lists
-    #pd.DataFrame({"negative_probes_genes": df_neg_hv.columns}).to_csv(
-    #    out_dir / "negative_probes_genes_large.tsv", sep="\t", index=False
-    #)
-    #pd.DataFrame({"positive_probes_genes": positive_features}).to_csv(
-    #    out_dir / "positive_probes_genes.tsv", sep="\t", index=False
-    #)
-
-    # Save matrices
-    #df_neg_hv.to_csv(out_dir / "balanced_negative_signals.tsv", sep="\t", index=False)
-    #df_pos.to_csv(out_dir / "positive_signals.tsv", sep="\t", index=False)
-
     # ----------------------- Combine and build correlations ---------------------
     combined = pd.concat([df_pos, df_neg_hv], axis=1)  # samples x features
     combined.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
@@ -236,7 +224,6 @@ def process_arrays(
     
     print("Correlation edges found: %d", len(edges))
 
-    #edges_path = out_dir / f"significant_gene_relation_{cohort_name}.tsv"
     # The original code wrote no header; keep that behavior:
     edges = edges[:10000]
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)

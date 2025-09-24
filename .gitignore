@@ -1,0 +1,28 @@
+# Ignore all PDFs
+*.pdf
+
+# Ignore all CSV files
+*.csv
+
+# Ignore all CSV files
+*.tsv
+
+# Ignore all log files
+*.log
+
+# Ignore all log files
+*.pt
+
+# Ignore all log files
+*.ptm
+
+# Ignore all log files
+*.txt
+
+# Ignore Jupyter notebook checkpoints
+.ipynb_checkpoints/
+
+# Ignore temporary/system files
+*.swp
+*.tmp
+.DS_Store

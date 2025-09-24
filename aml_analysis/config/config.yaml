@@ -11,6 +11,7 @@ test_size: 0.33
 scale_features: "0,1,3"
 n_neighbors: 20
 min_dist: 0.8
+cutoff_pval: 5e-2
 metric: "correlation"
 p_base: ../data/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
@@ -28,6 +29,13 @@ p_test_probe_genes: ${p_base}test_probe_genes_aml.csv
 p_train_probe_genes: ${p_base}train_probe_genes_aml.csv
 p_pred_likely_pos: ${p_base}pred_likely_pos_aml.csv
 p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml.csv
+p_torch_data: ${p_base}data_aml.pt
+p_torch_embed: ${p_base}embed_conv_aml.pt
+p_torch_embed_batch_norm: ${p_base}embed_batch_norm_aml.pt
+p_true_labels: ${p_base}true_labels_aml.pt
+p_torch_model: ${p_base}model_aml.pt
+p_pred_labels: ${p_base}pred_labels_aml.pt
+p_pred_probs: ${p_base}pred_probs_aml.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
@@ -38,7 +46,6 @@ exp_epo: 5
 p_arrays: ${p_base}GSE175758_GEO_processed.txt # Path to arrays matrix (TSV).
 p_mapper: ${p_base}GPL13534-11288-mapper-HMBC450.txt # Path to probe-gene mapper (TSV with columns: probeID, UCSC_RefGene_Name).
 p_snp_probes: ${p_base}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
-#p_platform: ${p_base}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
 p_seeds_methylated_cpgs: ${p_base}non-randomly-demethylated-CpGs.tsv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
 p_seeds_gene_methylation_expr: ${p_base}genes_symbol_methylation_expression.tsv # Path to gene methylation-expression file (CSV with columns: Gene, Methylation, Expression).
 # Parameters
@@ -53,3 +60,10 @@ quantile_2: 0.2 # quantile threshold 2
 # Preprocessed data path
 #p_processed_data: https://zenodo.org/records/17185298/files/bc_preprocessed_datasets.zip?download=1
 #use_preprocessed_data: false
+# Preprocessed data path
+
+download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+p_raw_data: 
+
+use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+p_processed_data: 

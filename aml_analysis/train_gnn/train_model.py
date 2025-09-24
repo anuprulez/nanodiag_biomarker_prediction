@@ -79,9 +79,9 @@ def extract_node_embeddings(model, data, model_activation, config):
     pred_embeddings_conv4 = detach(pred_embeddings_conv4)
     pred_embeddings_batch_norm4 = detach(pred_embeddings_batch_norm4)
     true_labels = detach(true_labels)
-    torch.save(pred_embeddings_conv4, data_local_path + 'embed_conv.pt')
-    torch.save(pred_embeddings_batch_norm4, data_local_path + 'embed_batch_norm.pt')
-    torch.save(true_labels, data_local_path + 'true_labels.pt')
+    torch.save(pred_embeddings_conv4, config.p_torch_embed)
+    torch.save(pred_embeddings_batch_norm4, config.p_torch_embed_batch_norm)
+    torch.save(true_labels, config.p_true_labels)
     print("Plot UMAP embeddings")    
     plot_gnn.plot_node_embed(pred_embeddings_conv4, true_labels, config, conv_name)
     plot_gnn.plot_node_embed(pred_embeddings_batch_norm4, true_labels, config, activation_name)
@@ -89,7 +89,7 @@ def extract_node_embeddings(model, data, model_activation, config):
 
 def save_model(model, config):
     model_local_path = config.p_model
-    model_path = "{}/trained_model_edges_{}_epo_{}.ptm".format(model_local_path, config.n_edges, config.n_epo)
+    model_path = f"{model_local_path}/trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     torch.save(model.state_dict(), model_path)
     return model_path
 
@@ -118,8 +118,8 @@ def train_gnn_model(config):
     
     print(f"Used device: {device}")
 
-    data = torch.load(config.p_data + 'data.pt', weights_only=False)
-    tr_nodes = pd.read_csv(data_local_path + "training_probe_genes.csv", sep=",")
+    data = torch.load(config.p_torch_data, weights_only=False)
+    tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
@@ -137,7 +137,6 @@ def train_gnn_model(config):
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    #st_kfold = StratifiedKFold(n_splits=k_folds, shuffle=True)
     tr_loss_epo = list()
     te_acc_epo = list()
     val_acc_epo = list()
@@ -148,7 +147,6 @@ def train_gnn_model(config):
         tr_loss_fold = list()
         val_acc_fold = list()
         kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
-        #skfold = StratifiedKFold(n_splits=k_folds, shuffle=True, random_state=42)
         for fold, (train_index, val_index) in enumerate(kfold.split(tr_node_ids)):
             val_node_ids = tr_node_ids[val_index]
             train_nodes_ids = tr_node_ids[train_index]
@@ -157,7 +155,7 @@ def train_gnn_model(config):
             n_batches = int((len(train_index) + 1) / float(batch_size))
             batch_tr_loss = list()
             # loop over batches
-            print("Start fold training for epoch: {}, fold: {}...".format(epoch+1, fold+1))
+            print(f"Start fold training for epoch: {epoch+1}, fold: {fold+1}...")
             for bat in range(n_batches):
                 batch_tr_node_ids = train_nodes_ids[bat * batch_size: (bat+1) * batch_size]
                 data.batch_train_mask = create_masks(mapped_f_name, batch_tr_node_ids)
@@ -167,8 +165,8 @@ def train_gnn_model(config):
             tr_loss_fold.append(np.round(np.mean(batch_tr_loss), 2))
             # predict using trained model
             val_acc = predict_data_val(model, data)
-            print("Epoch {}/{}, fold {}/{} average training loss: {}".format(epoch+1, n_epo, fold+1, k_folds, np.round(np.mean(batch_tr_loss), 2)))
-            print("Epoch: {}/{}, Fold: {}/{}, val accuracy: {}".format(epoch+1, n_epo, fold+1, k_folds, np.round(val_acc), 2))
+            print(f"Epoch {epoch+1}/{n_epo}, fold {fold+1}/{k_folds} average training loss: {np.mean(batch_tr_loss):.2f}")
+            print(f"Epoch: {epoch+1}/{n_epo}, Fold: {fold+1}/{k_folds}, val accuracy: {val_acc:.2f}")
             val_acc_fold.append(val_acc)
 
         print("-------------------")
@@ -177,20 +175,22 @@ def train_gnn_model(config):
         tr_loss_epo.append(np.round(np.mean(tr_loss_fold), 2))
         val_acc_epo.append(np.round(np.mean(val_acc_fold), 2))
         print()
-        print("Epoch {}: Training Loss: {}".format(epoch+1, np.round(np.mean(tr_loss_fold), 2)))
-        print("Epoch {}: Val accuracy: {}".format(epoch+1, np.round(np.mean(val_acc_fold), 2)))
-        print("Epoch {}: Test accuracy: {}".format(epoch+1, np.round(np.mean(te_acc), 2)))
+        print(f"Epoch {epoch+1}: Training Loss: {np.mean(tr_loss_fold):.2f}")
+        print(f"Epoch {epoch+1}: Val accuracy: {np.mean(val_acc_fold):.2f}")
+        print(f"Epoch {epoch+1}: Test accuracy: {np.mean(te_acc):.2f}")
         print()
     print("==============")
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
-    print("CV Training Loss after {} epochs: {}".format(n_epo, np.round(np.mean(tr_loss_epo), 2)))
-    print("CV Val acc after {} epochs: {}".format(n_epo, np.round(np.mean(val_acc_epo), 2)))
+    print(f"CV Training Loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
+    print(f"CV Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
     final_test_acc, pred_labels, true_labels, all_pred, all_probs, all_pred_prob = predict_data_test(model, data)
-    torch.save(pred_labels, data_local_path + 'pred_labels.pt')
-    torch.save(all_pred_prob, data_local_path + 'pred_probs.pt')
-    torch.save(model, data_local_path + "model.pt")
+
+    # Save predictions, true labels, model
+    torch.save(pred_labels, config.p_pred_labels)
+    torch.save(all_pred_prob, config.p_pred_probs)
+    torch.save(model, config.p_torch_model)
     _ = save_model(model, config)
-    print("CV Test acc after {} epochs: {}".format(n_epo, np.round(final_test_acc, 2)))
+    print(f"CV Test acc after {n_epo} epochs: {final_test_acc:.2f}")
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
     plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)

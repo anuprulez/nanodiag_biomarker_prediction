@@ -221,9 +221,6 @@ def process_arrays(
     data_T = data_only.T  # transpose so rows=samples, cols=features
     data_T.columns = feature_names
 
-    #print("Saving merged signals to: %s", config.p_merged_signals)
-    #data_T.to_csv(config.p_merged_signals, sep="\t", index=False)
-
     df_merged = data_T  # samples x features
 
     # ------------------------------- Seeds filter -------------------------------
@@ -261,7 +258,6 @@ def process_arrays(
 
     print("Correlation edges found: %d", len(edges))
 
-    edges = edges[:10000]
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
 
     # --------------------------- Seed feature importances -----------------------
@@ -331,7 +327,7 @@ def mark_seed_genes(seed_genes_path, genes_path, gene):
 
 
 def calculate_features(links_data_path, genes_data_path, nedbit_path):
-    # nedbit_features_calculator out_links out_genes nedbit_features
+    # nedbit-features-calculator out_links out_genes nedbit_features
     # nedbit-features-calculator
     
     print("calculating nedbit features ...")

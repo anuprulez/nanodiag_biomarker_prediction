@@ -274,5 +274,3 @@ def plot_node_embed(features, labels, config, feature_type):
     ax.set_title(f"UMAP Visualization of node embeddings from last {feature_type} layer")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}.pdf", dpi)
-
-

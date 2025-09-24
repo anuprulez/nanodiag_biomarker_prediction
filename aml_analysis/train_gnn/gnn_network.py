@@ -66,18 +66,12 @@ class GCN(torch.nn.Module):
         num_classes = config["num_classes"]
         gene_dim = config["gene_dim"]
         hidden_dim = config["hidden_dim"]
-        aggregators = ['mean', 'min', 'max', 'std']
-        scalers = ['identity', 'amplification', 'attenuation']
         SEED = config["SEED"]
         torch.manual_seed(SEED)
-        '''self.conv1 = GCNConv(gene_dim, hidden_dim)
+        self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
         self.conv3 = GCNConv(2 * hidden_dim, hidden_dim)
-        self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)'''
-        self.conv1 = PNAConv(gene_dim, hidden_dim)
-        self.conv2 = PNAConv(hidden_dim, 2 * hidden_dim)
-        self.conv3 = PNAConv(2 * hidden_dim, hidden_dim)
-        self.conv4 = PNAConv(hidden_dim, hidden_dim // 2)
+        self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
         self.batch_norm1 = BatchNorm1d(hidden_dim)
         self.batch_norm2 = BatchNorm1d(2 * hidden_dim)

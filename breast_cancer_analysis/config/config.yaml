@@ -1,6 +1,6 @@
 SEED: 32
 n_edges: 1576516 # all edges 1576516
-n_epo: 2
+n_epo: 15
 k_folds: 5
 batch_size: 128
 num_classes: 5
@@ -12,7 +12,7 @@ scale_features: "0,1,3"
 n_neighbors: 20
 min_dist: 0.8
 metric: "correlation"
-p_base: ../data_corr_0.5_negative_20000/
+p_base: ../data_corr_0.3_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv
 p_out_links: ${p_base}out_links_bc.csv
@@ -48,8 +48,8 @@ p_snp_probes: ${p_base}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CS
 p_platform: ${p_base}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
 p_seeds: ${p_base}seed_probes.csv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
 # Parameters
-size_negative: 20000 # Number of negative samples to draw
-corr_threshold: 0.5 #0.35 #0.5 # Correlation threshold for gene-gene links
+size_negative: 10000 # Number of negative samples to draw
+corr_threshold: 0.33 #0.5 # Correlation threshold for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1
@@ -57,10 +57,10 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
-use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+use_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17191487/files/bc_preprocessed_datasets_to_train.zip?download=1
 #https://zenodo.org/records/17185298/files/bc_preprocessed_datasets.zip?download=1
 

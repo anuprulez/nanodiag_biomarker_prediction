@@ -194,3 +194,4 @@ def train_gnn_model(config):
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
     plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)
+    #plot_gnn.plot_radar({"Net-A": [0.82, 0.76, 0.91, 0.65, 0.88], "Net-B": [0.79, 0.81, 0.87, 0.70, 0.90]}, [1, 2, 3, 4, 5], config)

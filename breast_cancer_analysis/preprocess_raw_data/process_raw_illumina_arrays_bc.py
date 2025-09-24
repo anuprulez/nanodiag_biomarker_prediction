@@ -190,6 +190,8 @@ def process_arrays(
     # ---------------------- Gene mapper & probe expansion ----------------------
     print("Loading gene mapper: %s", config.p_mapper)
     probe_mapper = pd.read_csv(config.p_mapper, sep="\t")
+    probe_mapper = probe_mapper[probe_mapper["P.Value"] <= config.cutoff_pval]
+    print("Mapper after P.val filtering:\n%s", probe_mapper)
     df_probe_gene_mapper = expand_probe_gene_map(probe_mapper)
     print("Expanded mapper head:\n%s", df_probe_gene_mapper.head())
 
@@ -227,7 +229,8 @@ def process_arrays(
     print("Loading seeds: %s", config.p_seeds)
     df_seeds = pd.read_csv(config.p_seeds, sep="\t")
     # P-value and chromosome filters
-    df_seeds = df_seeds.loc[(df_seeds["P.Value"] <= 0.01) & (df_seeds["CHR"] != "X")].copy()
+    df_seeds = df_seeds.loc[(df_seeds["P.Value"] <= config.cutoff_pval) & (df_seeds["CHR"] != "X")].copy()
+    print("Seeds after P.val filtering:\n%s", df_seeds)
 
     # Positive features: any feature whose probe part is in seeds
     all_seed_probes = set(df_seeds["probeID"].astype(str).tolist())
@@ -357,8 +360,7 @@ def main() -> None:
     genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
     calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
-    assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), \
-                          config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
+    assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
 
 
 if __name__ == "__main__":

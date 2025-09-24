@@ -45,7 +45,7 @@ def extract_preprocessed_data(config):
 
 def run_training():
     config = OmegaConf.load("../config/config.yaml")
-    extract_preprocessed_data(config) if config.use_preprocessed_data else None
+    extract_preprocessed_data(config) if config.download_preprocessed_data else None
     preprocess_data.read_files(config)
     train_model.train_gnn_model(config)
 

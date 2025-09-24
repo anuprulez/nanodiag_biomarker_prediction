@@ -1,5 +1,5 @@
 SEED: 32
-n_edges: 10000 # all edges 1576516
+n_edges: 9000 # all edges 1576516
 n_epo: 2
 k_folds: 5
 batch_size: 128
@@ -12,8 +12,7 @@ scale_features: "0,1,3"
 n_neighbors: 20
 min_dist: 0.8
 metric: "correlation"
-p_base: ../data_corr_0.33_ts_10000/
-p_correlation_dataframe: ${p_base}correlation_dataframe.tsv
+p_base: ../data_corr_0.33_ts_10000_new/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv
 p_out_links: ${p_base}out_links_bc.csv
@@ -39,7 +38,7 @@ p_pred_probs: ${p_base}pred_probs_bc.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
-exp_epo: 1 # Number of explanation epochs
+exp_epo: 10 # Number of explanation epochs
 
 # Preprocess breast cancer Illumina arrays
 # Input files
@@ -58,7 +57,10 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
+download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
+
+use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17191487/files/bc_preprocessed_datasets_to_train.zip?download=1
 #https://zenodo.org/records/17185298/files/bc_preprocessed_datasets.zip?download=1
-use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+

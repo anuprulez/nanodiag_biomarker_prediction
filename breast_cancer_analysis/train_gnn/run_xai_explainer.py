@@ -208,7 +208,6 @@ def collect_pred_labels(config):
 
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
-    #tr_probes_genes.to_csv(config.p_data + "tr_probes_genes.csv", sep="\t", index=None)
 
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])]
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])]
@@ -239,10 +238,10 @@ if __name__ == "__main__":
     data = data.to(device)
     model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
-    node_i = 1586
+    node_i = 700 #1586
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'],
                     to_undirected=True)
     collect_pred_labels(config)
-    #predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')
+    predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')

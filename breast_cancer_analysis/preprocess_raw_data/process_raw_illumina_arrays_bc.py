@@ -261,7 +261,7 @@ def process_arrays(
 
     print("Correlation edges found: %d", len(edges))
 
-    #edges = edges[:10000]
+    edges = edges[:10000]
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
 
     # --------------------------- Seed feature importances -----------------------
@@ -356,13 +356,13 @@ def assign_initial_labels(nedbit_path, header, output_gene_ranking_path, q1=0.05
 def main() -> None:
     
     config = OmegaConf.load("../config/config.yaml")
-    extract_preprocessed_data(config) if config.use_preprocessed_data else None
+    extract_preprocessed_data(config) if config.download_raw_data else None
     process_arrays(config)
     genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
     calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
-    
-    assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
+    assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), \
+                          config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
 
 
 if __name__ == "__main__":

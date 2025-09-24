@@ -208,8 +208,6 @@ def collect_pred_labels(config):
 
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
-    #tr_probes_genes.to_csv(config.p_data + "tr_probes_genes.csv", sep="\t", index=None)
-
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])]
     pred_likely_pos = pred_likely_pos[~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])]
 

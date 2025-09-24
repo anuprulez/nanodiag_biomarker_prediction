@@ -124,7 +124,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     test_x = data.x[data.test_mask == 1]
     test_y = data.y[data.test_mask == 1]
 
-    torch.save(data, p_data + 'data.pt')
+    torch.save(data, config.p_torch_data)
 
     # save normalized data
     preprocessed_data = data.x.detach()

@@ -162,9 +162,9 @@ def collect_pred_labels(config):
     labels = df_nebit_features_test.iloc[:, -1]
     df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
 
-    true_labels = torch.load(config.p_base + "true_labels.pt", weights_only=False)
-    pred_labels = torch.load(config.p_base + "pred_labels.pt", weights_only=False)
-    pred_probs = torch.load(config.p_base + "pred_probs.pt", weights_only=False)
+    true_labels = torch.load(config.p_true_labels, weights_only=False)
+    pred_labels = torch.load(config.p_pred_labels, weights_only=False)
+    pred_probs = torch.load(config.p_pred_probs, weights_only=False)
     true_labels = [int(item) + 1 for item in true_labels]
     pred_labels = [int(item) + 1 for item in pred_labels]
 
@@ -235,14 +235,14 @@ if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_local_path = config.p_plot
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    data = torch.load(config.p_data + 'data.pt', weights_only=False)
+    data = torch.load(config.p_torch_data, weights_only=False)
     data = data.to(device)
     model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
     node_i = 1586
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
-                    node_attrs=['x'], 
+                    node_attrs=['x'],
                     to_undirected=True)
     collect_pred_labels(config)
     #predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')

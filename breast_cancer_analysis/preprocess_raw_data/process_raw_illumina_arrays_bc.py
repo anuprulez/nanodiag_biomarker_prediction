@@ -7,14 +7,13 @@ and derive probe–probe relations via correlation.
 
 from __future__ import annotations
 
-import argparse
+import os
 import logging
-from pathlib import Path
 import random
-from typing import List, Tuple
-import argparse
-import sys
+from typing import List
 import subprocess
+import requests
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -24,13 +23,30 @@ from omegaconf.omegaconf import OmegaConf
 
 # ----------------------------- Helper Functions ------------------------------
 
-def setup_logging(verbosity: int = 1) -> None:
-    level = logging.WARNING if verbosity <= 0 else logging.INFO if verbosity == 1 else logging.DEBUG
-    logging.basicConfig(
-        format="%(asctime)s | %(levelname)-8s | %(message)s",
-        level=level,
-        datefmt="%H:%M:%S",
-    )
+def extract_preprocessed_data(config):
+
+    # Your Zenodo link
+    url = config.p_processed_data
+    output_dir = config.p_base
+    os.makedirs(output_dir, exist_ok=True)
+
+    zip_path = os.path.join(output_dir, "download.zip")
+
+    # Download ZIP
+    print(f"[+] Downloading {url} ...")
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(zip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    # Extract all files into output_dir
+    print(f"[+] Extracting into {output_dir} ...")
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        zip_ref.extractall(output_dir)
+
+    # Optionally remove the zip after extraction
+    os.remove(zip_path)
 
 def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
     """
@@ -78,6 +94,14 @@ def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
     # Scanpy expects observations (cells/samples) x variables (features)
     adata = sc.AnnData(negative_df)
     sc.pp.highly_variable_genes(adata, flavor="seurat", n_top_genes=n_top)
+    # Subset to HVGs
+    hvg = adata.var[adata.var["highly_variable"]]
+    # Lowest normalized dispersion among selected HVGs
+    lowest_disp = hvg["dispersions_norm"].min()
+    # Also, which gene has that lowest dispersion
+    lowest_gene = hvg["dispersions_norm"].idxmin()
+    print("Lowest dispersion among HVGs:", lowest_disp)
+    print("Gene with lowest dispersion:", lowest_gene)
     hv_idx = adata.var["highly_variable"].fillna(False)
     hv_names = adata.var.index[hv_idx].tolist()
     return negative_df[hv_names]
@@ -96,7 +120,7 @@ def build_correlation_edges(
     # corrcoef expects rows as variables when input is 2D array; transpose:
     corr = np.corrcoef(features_df.T)
     corr_df = pd.DataFrame(corr, index=feature_names, columns=feature_names)
-
+    
     mask = (corr_df > threshold)
     np.fill_diagonal(mask.values, False)  # remove self-relations
 
@@ -108,7 +132,7 @@ def build_correlation_edges(
             out_nodes.extend(hits)
 
     edges = pd.DataFrame({"In": in_nodes, "Out": out_nodes})
-    return edges
+    return edges, corr_df
 
 
 def extract_seed_features(
@@ -146,6 +170,9 @@ def process_arrays(
     """
     rng = random.Random(config.SEED)
     np.random.seed(config.SEED)
+
+    output_dir = config.p_base
+    os.makedirs(output_dir, exist_ok=True)
 
     print("Loading Illumina arrays: %s", config.p_arrays)
     df_arrays = pd.read_csv(config.p_arrays, sep="\t")
@@ -185,8 +212,8 @@ def process_arrays(
     data_T = data_only.T  # transpose so rows=samples, cols=features
     data_T.columns = feature_names
 
-    print("Saving merged signals to: %s", config.p_merged_signals)
-    data_T.to_csv(config.p_merged_signals, sep="\t", index=False)
+    #print("Saving merged signals to: %s", config.p_merged_signals)
+    #data_T.to_csv(config.p_merged_signals, sep="\t", index=False)
 
     df_merged = data_T  # samples x features
 
@@ -220,12 +247,12 @@ def process_arrays(
     combined.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
 
     print("Computing feature–feature correlations (threshold=%.2f)...", config.corr_threshold)
-    edges = build_correlation_edges(combined, threshold=config.corr_threshold)
-    
+    edges, corr_df = build_correlation_edges(combined, threshold=config.corr_threshold)
+    print(corr_df.head())
+
     print("Correlation edges found: %d", len(edges))
 
-    # The original code wrote no header; keep that behavior:
-    edges = edges[:10000]
+    #edges = edges[:10000]
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
 
     # --------------------------- Seed feature importances -----------------------
@@ -320,13 +347,13 @@ def assign_initial_labels(nedbit_path, header, output_gene_ranking_path, q1=0.05
 def main() -> None:
     
     config = OmegaConf.load("../config/config.yaml")
+    extract_preprocessed_data(config) if config.use_preprocessed_data else None
     process_arrays(config)
     genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
     calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
     
     assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
-
 
 
 if __name__ == "__main__":

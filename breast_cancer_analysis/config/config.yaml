@@ -1,6 +1,6 @@
 SEED: 32
 n_edges: 1576516 # all edges 1576516
-n_epo: 5
+n_epo: 15
 k_folds: 5
 batch_size: 128
 num_classes: 5
@@ -58,7 +58,7 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-p_raw_data:
+p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 p_processed_data: https://zenodo.org/records/17191487/files/bc_preprocessed_datasets_to_train.zip?download=1
 #https://zenodo.org/records/17185298/files/bc_preprocessed_datasets.zip?download=1
 use_preprocessed_data: true

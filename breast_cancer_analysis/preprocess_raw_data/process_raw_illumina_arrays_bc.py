@@ -26,7 +26,7 @@ from omegaconf.omegaconf import OmegaConf
 def extract_preprocessed_data(config):
 
     # Your Zenodo link
-    url = config.p_processed_data
+    url = config.p_raw_data
     output_dir = config.p_base
     os.makedirs(output_dir, exist_ok=True)
 
@@ -40,10 +40,19 @@ def extract_preprocessed_data(config):
             for chunk in r.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-    # Extract all files into output_dir
+    # Extract into output_dir (flatten top-level folder)
     print(f"[+] Extracting into {output_dir} ...")
     with zipfile.ZipFile(zip_path, "r") as zip_ref:
-        zip_ref.extractall(output_dir)
+        for member in zip_ref.infolist():
+            # Get only the filename (ignoring any subfolders in the ZIP)
+            filename = os.path.basename(member.filename)
+            if not filename:
+                continue  # skip directories
+            target_path = os.path.join(output_dir, filename)
+
+            # Extract file
+            with zip_ref.open(member) as source, open(target_path, "wb") as target:
+                target.write(source.read())
 
     # Optionally remove the zip after extraction
     os.remove(zip_path)

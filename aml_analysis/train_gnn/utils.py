@@ -86,13 +86,12 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     data.y = y
     data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
 
-    print("Post creating test masks")
     df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
-    df_test_probe_genes.to_csv(p_data + "test_probe_genes.csv", index=None)
+    df_test_probe_genes.to_csv(p_data + config.p_test_probe_genes, index=None)
 
     tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
     df_tr_probe_genes = pd.DataFrame(zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"])
-    df_tr_probe_genes.to_csv(p_data + "training_probe_genes.csv", index=None)
+    df_tr_probe_genes.to_csv(p_data + config.p_train_probe_genes, index=None)
 
     print(f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}")
 
@@ -101,7 +100,6 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
 
     # Apply normalization for train data
     for col_idx in sfeatures_ids:
-        #print("Scaling column: {}".format(col_idx))
         tr_feature_val = data.x[data.test_mask == 0][:, col_idx]
         tr_feature_val = tr_feature_val.reshape(-1, 1)
         transformer = RobustScaler().fit(tr_feature_val)

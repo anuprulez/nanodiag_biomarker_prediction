@@ -297,7 +297,6 @@ def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
 
 
 def extract_positives_negatives(clean_signals, config): 
-    # cpgs_path, genes_path, config.p_seeds_methylated_cpgs, config.p_seeds_gene_methylation_expr
     rng = random.Random(config.SEED)
     np.random.seed(config.SEED)
     non_rand_cpgs = pd.read_csv(config.p_seeds_methylated_cpgs, sep="\t")
@@ -328,36 +327,8 @@ def extract_positives_negatives(clean_signals, config):
     print(df_neg_pool.head())
 
     print("Selecting highly variable negative features (target n=%d)...", config.size_negative)
-    #df_neg_pool_pd = df_neg_pool.to_pandas()
     df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
-    #df_neg_hv = df_neg_hv.to_pandas()
     print("Selected %d negative features.", df_neg_hv.shape[1]) 
-    
-    #negative_signals = clean_signals[negative_cols]
-    #size_negative = 10000 #len(positive_probes_genes)
-    #balanced_negative_signals = clean_signals[negative_signals.columns[:config.size_negative]]
-    #print(balanced_negative_signals.head())
-
-    #negative_probes_genes = balanced_negative_signals.columns.tolist()
-
-    #df_neg = pd.DataFrame(negative_probes_genes, columns=["negative_probes_genes"])
-    #df_neg.to_csv(config.p_base + "negative_probes_genes_large.tsv", index=None)
-    #print(df_neg.head())
-
-    #positive_probes_genes = positive_probes_genes
-    #df_pos = pd.DataFrame(positive_probes_genes, columns=["positive_probes_genes"])
-    #df_pos.to_csv(config.p_base + "positive_probes_genes.tsv", index=None)
-    #print(df_pos.head())
-
-    #probe_genes_mapping = clean_signals.columns.tolist()
-    #id_range = np.arange(0, len(probe_genes_mapping))
-    #df_probe_genes_mapping = pd.DataFrame(zip(probe_genes_mapping, id_range), columns=["name", "id"])
-    #print(df_probe_genes_mapping.head())
-
-    #df_probe_genes_mapping.to_csv(config.p_base + "probe_genes_mapping_id.tsv", sep="\t", index=None)
-
-    #balanced_negative_signals.to_csv(config.p_base + "balanced_negative_signals.tsv", sep="\t", index=None)
-    #positive_signals.to_csv(config.p_base + "positive_signals.tsv", sep="\t", index=None)
 
     combined_pos_neg_signals = pd.concat([positive_signals, df_neg_hv], axis=1)
     combined_pos_neg_signals.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
@@ -368,13 +339,7 @@ def extract_positives_negatives(clean_signals, config):
     print("Correlation edges found: %d", len(edges))
 
     # The original code wrote no header; keep that behavior:
-    edges = edges[:10000]
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
-
-    #transposed_matrix = np.transpose(combined_pos_neg_signals)
-    #print(transposed_matrix.head())
-
-    #return transposed_matrix
 
 
 def build_correlation_edges(
@@ -403,38 +368,6 @@ def build_correlation_edges(
 
     edges = pd.DataFrame({"In": in_nodes, "Out": out_nodes})
     return edges
-
-
-
-def compute_correlation(extracted_features, config):
-    correlation_matrix = np.corrcoef(extracted_features)
-    print(correlation_matrix, correlation_matrix.shape)
-
-    df_corr = pd.DataFrame(correlation_matrix)
-    df_corr.index = extracted_features.index
-    df_corr.columns = extracted_features.index
-    print(df_corr.head())
-
-    #relation_threshold = 0.5
-    probe_gene_names = df_corr.columns
-    corr_mat = df_corr
-    corr_mat_filtered = corr_mat > config.corr_threshold
-    print(corr_mat_filtered.head())
-
-    in_probe_relation = list()
-    out_probe_relation = list()
-    print("Creating probe-gene relations...")
-    for index, col in enumerate(corr_mat_filtered.columns):
-        for item_idx, item in enumerate(corr_mat_filtered[col]):
-            if item == True and col != probe_gene_names[item_idx]:
-                in_probe_relation.append(col)
-                out_probe_relation.append(probe_gene_names[item_idx])
-    df_significant_gene_relation = pd.DataFrame(zip(in_probe_relation, out_probe_relation), columns=["In", "Out"])
-    print(df_significant_gene_relation.head())
-
-    #file_name = config.p_base + "significant_gene_relation_{}_{}.tsv".format("only_positive_corr", config.size_negative)
-    df_significant_gene_relation = df_significant_gene_relation[:10000]
-    df_significant_gene_relation.to_csv(config.p_significant_edges, sep="\t", header=None, index=False)
 
 
 def create_network_gene_ids(ppi_path, links_path):
@@ -517,7 +450,6 @@ def assign_initial_labels(nedbit_path, header, output_gene_ranking_path, q1=0.05
         print("Error:", result.stderr)
 
 
-
 if __name__ == "__main__":
 
     config = OmegaConf.load("../config/config.yaml")
@@ -532,7 +464,6 @@ if __name__ == "__main__":
     print("======== Step 2: cleaning datasets and computing correlation =============")
     clean_arrays = load_clean_arrays(config)
     features = extract_positives_negatives(clean_arrays, config)
-    #compute_correlation(features, config)
 
     ## Step 3
 

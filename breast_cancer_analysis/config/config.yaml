@@ -24,6 +24,10 @@ p_dnam_features: ${p_base}dnam_features_bc.csv
 p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc.csv
 p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
 p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_bc.csv
+p_test_probe_genes: ${p_base}test_probe_genes_bc.csv
+p_train_probe_genes: ${p_base}train_probe_genes_bc.csv
+p_pred_likely_pos: ${p_base}pred_likely_pos_bc.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc.csv
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/

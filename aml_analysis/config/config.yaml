@@ -1,10 +1,10 @@
 SEED: 32
-n_edges: 1576516 # all edges 1576516
-n_epo: 10
+n_edges: 10000 # all edges to use: 1500000, all: 16223942 :16223942
+n_epo: 1
 k_folds: 5
 batch_size: 128
 num_classes: 5
-gene_dim: 86
+gene_dim: 40
 hidden_dim: 128
 learning_rate: 0.0001
 test_size: 0.33
@@ -24,6 +24,10 @@ p_dnam_features: ${p_base}dnam_features_aml.csv
 p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_aml.csv
 p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
 p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_aml.csv
+p_test_probe_genes: ${p_base}test_probe_genes_aml.csv
+p_train_probe_genes: ${p_base}train_probe_genes_aml.csv
+p_pred_likely_pos: ${p_base}pred_likely_pos_aml.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml.csv
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
@@ -39,7 +43,7 @@ p_seeds_methylated_cpgs: ${p_base}non-randomly-demethylated-CpGs.tsv # Path to s
 p_seeds_gene_methylation_expr: ${p_base}genes_symbol_methylation_expression.tsv # Path to gene methylation-expression file (CSV with columns: Gene, Methylation, Expression).
 # Parameters
 size_negative: 10000 # Number of negative samples to draw
-corr_threshold: 0.5 # Correlation threshold for gene-gene links
+corr_threshold: 0.33 #0.5 # Correlation threshold for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1

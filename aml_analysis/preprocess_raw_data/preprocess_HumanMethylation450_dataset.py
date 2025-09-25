@@ -64,12 +64,34 @@ def load_illumina_arrays(config):
     column_names = df_GSE175758_GEO_processed.columns
 
     print(f"Filtering based on p-value: {config.cutoff_pval}")
-    for i in range(len(column_names)):
-        if i > 0 and i % 2 == 0:
-            print(column_names[i])
-            col_name = column_names[i]
-            df_GSE175758_GEO_processed[column_names[i-1]] = df_GSE175758_GEO_processed.apply(lambda x: x[column_names[i-1]] if x[col_name] < config.cutoff_pval else 0.0, axis=1)
-    print(df_GSE175758_GEO_processed.head())
+
+    df_filtered = df_GSE175758_GEO_processed.copy()
+
+    # Iterate over all columns ending with ".Detection.Pval"
+    for col in column_names:
+        if col.endswith(".Detection.Pval") and "d15" not in col and "T_cells" not in col:  
+            # Don't process d15 and T_cells columns; Only take d0 and d8 from blasts
+            sample = col.replace(".Detection.Pval", "")
+            methyl_col = sample
+            pval_col = col
+            
+            df_filtered[methyl_col] = df_GSE175758_GEO_processed.apply(
+                lambda row: row[methyl_col] if row[pval_col] < 0.05 else 0,
+                axis=1
+            )
+
+            print(f"Methylation col: {methyl_col}, P.Val col: {pval_col}")
+
+    # Finally drop all p-value columns
+    print("Dropping p-value columns and d15, T_cells columns ...")
+    df_filtered = df_filtered.drop(columns=[c for c in column_names if c.endswith(".Detection.Pval")])
+
+    for c in df_filtered.columns:
+        if "d15" in c or "T_cells" in c:
+            print("Removing column: ", c)
+            df_filtered = df_filtered.drop(columns=[c])
+
+    print(df_filtered.head())
 
     probe_mapper_full = pd.read_csv(config.p_mapper, sep="\t")
     print("Gene probe mapper")
@@ -101,9 +123,9 @@ def load_illumina_arrays(config):
     print("Probe gene mapper uniq: %d", len(df_probe_gene_mapper_uniq))
     print(df_probe_gene_mapper_uniq.head())
 
-    print(df_GSE175758_GEO_processed.head())
+    print(df_filtered.head())
 
-    df_probe_signals_merged = pd.merge(df_probe_gene_mapper_uniq, df_GSE175758_GEO_processed, how="inner", on=["ID_REF"])
+    df_probe_signals_merged = pd.merge(df_probe_gene_mapper_uniq, df_filtered, how="inner", on=["ID_REF"])
     print(df_probe_signals_merged.head())
 
     return df_probe_signals_merged, probe_mapper_full
@@ -132,29 +154,13 @@ def filter_probes(snp_probes_path, processed_arrays, probe_mapper_full):
 
 
 def merge_patients(clean_probes, config):
-    d15_features = list()
-    d8_features = list()
-    d0_features = list()
 
-    for col in clean_probes.columns:
-        if "c1.blasts.d0" in col and "Detection.Pval" not in col:
-            d0_features.append(col)
-        if "c1.blasts.d8" in col and "Detection.Pval" not in col:
-            d8_features.append(col)
-        if "c1.blasts.d15" in col and "Detection.Pval" not in col:
-            d15_features.append(col)
-    print(len(d0_features), len(d8_features), len(d15_features))
+    print(f"Checking if T_cells in clean_probes...")
+    if any("T_cells" in col for col in clean_probes.columns):
+        print("T_cells found, removing T_cells columns ...")
+        clean_probes = clean_probes[[col for col in clean_probes.columns if "T_cells" not in col]]
 
-    df_d0 = clean_probes[d0_features]
-    print(df_d0.head())
-
-    df_d8 = clean_probes[d8_features]
-    print(df_d8.head())
-
-    df_d15 = clean_probes[d15_features]
-    print(df_d15.head())
-
-    merged_do_d8 = pd.concat([df_d0, df_d8], axis=1)
+    merged_do_d8 = clean_probes
     print(merged_do_d8.head())
 
     merged_do_d8_transpose = merged_do_d8.transpose()
@@ -169,15 +175,6 @@ def merge_patients(clean_probes, config):
 
     print(len(merged_do_d8_transpose.columns))
     merged_do_d8_transpose.columns = feature_names_list
-    print(merged_do_d8_transpose.head())
-
-    # Merge D15 data
-    df_d15_transpose = df_d15.transpose()
-    df_d15_transpose.columns = feature_names_list
-    print(df_d15_transpose.head())
-
-    df_d15_transpose.to_csv(config.p_base + "df_d15.csv" , sep="\t")
-
     print(merged_do_d8_transpose.head())
 
     rownames = merged_do_d8_transpose.index.tolist()
@@ -446,7 +443,6 @@ if __name__ == "__main__":
     features = extract_positives_negatives(clean_arrays, config)
 
     ## Step 3
-
     print("======== Step 3: Label propagation =============")
     genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)

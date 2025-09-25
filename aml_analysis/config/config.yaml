@@ -1,5 +1,5 @@
 SEED: 32
-n_edges: 10000 # all edges to use: 1500000, all: 16223942 :16223942
+n_edges: 9000 # all edges to use: 1500000, all: 16223942 :16223942
 n_epo: 1
 k_folds: 5
 batch_size: 128
@@ -13,7 +13,7 @@ n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
-p_base: ../data/
+p_base: ../data_corr_0.5_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.tsv
 p_out_links: ${p_base}out_links_aml.csv
@@ -50,7 +50,7 @@ p_seeds_methylated_cpgs: ${p_base}non-randomly-demethylated-CpGs.tsv # Path to s
 p_seeds_gene_methylation_expr: ${p_base}genes_symbol_methylation_expression.tsv # Path to gene methylation-expression file (CSV with columns: Gene, Methylation, Expression).
 # Parameters
 size_negative: 10000 # Number of negative samples to draw
-corr_threshold: 0.33 #0.5 # Correlation threshold for gene-gene links
+corr_threshold: 0.5 #0.5 # Correlation threshold for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1
@@ -58,8 +58,8 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
-p_raw_data: https://zenodo.org/records/17194431/files/aml_raw_datasets.zip?download=1
+download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+p_raw_data: https://zenodo.org/records/17202627/files/aml_raw_datasets.zip?download=1
 
 use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1

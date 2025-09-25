@@ -47,6 +47,7 @@ def read_files(config):
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     feature_names = out_genes.iloc[:, 1]
     mapped_feature_ids = out_genes.loc[:, 0]
+    print(f"Number of links: {len(relations_probe_ids)}")
     links_relation_probes = relations_probe_ids.sample(config.n_edges)
     links_relation_probes.reset_index(drop=True, inplace=True)
     links_relation_probes = links_relation_probes.drop_duplicates()

@@ -242,7 +242,7 @@ def plot_features(features, labels, config, title, flag):
     df = pd.DataFrame({"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels})
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=0.9, ax=ax)
+    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=0.9, ax=ax, palette=config.color_palette)
     ax.set_title(title)
     ax.legend(title="Label", loc="best", frameon=True)
     _save(fig, plot_local_path / f"umap_nedbit_dnam_features_{flag}.pdf", dpi)
@@ -270,7 +270,7 @@ def plot_node_embed(features, labels, config, feature_type):
     df = pd.DataFrame({"UMAP1": embeddings[:, 0], "UMAP2": embeddings[:, 1], "Label": labels})
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=1.0, ax=ax)
+    sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=1.0, ax=ax, palette=config.color_palette)
     ax.set_title(f"UMAP Visualization of node embeddings from last {feature_type} layer")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}.pdf", dpi)

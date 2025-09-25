@@ -175,7 +175,7 @@ def collect_pred_labels(config):
                                     (df_labels["pred_labels"].isin([1]))]
     
     pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
-                                    (df_labels["pred_labels"].isin([2, 3]))]
+                                    (df_labels["pred_labels"].isin([2]))]
     
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
@@ -208,8 +208,6 @@ def collect_pred_labels(config):
         rvals = row.values[1].split("_")
         tr_probes.append(rvals[0])
         tr_genes.append(rvals[1])
-        if rvals[0] == "cg01945355":
-            print(row, "cg01945355_OSGEPL1")
 
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
@@ -229,14 +227,6 @@ def get_node_names_links(n_nodes, ranked_nodes, config):
     print("Dataframe of plotted nodes")
     print(df_plotted_nodes)
 
-    '''relations_probe_ids = pd.read_csv(config.p_out_links, sep=" ", header=None)
-    links = []
-    for i, row in relations_probe_ids.iterrows():
-        rvals = row.values
-        src_name = df_out_genes[df_out_genes[0] == rvals[0]][1].values[0]
-        trgt_name = df_out_genes[df_out_genes[0] == rvals[1]][1].values[0]
-        links.append((src_name, trgt_name))'''
-
 
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
@@ -246,7 +236,7 @@ if __name__ == "__main__":
     data = data.to(device)
     model_path = f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
-    node_i = 1586
+    node_i = 2221
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'],

@@ -1,5 +1,6 @@
 SEED: 32
-n_edges: 1576516 # all edges 1576516
+n_edges: 2000000 
+# all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 n_epo: 15
 k_folds: 5
 batch_size: 128
@@ -63,5 +64,8 @@ p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preproc
 
 download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17191487/files/bc_preprocessed_datasets_to_train.zip?download=1
-#https://zenodo.org/records/17185298/files/bc_preprocessed_datasets.zip?download=1
+# https://zenodo.org/records/17191487/files/bc_preprocessed_datasets_to_train.zip?download=1 c_0.33_te_10000
+# https://zenodo.org/records/17199872/files/bc_preprocessed_datasets_to_train_c_0.5_te_10000.zip?download=1
+
+color_palette: "tab10" # Color scale for UMAP plots
 

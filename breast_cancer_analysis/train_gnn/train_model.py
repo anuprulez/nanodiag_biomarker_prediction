@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn.functional as F
 
@@ -111,10 +112,8 @@ def train_gnn_model(config):
     k_folds = config.k_folds
     n_epo = config.n_epo
     batch_size = config.batch_size
-    data_local_path = config.p_data
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
-    
     
     print(f"Used device: {device}")
 
@@ -140,6 +139,9 @@ def train_gnn_model(config):
     tr_loss_epo = list()
     te_acc_epo = list()
     val_acc_epo = list()
+    best_te_acc = -float("inf")
+    best_state = None
+    best_epoch = -1
     
     # loop over epochs
     print("Start epoch training...")
@@ -174,23 +176,34 @@ def train_gnn_model(config):
         te_acc_epo.append(te_acc)
         tr_loss_epo.append(np.round(np.mean(tr_loss_fold), 2))
         val_acc_epo.append(np.round(np.mean(val_acc_fold), 2))
+        if te_acc > best_te_acc:
+            best_te_acc = te_acc
+            best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch + 1
+            print(f"Saving the model state, best epoch was {best_epoch} with test acc {te_acc:.2f}.")
+            torch.save(model.state_dict(), config.p_torch_model)   # <-- best checkpoint
         print()
         print(f"Epoch {epoch+1}: Training Loss: {np.mean(tr_loss_fold):.2f}")
         print(f"Epoch {epoch+1}: Val accuracy: {np.mean(val_acc_fold):.2f}")
         print(f"Epoch {epoch+1}: Test accuracy: {np.mean(te_acc):.2f}")
         print()
     print("==============")
+    
+    print("Plot and report all training epochs")
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print(f"CV Training Loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"CV Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
+
+    ## Restore the best trained model for downstream usages
+    print(f"[Restore] Loaded best model from epoch {best_epoch} (val acc {best_te_acc:.2f}).")
+    if best_state is not None:
+        model.load_state_dict(best_state)
     final_test_acc, pred_labels, true_labels, all_pred, all_probs, all_pred_prob = predict_data_test(model, data)
 
     # Save predictions, true labels, model
     torch.save(pred_labels, config.p_pred_labels)
     torch.save(all_pred_prob, config.p_pred_probs)
-    torch.save(model, config.p_torch_model)
-    _ = save_model(model, config)
-    print(f"CV Test acc after {n_epo} epochs: {final_test_acc:.2f}")
+    print(f"CV Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}")
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
     plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)

@@ -1,10 +1,10 @@
 SEED: 32
-n_edges: 20000 # 2000000
+n_edges: 14251734 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 30
+n_epo: 5
 k_folds: 5
-batch_size: 128
+batch_size: 128 #128
 num_classes: 5
 gene_dim: 86
 hidden_dim: 128
@@ -38,10 +38,11 @@ p_true_labels: ${p_base}true_labels_bc.pt
 p_torch_model: ${p_model}best_model_bc.pt
 p_pred_labels: ${p_base}pred_labels_bc.pt
 p_pred_probs: ${p_base}pred_probs_bc.pt
+p_test_loader_ids: ${p_base}test_ids_bc.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
-exp_epo: 10 # Number of explanation epochs
+exp_epo: 2 # Number of explanation epochs
 
 # Preprocess breast cancer Illumina arrays
 # Input files

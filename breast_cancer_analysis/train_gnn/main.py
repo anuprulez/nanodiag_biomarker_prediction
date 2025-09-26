@@ -6,6 +6,7 @@ import uuid
 
 import preprocess_data
 import train_model
+import train_model_sub_graph
 
 from omegaconf.omegaconf import OmegaConf
 
@@ -47,7 +48,8 @@ def run_training():
     config = OmegaConf.load("../config/config.yaml")
     extract_preprocessed_data(config) if config.download_preprocessed_data else None
     preprocess_data.read_files(config)
-    train_model.train_gnn_model(config)
+    #train_model.train_gnn_model(config)
+    train_model_sub_graph.train_gnn_model(config)
 
 
 if __name__ == "__main__":

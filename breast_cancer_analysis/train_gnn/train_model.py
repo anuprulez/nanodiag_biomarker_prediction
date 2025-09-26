@@ -69,7 +69,6 @@ def predict_data_test(model, data):
 
 
 def extract_node_embeddings(model, data, model_activation, config):
-    data_local_path = config.p_data
     conv_name = "PNAConv"
     activation_name = "BatchNorm1d"
     bn4_activation = model_activation[activation_name]
@@ -133,6 +132,7 @@ def train_gnn_model(config):
     layer_batch_norm4.register_forward_hook(hook_fn)
     
     data = data.cuda()
+    
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -206,5 +206,5 @@ def train_gnn_model(config):
     print(f"CV Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}")
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)
+    plot_gnn.plot_precision_recall(true_labels, all_probs, config)
     #plot_gnn.plot_radar({"Net-A": [0.82, 0.76, 0.91, 0.65, 0.88], "Net-B": [0.79, 0.81, 0.87, 0.70, 0.90]}, [1, 2, 3, 4, 5], config)

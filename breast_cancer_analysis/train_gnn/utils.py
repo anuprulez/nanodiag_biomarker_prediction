@@ -74,6 +74,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
 
     print("Post creating test masks")
     df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
+    df_test_probe_genes = df_test_probe_genes.sort_values(by="test_gene_ids").reset_index(drop=True)
     df_test_probe_genes.to_csv(p_data + config.p_test_probe_genes, index=None)
 
     tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
@@ -121,6 +122,6 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     df_preprocessed_data["labels"] = preprocessed_data_labels.numpy()
     df_preprocessed_data.to_csv(config.p_nedbit_dnam_features_norm, sep=",", index=None)
 
-    print("Plotting UMAP using raw features")
-    plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
-    plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")
+    #print("Plotting UMAP using raw features")
+    #plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
+    #plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")

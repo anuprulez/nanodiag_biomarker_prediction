@@ -123,7 +123,7 @@ def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 
     _save(fig, plot_local_path / f"Confusion_matrix_NPPI_{n_edges}_NEpochs_{n_epo}.pdf", dpi)
 
 
-def plot_precision_recall(y_true, y_scores, pred_probs, config):
+def plot_precision_recall(y_true, y_scores, config):
     """
     Multiclass Precision-recall with per-class & micro AP.
     """

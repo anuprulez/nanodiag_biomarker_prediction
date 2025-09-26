@@ -38,20 +38,6 @@ def create_test_masks(mapped_node_ids, mask_list, out_genes):
     return torch.tensor(mask, dtype=torch.bool), probe_genes, probe_genes_ids
 
 
-def scale_features(list_feature_names, df_features):
-
-    for feature_name in list_feature_names:
-        print("Scaling: {}".format(feature_name))
-        feature_val = np.array(df_features[feature_name].tolist())
-        feature_val = feature_val.reshape(-1, 1)
-        print(len(feature_val), feature_val.shape)
-        transformer = RobustScaler().fit(feature_val)
-        norm_feature_val = transformer.transform(feature_val)
-        df_features[feature_name] = norm_feature_val
-        
-    return df_features
-
-
 def filter_tr_genes(test_probe_ids, out_genes):
     tr_genes_names = list()
     tr_gene_ids = list()
@@ -69,12 +55,12 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     sfeatures_ids = [int(i) for i in sfeatures_ids]
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     labels = np.array(labels)
+
+    print("Final features before normalisation")
+    print(features)
     
-    features_extract = features
-    labels_extract = labels
-    
-    x = features_extract
-    y = labels_extract
+    x = features
+    y = labels
     # shift labels from 1...5 to 0..4 for ML training
     y = [int(i) - 1 for i in y]
     y = torch.tensor(y, dtype=torch.long)
@@ -98,22 +84,25 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
 
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]
+    print(f"Train x shape: {train_x.shape}")
+    print(f"Train x shape: {test_x.shape}")
 
-    # Apply normalization for train data
     for col_idx in sfeatures_ids:
-        #print("Scaling column: {}".format(col_idx))
+        # Apply normalization for train data
+        print("Scaling column: {}".format(col_idx))
         tr_feature_val = data.x[data.test_mask == 0][:, col_idx]
         tr_feature_val = tr_feature_val.reshape(-1, 1)
-        transformer = RobustScaler().fit(tr_feature_val)
-        tr_norm_feature_val = transformer.transform(tr_feature_val)
+        tr_transformer = RobustScaler().fit(tr_feature_val)
+        tr_norm_feature_val = tr_transformer.transform(tr_feature_val)
         tr_norm_feature_val = torch.tensor(tr_norm_feature_val, dtype=torch.float)
         tr_norm_feature_val = tr_norm_feature_val.squeeze()
         tr_mask = data.test_mask == 0
         data.x[tr_mask, col_idx] = tr_norm_feature_val
-
+        # Apply normalization for test data separately to avoid data leakage
         te_feature_val = data.x[data.test_mask == 1][:, col_idx]
         te_feature_val = te_feature_val.reshape(-1, 1)
-        te_norm_feature_val = transformer.transform(te_feature_val)
+        te_transformer = RobustScaler().fit(te_feature_val)
+        te_norm_feature_val = te_transformer.transform(te_feature_val)
         te_norm_feature_val = torch.tensor(te_norm_feature_val, dtype=torch.float)
         te_norm_feature_val = te_norm_feature_val.squeeze()
         te_mask = data.test_mask == 1
@@ -124,9 +113,8 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     test_x = data.x[data.test_mask == 1]
     test_y = data.y[data.test_mask == 1]
 
-    torch.save(data, config.p_torch_data)
-
     # save normalized data
+    torch.save(data, config.p_torch_data)
     preprocessed_data = data.x.detach()
     preprocessed_data_labels = data.y.detach()
     df_preprocessed_data = pd.DataFrame(preprocessed_data.numpy())

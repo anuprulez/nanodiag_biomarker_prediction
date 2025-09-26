@@ -1,8 +1,8 @@
 SEED: 32
-n_edges: 2000000  # 
+n_edges: 2000000 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 15
+n_epo: 5
 k_folds: 5
 batch_size: 128
 num_classes: 5
@@ -10,7 +10,7 @@ gene_dim: 86
 hidden_dim: 128
 learning_rate: 0.0001
 test_size: 0.33
-scale_features: "0,1,3"
+scale_features: "0,1,2,3,4,5" # original: "0,1,3"
 n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
@@ -60,10 +60,10 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
-download_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1
 # https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1 c_0.33_te_10000
 # https://zenodo.org/records/17199872/files/bc_preprocessed_datasets_to_train_c_0.5_te_10000.zip?download=1

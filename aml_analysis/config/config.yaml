@@ -61,5 +61,9 @@ quantile_2: 0.2 # quantile threshold 2
 download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17202627/files/aml_raw_datasets.zip?download=1
 
-use_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
-p_processed_data: https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1
+download_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+p_processed_data: https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1
+
+# https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1
+
+# https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1

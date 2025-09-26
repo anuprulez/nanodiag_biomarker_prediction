@@ -1,40 +1,53 @@
+import requests
+import zipfile
+import os
+
 import preprocess_data
 import train_model
 import xai_explainer
 
 from omegaconf.omegaconf import OmegaConf
 
-'''config = {
-    "SEED": 32,
-    "n_edges": 2000000,
-    "n_epo": 4,
-    "k_folds": 5,
-    "batch_size": 128,
-    "num_classes": 5,
-    "gene_dim": 40,
-    "hidden_dim": 128,
-    "learning_rate": 0.0001,
-    "scale_features": "0,1,3",  #"degree,ring,NetShort",
-    "out_links": "../../pu_label_propagation/data/output/out_links.csv",
-    "out_genes": "../../pu_label_propagation/data/output/out_genes.csv",
-    "out_gene_rankings": "../../pu_label_propagation/data/output/out_gene_rankings.csv",
-    "merged_signals": "../../process_illumina_arrays/data/output/merged_signals.csv",
-    "nedbit_features": "../../pu_label_propagation/data/output/nedbit_features.csv",
-    "dnam_features": "../../pu_label_propagation/data/output/dnam_features.csv",
-    "nedbit_dnam_features": "../data/output/df_nebit_dnam_features.csv",
-    "nedbit_dnam_features_norm": "../data/output/df_nebit_dnam_features_norm.csv",
-    "plot_local_path": "../data/output/",
-    "data_local_path": "../data/output/",
-    "model_local_path": "../model/"
-}'''
+def extract_preprocessed_data(config):
+
+    # Your Zenodo link
+    url = config.p_processed_data
+    output_dir = config.p_base
+    os.makedirs(output_dir, exist_ok=True)
+
+    zip_path = os.path.join(output_dir, "download.zip")
+
+    # Download ZIP
+    print(f"[+] Downloading {url} ...")
+    with requests.get(url, stream=True) as r:
+        r.raise_for_status()
+        with open(zip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+    # Extract into output_dir (flatten top-level folder)
+    print(f"[+] Extracting into {output_dir} ...")
+    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+        for member in zip_ref.infolist():
+            # Get only the filename (ignoring any subfolders in the ZIP)
+            filename = os.path.basename(member.filename)
+            if not filename:
+                continue  # skip directories
+            target_path = os.path.join(output_dir, filename)
+
+            # Extract file
+            with zip_ref.open(member) as source, open(target_path, "wb") as target:
+                target.write(source.read())
+
+    # Optionally remove the zip after extraction
+    os.remove(zip_path)
 
 
 def run_training():
     config = OmegaConf.load("../config/config.yaml")
-
+    extract_preprocessed_data(config) if config.download_preprocessed_data else None
     preprocess_data.read_files(config)
     train_model.train_gnn_model(config)
-    #xai_explainer.gnn_explainer(trained_model, data, config)
 
 
 if __name__ == "__main__":

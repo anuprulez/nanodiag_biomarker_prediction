@@ -85,12 +85,12 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
     # neighbor_sizes length = #hops; e.g., (15,10) -> 2 hops.
     loader = NeighborLoader(
         dataset,
-        num_neighbors=config.neighbors_spread, #list(neighbor_sizes),
+        num_neighbors=config.explain_neighbors_spread, #list(neighbor_sizes),
         input_nodes=torch.tensor([idx_global], dtype=torch.long),
         batch_size=1,
         shuffle=False,
         #directed=False,
-        subgraph_type='bidirectional'
+        subgraph_type='induced'
     )
 
     # Pull exactly one sampled subgraph for this seed
@@ -214,15 +214,6 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
 
     pos = nx.spring_layout(K)
     nx.draw(K, pos=pos, with_labels=True)
-
-    '''new_nodes = []
-    for enum, n in enumerate(G.nodes(data=True)):
-        if n[0] not in s_rankings_draw: continue
-        new_nodes.append(n[0])
-
-    k = G.subgraph(new_nodes)
-    pos = nx.spring_layout(k)
-    nx.draw(k, pos=pos, with_labels = True)'''
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
 
@@ -337,27 +328,14 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     #data = data.to(device)
-    model_path = config.p_torch_model
-    #f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
-    model = load_model(model_path, data)
+    model = load_model(config.p_torch_model, data)
     #model = model.to(device)
     node_i = 7868
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'],
                     to_undirected=True)
-    #collect_pred_labels(config)
-    #seen_explain_batches = load_local_neighbourhood(node_i, data)
-    #local_xai_graph = seen_explain_batches[node_i]
-    #plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer(model, data, path, node_i, \
-    #                                                                                  explanation_nodes_ratio=1.0, \
-    #                                                                                  masks_for_seed=10, 
-    #                                                                                  num_neighbors=config.neighbors_spread, \
-    #                                                                                  expl_epochs=200,
-    #                                                                                  directed=False
-    #                                                                                )
-    #plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_original(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')
-    #plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_original_GPT_corrected(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')
+    collect_pred_labels(config)
     plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_neighbour_loader(model, data, path, node_i, explanation_nodes_ratio=1, \
                                                                                          masks_for_seed=config.exp_epo, G=G, \
                                                                                             neighbor_sizes=config.neighbors_spread, \

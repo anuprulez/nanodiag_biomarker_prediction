@@ -123,10 +123,10 @@ def make_neighbor_loaders(data, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
-        num_workers=8, #config.num_workers,
+        num_workers=8,
         pin_memory=True,
         #directed=False,
-        subgraph_type='bidirectional'
+        subgraph_type=config.graph_subtype
     )
 
     # For evaluation we can either:
@@ -139,10 +139,9 @@ def make_neighbor_loaders(data, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=8, #config.num_workers,
+        num_workers=8,
         pin_memory=True,
-        #directed=False,
-        subgraph_type='bidirectional'
+        subgraph_type=config.graph_subtype
     )
     test_loader = NeighborLoader(
         data,
@@ -150,10 +149,9 @@ def make_neighbor_loaders(data, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=8, #config.num_workers,
+        num_workers=8,
         pin_memory=True,
-        #directed=False,
-        subgraph_type='bidirectional'
+        subgraph_type=config.graph_subtype
     )
     return train_loader, val_loader, test_loader
 

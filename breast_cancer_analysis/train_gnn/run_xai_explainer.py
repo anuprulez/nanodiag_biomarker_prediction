@@ -169,16 +169,26 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     s_rankings_draw = s_rankings_explained_node[:10]
 
     # Build NX graph from the sampled subgraph edges (local) mapped to names
-    K = nx.Graph()
+    '''K = nx.Graph()
     for u_loc, v_loc in zip(ei_sub[0].tolist(), ei_sub[1].tolist()):
         u_name = local_to_name[int(u_loc)]
         v_name = local_to_name[int(v_loc)]
         #print(f"Link between: {u_name} from local {u_loc} and {v_name} from local {v_loc}")
         if u_name in s_rankings_draw and v_name in s_rankings_draw:
             K.add_edge(u_name, v_name)
-
     pos = nx.spring_layout(K)
-    nx.draw(K, pos=pos, with_labels=True)
+    nx.draw(K, pos=pos, with_labels=True)'''
+
+    # Draw using the original graph G
+    new_nodes = []
+    for enum, n in enumerate(G.nodes(data=True)):
+            if n[0] not in s_rankings_draw: continue
+            new_nodes.append(n[0])
+    k = G.subgraph(new_nodes)
+    pos = nx.spring_layout(k)
+    nx.draw(k, pos=pos, with_labels = True)
+
+    # save subgraph plot
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
 

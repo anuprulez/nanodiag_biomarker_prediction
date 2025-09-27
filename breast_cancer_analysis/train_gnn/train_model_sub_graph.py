@@ -121,12 +121,13 @@ def make_neighbor_loaders(data, config):
     train_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.train_mask),  # seed nodes = train
-        num_neighbors=[15, 10], #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=8, #config.num_workers,
         pin_memory=True,
-        directed=True,
+        #directed=False,
+        subgraph_type='bidirectional'
     )
 
     # For evaluation we can either:
@@ -136,22 +137,24 @@ def make_neighbor_loaders(data, config):
     val_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.val_mask),
-        num_neighbors=[15, 10], #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=8, #config.num_workers,
         pin_memory=True,
-        directed=True,
+        #directed=False,
+        subgraph_type='bidirectional'
     )
     test_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.test_mask),
-        num_neighbors=[15, 10], #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=8, #config.num_workers,
         pin_memory=True,
-        directed=True,
+        #directed=False,
+        subgraph_type='bidirectional'
     )
     return train_loader, val_loader, test_loader
 
@@ -161,14 +164,14 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scaler, device, u
     total_loss, total_correct, total_count = 0.0, 0, 0
     
     for tr_idx, batch in enumerate(train_loader):
-        print(f"Batch training {tr_idx}")
+        #print(f"Batch training {tr_idx}")
         batch = batch.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        print(f"Train batch shape: {batch.x.shape}; {batch.x}")
-        print(f"Global node index: {batch.n_id}")
+        #print(f"Train batch shape: {batch.x.shape}; {batch.x}")
+        #print(f"Global node index: {batch.n_id}")
         with autocast(enabled=use_amp):
             out = model(batch.x, batch.edge_index)  # [num_batch_nodes, C]
-            print(f"Output shape: {out.shape}")
+            #print(f"Output shape: {out.shape}")
             seed_n = batch.batch_size # first seed_n nodes = seeds
             logits = out[:seed_n]
             targets = batch.y[:seed_n].long()
@@ -198,7 +201,7 @@ def val_evaluate(loader, model, criterion, device, use_amp=True):
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[:batch.batch_size])
-        print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
+        #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
         with autocast(enabled=use_amp):
             out = model(batch.x, batch.edge_index)
             seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
@@ -222,7 +225,7 @@ def test_evaluate(loader, model, criterion, device, use_amp=True):
     pred_labels, true_labels, all_probs, all_pred_probs, test_ids = [], [], [], [], []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
-        print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
+        #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
         with autocast(enabled=use_amp):
             out = model(batch.x, batch.edge_index)
             seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
@@ -232,7 +235,7 @@ def test_evaluate(loader, model, criterion, device, use_amp=True):
             batch_max_prob = batch_prob.max(dim=1).values
             targets = batch.y[:seed_n].long()
             loss = criterion(logits, targets)
-            print(f"Test evaluate shapes: {logits.shape}, {batch_prob.shape}, {batch_max_prob.shape}")
+            #print(f"Test evaluate shapes: {logits.shape}, {batch_prob.shape}, {batch_max_prob.shape}")
 
         total_loss += float(loss) * seed_n
         batch_pred_label = logits.argmax(-1)
@@ -347,10 +350,10 @@ def train_gnn_model(config):
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
     final_test_loss, final_test_acc, pred_labels, true_labels, all_probs, all_pred_prob, test_ids = \
         test_evaluate(test_loader, model, criterion, device, use_amp=use_amp)
-    print(pred_labels)
-    print(true_labels)
+    #print(pred_labels)
+    #print(true_labels)
     # Save predictions, true labels, model
-    print(test_ids[:20], len(test_ids))
+    #print(test_ids[:20], len(test_ids))
     torch.save(test_ids, config.p_test_loader_ids)
     torch.save(true_labels, config.p_true_labels)
     torch.save(pred_labels, config.p_pred_labels)

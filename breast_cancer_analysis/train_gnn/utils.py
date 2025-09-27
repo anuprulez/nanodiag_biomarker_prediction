@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
 from sklearn.preprocessing import normalize, RobustScaler
+from torch_geometric.utils import to_undirected, is_undirected, coalesce
 import pandas as pd
 import numpy as np
 
@@ -66,8 +67,20 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     y = torch.tensor(y, dtype=torch.long)
     # create data object
     x = torch.tensor(x.to_numpy(), dtype=torch.float)
-    edge_index = torch.tensor(l_probes.to_numpy(), dtype=torch.long)
-    data = Data(x=x, edge_index=edge_index.t().contiguous())
+    num_nodes = x.shape[0]
+    print(f"Number of nodes: {num_nodes}")
+    edge_index = torch.tensor(l_probes.to_numpy().T, dtype=torch.long)
+    #edge_index = to_undirected(edge_index, num_nodes=num_nodes)
+    #edge_index, _ = coalesce(edge_index, None, num_nodes, num_nodes)
+    print(f"edge_index.shape: {edge_index.shape}")
+    print(f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}")  # should be True
+    #data = Data(x=x, edge_index=edge_index.t().contiguous())
+    data = Data(x=x, edge_index=edge_index)
+    assert edge_index.dim() == 2
+    assert edge_index.size(0) == 2          # must be 2×E
+    assert edge_index.dtype == torch.long
+    print(edge_index.device)                 # should be cpu for sampling
+    print(edge_index.shape)                  # (2, E)
     # set up true labels
     data.y = y
     data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
@@ -86,7 +99,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]
     print(f"Train x shape: {train_x.shape}")
-    print(f"Train x shape: {test_x.shape}")
+    print(f"Test x shape: {test_x.shape}")
 
     for col_idx in sfeatures_ids:
         # Apply normalization for train data

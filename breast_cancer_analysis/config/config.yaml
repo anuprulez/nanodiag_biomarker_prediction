@@ -2,9 +2,9 @@ SEED: 32
 n_edges: 14251734 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 5
+n_epo: 10
 k_folds: 5
-batch_size: 128 #128
+batch_size: 32 #128
 num_classes: 5
 gene_dim: 86
 hidden_dim: 128
@@ -16,6 +16,7 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
+neighbors_spread: [200] # [15,10]
 p_base: ../data_corr_0.33_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv
@@ -42,7 +43,7 @@ p_test_loader_ids: ${p_base}test_ids_bc.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
-exp_epo: 2 # Number of explanation epochs
+exp_epo: 5 # Number of explanation epochs
 
 # Preprocess breast cancer Illumina arrays
 # Input files

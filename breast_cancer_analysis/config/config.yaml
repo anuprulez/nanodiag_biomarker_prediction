@@ -16,8 +16,12 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
-neighbors_spread: [2000] # [15,10]
-explain_neighbors_spread: [1000] # [15,10]
+neighbors_spread: [500] # [15,10]
+explain_neighbors_spread: [500] # [15,10]
+explanation_nodes_ratio: 1.0
+neighbour_predictions: [0, 1] # positive, likely positive
+masks_for_seed: 10
+explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 p_base: ../data_corr_0.33_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
@@ -45,8 +49,6 @@ p_test_loader_ids: ${p_base}test_ids_bc.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
-exp_epo: 10 # Number of explanation epochs
-
 # Preprocess breast cancer Illumina arrays
 # Input files
 p_arrays: ${p_base}GSE237036_matrix_processed.txt # Path to arrays matrix (TSV).

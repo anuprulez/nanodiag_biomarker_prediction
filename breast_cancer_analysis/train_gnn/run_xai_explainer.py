@@ -286,6 +286,7 @@ if __name__ == "__main__":
     model = load_model(config.p_torch_model, data)
     node_i = 7868
     path = f"{plot_local_path}subgraph_{node_i}.pdf"
+    print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=['x'], to_undirected=True)
     collect_pred_labels(config)
     p_nodes, r_nodes = explain_candiate_gene(model, data, path, node_i, G, config)    

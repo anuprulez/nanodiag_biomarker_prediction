@@ -185,7 +185,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scaler, device, u
             loss.backward()
             optimizer.step()
 
-        total_loss += float(loss) * seed_n
+        total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
 
@@ -255,11 +255,9 @@ def train_gnn_model(config):
     """
     Create network architecture and assign loss, optimizers ...
     """
-    use_amp = False
+    use_amp = True
     learning_rate = config.learning_rate
-    k_folds = config.k_folds
     n_epo = config.n_epo
-    batch_size = config.batch_size
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
     

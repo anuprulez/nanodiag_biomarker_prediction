@@ -69,13 +69,15 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     x = torch.tensor(x.to_numpy(), dtype=torch.float)
     num_nodes = x.shape[0]
     print(f"Number of nodes: {num_nodes}")
-    edge_index = torch.tensor(l_probes.to_numpy().T, dtype=torch.long)
+    #edge_index = torch.tensor(l_probes.to_numpy().T, dtype=torch.long)
     #edge_index = to_undirected(edge_index, num_nodes=num_nodes)
     #edge_index, _ = coalesce(edge_index, None, num_nodes, num_nodes)
-    print(f"edge_index.shape: {edge_index.shape}")
-    print(f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}")  # should be True
-    #data = Data(x=x, edge_index=edge_index.t().contiguous())
+    edge_index = torch.tensor(l_probes.to_numpy(), dtype=torch.long)
+    edge_index = edge_index.t().contiguous()
     data = Data(x=x, edge_index=edge_index)
+    print(f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}")  # should be True
+    print(f"edge_index.shape: {edge_index.shape}")
+    #data = Data(x=x, edge_index=edge_index)
     assert edge_index.dim() == 2
     assert edge_index.size(0) == 2          # must be 2×E
     assert edge_index.dtype == torch.long

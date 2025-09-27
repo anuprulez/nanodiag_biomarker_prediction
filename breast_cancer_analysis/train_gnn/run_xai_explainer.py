@@ -25,24 +25,17 @@ def load_model(model_path, data):
     return model
 
 
-def explain_candiate_gene(
-    model,
-    dataset,                       # PyG Data object (x, edge_index, y)
-    path,
-    xai_node,                      # node name (as in G)
-    explanation_nodes_ratio=1.0,
-    masks_for_seed=10,
-    G=None,                        # full NetworkX graph, same node order as dataset
-    num_pos='all',                 # kept for signature compatibility
-    neighbor_sizes=(15, 10),       # fanout per hop for NeighborLoader, e.g. 2-hop
-    explainer_epochs=200,
-    neighbour_predictions=[0]
-):
+def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     """
     Explain xai_node using a sampled neighborhood from NeighborLoader (no full-graph ops).
     """
     assert G is not None
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    masks_for_seed = config.masks_for_seed
+    explainer_epochs = config.explainer_epochs
+    neighbour_predictions = config.neighbour_predictions
+    explanation_nodes_ratio = config.explanation_nodes_ratio
+
     x           = dataset.x
     y           = dataset.y
     nodes_names = list(G.nodes)
@@ -68,7 +61,9 @@ def explain_candiate_gene(
         input_nodes=torch.tensor([idx_global], dtype=torch.long),
         batch_size=1,
         shuffle=False,
-        subgraph_type='induced'
+        num_workers=8,
+        pin_memory=True,
+        subgraph_type=config.graph_subtype
     )
 
     # Pull exactly one sampled subgraph for this seed
@@ -76,7 +71,7 @@ def explain_candiate_gene(
     model = model.to(device)
     x_sub = sub_data.x.to(device)
     ei_sub = sub_data.edge_index.to(device)
-    n_id_global = sub_data.n_id.cpu() if hasattr(sub_data, "n_id") else sub_data.input_id.cpu()  # fallback
+    n_id_global = sub_data.n_id.cpu()
     idx_local = 0  # seed first
 
     print(f"# Global ids: {len(n_id_global)}")
@@ -139,7 +134,7 @@ def explain_candiate_gene(
         src_pred = int(predictions_sub[src_loc].item())
         trg_pred = int(predictions_sub[trg_loc].item())
 
-        print(f"Source/target predictions: {src_pred} for {src_loc}, {trg_pred} for {trg_loc}")
+        #print(f"Source/target predictions: {src_pred} for {src_loc}, {trg_pred} for {trg_loc}")
 
         if src_name != explained_name:
             seen_genes.add(src_name)
@@ -148,10 +143,10 @@ def explain_candiate_gene(
 
         # Your original logic considered [0,1] as P/LP
         if src_pred in neighbour_predictions:
-            print(f"Source pred 0/1: {src_pred}, {src_name}")
+            #print(f"Source pred 0/1: {src_pred}, {src_name}")
             candidates[explained_name][src_name] = candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
         if trg_pred in neighbour_predictions:
-            print(f"Target pred 0/1: {trg_pred}, {trg_name}")
+            #print(f"Target pred 0/1: {trg_pred}, {trg_name}")
             candidates[explained_name][trg_name] = candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
 
         if len(seen_genes) >= num_nodes_target:
@@ -178,7 +173,7 @@ def explain_candiate_gene(
     for u_loc, v_loc in zip(ei_sub[0].tolist(), ei_sub[1].tolist()):
         u_name = local_to_name[int(u_loc)]
         v_name = local_to_name[int(v_loc)]
-        print(f"Link between: {u_name} from local {u_loc} and {v_name} from local {v_loc}")
+        #print(f"Link between: {u_name} from local {u_loc} and {v_name} from local {v_loc}")
         if u_name in s_rankings_draw and v_name in s_rankings_draw:
             K.add_edge(u_name, v_name)
 
@@ -290,14 +285,8 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
     node_i = 7868
-    path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
-    G = to_networkx(data,
-                    node_attrs=['x'],
-                    to_undirected=True)
+    path = f"{plot_local_path}subgraph_{node_i}.pdf"
+    G = to_networkx(data, node_attrs=['x'], to_undirected=True)
     collect_pred_labels(config)
-    p_nodes, r_nodes = explain_candiate_gene(model, data, path, node_i, explanation_nodes_ratio=1, \
-                                                                                         masks_for_seed=config.exp_epo, G=G, \
-                                                                                            neighbor_sizes=config.neighbors_spread, \
-                                                                                                explainer_epochs=200)
-    
+    p_nodes, r_nodes = explain_candiate_gene(model, data, path, node_i, G, config)    
     get_node_names_links(p_nodes, r_nodes, node_i, config)

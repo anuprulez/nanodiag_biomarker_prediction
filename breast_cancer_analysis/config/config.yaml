@@ -17,7 +17,7 @@ cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
 neighbors_spread: [2000] # [15,10]
-explain_neighbors_spread: [2000] # [15,10]
+explain_neighbors_spread: [1000] # [15,10]
 graph_subtype: "bidirectional" # directional; induced
 p_base: ../data_corr_0.33_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv

@@ -114,7 +114,6 @@ def make_neighbor_loaders(data, config):
     # Keep the big graph on CPU
     data = data.cpu()
 
-    # Safety: coalesce edges (avoid dupes/unsorted which hurt sampling perf)
     data.edge_index = coalesce(data.edge_index, num_nodes=data.num_nodes)
 
     train_loader = NeighborLoader(
@@ -125,14 +124,9 @@ def make_neighbor_loaders(data, config):
         shuffle=True,
         num_workers=8,
         pin_memory=True,
-        #directed=False,
         subgraph_type=config.graph_subtype
     )
 
-    # For evaluation we can either:
-    # - Full-graph forward (if it fits); or
-    # - NeighborLoader with input_nodes=val/test masks.
-    # Here we use loaders to keep memory bounded.
     val_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.val_mask),
@@ -187,12 +181,12 @@ def val_evaluate(loader, model, criterion, device):
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[:batch.batch_size])
         #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
-        with torch.amp.autocast("cuda"):
-            out = model(batch.x, batch.edge_index)
-            seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
-            logits = out[:seed_n]
-            targets = batch.y[:seed_n].long()
-            loss = criterion(logits, targets)
+
+        out = model(batch.x, batch.edge_index)
+        seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
+        logits = out[:seed_n]
+        targets = batch.y[:seed_n].long()
+        loss = criterion(logits, targets)
 
         total_loss += float(loss) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
@@ -211,18 +205,17 @@ def test_evaluate(loader, model, criterion, device):
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
-        with torch.amp.autocast("cuda"):
-            out = model(batch.x, batch.edge_index)
-            seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
-            test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
-            logits = out[:seed_n]
-            batch_prob = F.softmax(logits, dim=1)
-            batch_max_prob = batch_prob.max(dim=1).values
-            targets = batch.y[:seed_n].long()
-            loss = criterion(logits, targets)
-            #print(f"Test evaluate shapes: {logits.shape}, {batch_prob.shape}, {batch_max_prob.shape}")
+        out = model(batch.x, batch.edge_index)
+        seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
+        test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
+        logits = out[:seed_n]
+        batch_prob = F.softmax(logits, dim=1)
+        batch_max_prob = batch_prob.max(dim=1).values
+        targets = batch.y[:seed_n].long()
+        loss = criterion(logits, targets)
+        #print(f"Test evaluate shapes: {logits.shape}, {batch_prob.shape}, {batch_max_prob.shape}")
 
-        total_loss += float(loss) * seed_n
+        total_loss += float(detach(loss)) * seed_n
         batch_pred_label = logits.argmax(-1)
         pred_labels.extend(detach(batch_pred_label))
         true_labels.extend(detach(targets))
@@ -294,7 +287,7 @@ def train_gnn_model(config):
         tr_loss, tr_acc = train_one_epoch(train_loader, model, optimizer, criterion, device)
         val_loss, val_acc, used_val_ids = val_evaluate(val_loader, model, criterion, device)   
         val_ids_epo.extend(used_val_ids)     
-        print(f"[Epoch {epoch:03d}] "
+        print(f"[Epoch {epoch:03d} / {n_epo:03d}] "
                   f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
         te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
@@ -330,10 +323,7 @@ def train_gnn_model(config):
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
     final_test_loss, final_test_acc, pred_labels, true_labels, all_probs, all_pred_prob, test_ids = \
         test_evaluate(test_loader, model, criterion, device)
-    #print(pred_labels)
-    #print(true_labels)
     # Save predictions, true labels, model
-    #print(test_ids[:20], len(test_ids))
     torch.save(test_ids, config.p_test_loader_ids)
     torch.save(true_labels, config.p_true_labels)
     torch.save(pred_labels, config.p_pred_labels)

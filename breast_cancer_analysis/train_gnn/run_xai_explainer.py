@@ -17,28 +17,15 @@ import gnn_network
 
 
 def load_model(model_path, data):
-    device = 'cpu' #torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #data = data.to(device)
+    device = 'cpu'
     model = gnn_network.GPNA(config, data)
-    #model = model.to(device)
-    print(model)
     model.load_state_dict(
         torch.load(model_path, map_location=device)
     )
     return model
 
 
-def ensure_bool(m):
-    return m if m.dtype == torch.bool else m.bool()
-
-
-@torch.no_grad()
-def _predict(model, x, edge_index):
-    model.eval()
-    return model(x, edge_index).argmax(dim=1)
-
-
-def predict_candidate_genes_gnn_explainer_neighbour_loader(
+def explain_candiate_gene(
     model,
     dataset,                       # PyG Data object (x, edge_index, y)
     path,
@@ -48,23 +35,16 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
     G=None,                        # full NetworkX graph, same node order as dataset
     num_pos='all',                 # kept for signature compatibility
     neighbor_sizes=(15, 10),       # fanout per hop for NeighborLoader, e.g. 2-hop
-    explainer_epochs=200
+    explainer_epochs=200,
+    neighbour_predictions=[0]
 ):
     """
     Explain xai_node using a sampled neighborhood from NeighborLoader (no full-graph ops).
-
-    Assumptions / notes:
-    - `G` node iteration order matches dataset node indexing (so name <-> global id).
-    - NeighborLoader packs seeds in front; with batch_size=1, the seed is local index 0.
-    - We only explain `xai_node` (batch_size=1). Extend to multiple seeds if you like.
     """
-    assert G is not None, "Provide NetworkX graph G whose node order aligns with dataset nodes."
-    #device = next(model.parameters()).device if any(p.requires_grad for p in model.parameters()) else torch.device('cpu')
+    assert G is not None
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
     x           = dataset.x
     y           = dataset.y
-    edge_index  = dataset.edge_index
     nodes_names = list(G.nodes)
 
     # Map likely positives (kept from your flow; we still only explain xai_node)
@@ -81,33 +61,26 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
 
     print(f"idx_global: {idx_global}")
 
-    # ---- Sample neighborhood with NeighborLoader (batch_size=1 keeps seed at local idx 0) ----
-    # neighbor_sizes length = #hops; e.g., (15,10) -> 2 hops.
+    # Sample neighborhood with NeighborLoader (batch_size=1 keeps seed at local idx 0)
     loader = NeighborLoader(
         dataset,
-        num_neighbors=config.explain_neighbors_spread, #list(neighbor_sizes),
+        num_neighbors=config.explain_neighbors_spread,
         input_nodes=torch.tensor([idx_global], dtype=torch.long),
         batch_size=1,
         shuffle=False,
-        #directed=False,
         subgraph_type='induced'
     )
 
     # Pull exactly one sampled subgraph for this seed
     sub_data = next(iter(loader))
-    # sub_data has:
-    # - sub_data.x, sub_data.edge_index (local relabeled)
-    # - sub_data.n_id: global node ids for each local node (homogeneous graphs)
-    # - sub_data.batch_size == 1, and the first local node (0) is the seed
     model = model.to(device)
     x_sub = sub_data.x.to(device)
     ei_sub = sub_data.edge_index.to(device)
     n_id_global = sub_data.n_id.cpu() if hasattr(sub_data, "n_id") else sub_data.input_id.cpu()  # fallback
     idx_local = 0  # seed first
 
-    print(f"# Global ids: {n_id_global}")
+    print(f"# Global ids: {len(n_id_global)}")
 
-    # --------- Forward pass on SUBGRAPH ONLY ----------
     model.eval()
     with torch.no_grad():
         out_sub = model(x_sub, ei_sub)
@@ -135,7 +108,7 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
     mean_mask /= float(masks_for_seed)
     print("Shape of mean mask (subgraph):", tuple(mean_mask.shape))
 
-    # --------- Rank candidates from SUBGRAPH ----------
+    # Rank candidates from SUBGRAPH
     n_sub_nodes = sub_data.num_nodes
     n_sub_edges = ei_sub.shape[1]
     num_nodes_target = max(1, int(round(n_sub_nodes * float(explanation_nodes_ratio))))
@@ -166,23 +139,25 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
         src_pred = int(predictions_sub[src_loc].item())
         trg_pred = int(predictions_sub[trg_loc].item())
 
+        print(f"Source/target predictions: {src_pred} for {src_loc}, {trg_pred} for {trg_loc}")
+
         if src_name != explained_name:
             seen_genes.add(src_name)
         if trg_name != explained_name:
             seen_genes.add(trg_name)
 
         # Your original logic considered [0,1] as P/LP
-        if src_pred in [0, 1]:
+        if src_pred in neighbour_predictions:
+            print(f"Source pred 0/1: {src_pred}, {src_name}")
             candidates[explained_name][src_name] = candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
-        if trg_pred in [0, 1]:
+        if trg_pred in neighbour_predictions:
+            print(f"Target pred 0/1: {trg_pred}, {trg_name}")
             candidates[explained_name][trg_name] = candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
 
         if len(seen_genes) >= num_nodes_target:
             break
-    print(f"candidates: {candidates}")
-    print()
-    print(f"seen_genes: {seen_genes}")
-    # Global-style ranking structure (kept compatible with your downstream)
+    candiates_xai = candidates[xai_node]
+    print(f"sorted candiates_xai: {dict(sorted(candiates_xai.items(), key=lambda item: float(item[1]), reverse=True))}")
     ranking = {}
     for cand_name, score in candidates[explained_name].items():
         if cand_name not in ranking:
@@ -192,10 +167,9 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
             ranking[cand_name][1] += float(score)
 
     sorted_ranking = sorted(ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True)
-    print(sorted_ranking, len(sorted_ranking))
+    print(sorted_ranking)
 
-    # --------- Plot: sampled subgraph + top candidates ----------
-    # Keep explained node + top 9 candidates (up to 10 nodes total)
+    # Plot neighbours
     s_rankings_explained_node = [explained_name] + sorted_ranking
     s_rankings_draw = s_rankings_explained_node[:10]
 
@@ -204,13 +178,9 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
     for u_loc, v_loc in zip(ei_sub[0].tolist(), ei_sub[1].tolist()):
         u_name = local_to_name[int(u_loc)]
         v_name = local_to_name[int(v_loc)]
+        print(f"Link between: {u_name} from local {u_loc} and {v_name} from local {v_loc}")
         if u_name in s_rankings_draw and v_name in s_rankings_draw:
             K.add_edge(u_name, v_name)
-            
-    # Ensure isolated nodes appear
-    for name in s_rankings_draw:
-        if name not in K:
-            K.add_node(name)
 
     pos = nx.spring_layout(K)
     nx.draw(K, pos=pos, with_labels=True)
@@ -222,20 +192,11 @@ def predict_candidate_genes_gnn_explainer_neighbour_loader(
 
 def collect_pred_labels(config):
     print("Collecting datasets ...")
-    #df_nebit_features = pd.read_csv(config.p_nedbit_dnam_features, sep=",")
     df_test_probe_genes = pd.read_csv(config.p_test_probe_genes, sep=",")
-    #probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
-    #df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
-    #df_nebit_features_test.reset_index(drop=True, inplace=True)
-    #feature_name = df_nebit_features_test.iloc[:, 0]
-    #labels = df_nebit_features_test.iloc[:, -1]
-    #df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
     df_test_probe_genes.columns = ["test_gene_ids", "test_gene_names"]
     df_labels = df_test_probe_genes
-
     print("Test dataframe reconstructed")
     print(df_labels)
-
     true_labels = torch.load(config.p_true_labels, weights_only=False)
     pred_labels = torch.load(config.p_pred_labels, weights_only=False)
     pred_probs = torch.load(config.p_pred_probs, weights_only=False)
@@ -327,18 +288,16 @@ if __name__ == "__main__":
     plot_local_path = config.p_plot
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
-    #data = data.to(device)
     model = load_model(config.p_torch_model, data)
-    #model = model.to(device)
     node_i = 7868
     path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
     G = to_networkx(data,
                     node_attrs=['x'],
                     to_undirected=True)
     collect_pred_labels(config)
-    plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_neighbour_loader(model, data, path, node_i, explanation_nodes_ratio=1, \
+    p_nodes, r_nodes = explain_candiate_gene(model, data, path, node_i, explanation_nodes_ratio=1, \
                                                                                          masks_for_seed=config.exp_epo, G=G, \
                                                                                             neighbor_sizes=config.neighbors_spread, \
                                                                                                 explainer_epochs=200)
     
-    get_node_names_links(plotted_nodes, ranked_nodes, node_i, config)
+    get_node_names_links(p_nodes, r_nodes, node_i, config)

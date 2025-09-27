@@ -2,7 +2,6 @@ import copy
 import torch
 import torch.nn.functional as F
 from torch_geometric.loader import NeighborLoader
-from torch.cuda.amp import autocast, GradScaler
 from sklearn.model_selection import train_test_split
 from torch_geometric.utils import coalesce
 
@@ -121,7 +120,7 @@ def make_neighbor_loaders(data, config):
     train_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.train_mask),  # seed nodes = train
-        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
         num_workers=8, #config.num_workers,
@@ -137,7 +136,7 @@ def make_neighbor_loaders(data, config):
     val_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.val_mask),
-        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=8, #config.num_workers,
@@ -148,7 +147,7 @@ def make_neighbor_loaders(data, config):
     test_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.test_mask),
-        num_neighbors=config.neighbors_spread, #list(config.num_neighbors),
+        num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
         num_workers=8, #config.num_workers,
@@ -159,32 +158,20 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, scaler, device, use_amp=True):
+def train_one_epoch(train_loader, model, optimizer, criterion, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
     
     for tr_idx, batch in enumerate(train_loader):
-        #print(f"Batch training {tr_idx}")
         batch = batch.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
-        #print(f"Train batch shape: {batch.x.shape}; {batch.x}")
-        #print(f"Global node index: {batch.n_id}")
-        with autocast(enabled=use_amp):
-            out = model(batch.x, batch.edge_index)  # [num_batch_nodes, C]
-            #print(f"Output shape: {out.shape}")
-            seed_n = batch.batch_size # first seed_n nodes = seeds
-            logits = out[:seed_n]
-            targets = batch.y[:seed_n].long()
-            loss = criterion(logits, targets)
-
-        if use_amp:
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
-        else:
-            loss.backward()
-            optimizer.step()
-
+        out = model(batch.x, batch.edge_index)  # [num_batch_nodes, C]
+        seed_n = batch.batch_size # first seed_n nodes = seeds
+        logits = out[:seed_n]
+        targets = batch.y[:seed_n].long()
+        loss = criterion(logits, targets)
+        loss.backward()
+        optimizer.step()
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
@@ -194,7 +181,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scaler, device, u
     return avg_loss, avg_acc
 
 @torch.no_grad()
-def val_evaluate(loader, model, criterion, device, use_amp=True):
+def val_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
@@ -202,7 +189,7 @@ def val_evaluate(loader, model, criterion, device, use_amp=True):
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[:batch.batch_size])
         #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
-        with autocast(enabled=use_amp):
+        with torch.amp.autocast("cuda"):
             out = model(batch.x, batch.edge_index)
             seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
             logits = out[:seed_n]
@@ -219,14 +206,14 @@ def val_evaluate(loader, model, criterion, device, use_amp=True):
 
 
 @torch.no_grad()
-def test_evaluate(loader, model, criterion, device, use_amp=True):
+def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     pred_labels, true_labels, all_probs, all_pred_probs, test_ids = [], [], [], [], []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
-        with autocast(enabled=use_amp):
+        with torch.amp.autocast("cuda"):
             out = model(batch.x, batch.edge_index)
             seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
             test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
@@ -255,7 +242,7 @@ def train_gnn_model(config):
     """
     Create network architecture and assign loss, optimizers ...
     """
-    use_amp = True
+    use_amp = False
     learning_rate = config.learning_rate
     n_epo = config.n_epo
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
@@ -266,6 +253,7 @@ def train_gnn_model(config):
     data = torch.load(config.p_torch_data, weights_only=False)
     tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
     te_nodes = pd.read_csv(config.p_test_probe_genes, sep=",")
+    te_node_ids = te_nodes["test_gene_ids"].tolist()
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
@@ -296,26 +284,22 @@ def train_gnn_model(config):
 
     print(f"Intersection between train and val genes: {set(split_tr_node_ids).intersection(set(val_node_ids))}")
     print(f"Intersection between train and test genes: {set(split_tr_node_ids).intersection(set(te_nodes))}")
-    print(f"Intersection between val and test genes: {set(val_node_ids).intersection(set(te_nodes))}")
+    print(f"Intersection between val and test genes: {set(val_node_ids).intersection(set(te_node_ids))}")
 
     data.train_mask = create_masks(mapped_f_name, split_tr_node_ids)
     data.val_mask = create_masks(mapped_f_name, val_node_ids)
 
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
-
-    #optimizer = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
-    #criterion = nn.CrossEntropyLoss()
-    scaler = GradScaler(enabled=use_amp)
     val_ids_epo = list()
     for epoch in range(n_epo):
         
-        tr_loss, tr_acc = train_one_epoch(train_loader, model, optimizer, criterion, scaler, device, use_amp=use_amp)
-        val_loss, val_acc, used_val_ids = val_evaluate(val_loader, model, criterion, device, use_amp=use_amp)   
+        tr_loss, tr_acc = train_one_epoch(train_loader, model, optimizer, criterion, device)
+        val_loss, val_acc, used_val_ids = val_evaluate(val_loader, model, criterion, device)   
         val_ids_epo.extend(used_val_ids)     
         print(f"[Epoch {epoch:03d}] "
                   f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device, use_amp=use_amp)
+        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
         print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -347,7 +331,7 @@ def train_gnn_model(config):
         model.load_state_dict(best_state)
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
     final_test_loss, final_test_acc, pred_labels, true_labels, all_probs, all_pred_prob, test_ids = \
-        test_evaluate(test_loader, model, criterion, device, use_amp=use_amp)
+        test_evaluate(test_loader, model, criterion, device)
     #print(pred_labels)
     #print(true_labels)
     # Save predictions, true labels, model

@@ -16,7 +16,7 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
-neighbors_spread: [200] # [15,10]
+neighbors_spread: [200, 50] # [15,10]
 p_base: ../data_corr_0.33_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv

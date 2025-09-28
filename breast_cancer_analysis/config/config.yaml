@@ -20,9 +20,10 @@ neighbors_spread: [500] # [15,10]
 explain_neighbors_spread: [500] # [15,10]
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 10
+masks_for_seed: 1
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
+show_num_neighbours: 11
 p_base: ../data_corr_0.33_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
 p_seed_features: ${p_base}seed_features.csv

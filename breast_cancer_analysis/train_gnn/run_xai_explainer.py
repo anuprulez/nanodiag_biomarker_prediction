@@ -121,6 +121,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     explained_name = xai_node
 
     candidates = {explained_name: {}}
+    candidate_predictions = {}
     seen_genes = set()
 
     for k_i in range(len(edge_sel_idx)):
@@ -145,9 +146,11 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         if src_pred in neighbour_predictions:
             #print(f"Source pred 0/1: {src_pred}, {src_name}")
             candidates[explained_name][src_name] = candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[src_name] = src_pred
         if trg_pred in neighbour_predictions:
             #print(f"Target pred 0/1: {trg_pred}, {trg_name}")
             candidates[explained_name][trg_name] = candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[src_name] = trg_pred
 
         if len(seen_genes) >= num_nodes_target:
             break
@@ -160,39 +163,57 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         else:
             ranking[cand_name][0] += 1
             ranking[cand_name][1] += float(score)
-
+    print(f"Rankings: {ranking}")
     sorted_ranking = sorted(ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True)
     print(sorted_ranking)
 
     # Plot neighbours
-    s_rankings_explained_node = [explained_name] + sorted_ranking
-    s_rankings_draw = s_rankings_explained_node[:10]
+    #s_rankings_explained_node = [explained_name] + sorted_ranking
+    s_rankings_draw = sorted_ranking[:config.show_num_neighbours]
+    print(f"s_rankings_draw: {s_rankings_draw}, {len(s_rankings_draw)}")
+    node_colors = []
+    for nd in s_rankings_draw:
+        node = nd
+        if node == idx_global:
+            node_colors.append("red")
+        elif node in candidate_predictions and candidate_predictions[node] == 0:
+            node_colors.append("tab:blue")
+        elif node in candidate_predictions and candidate_predictions[node] == 1:
+            node_colors.append("tab:green")
+        else:
+            node_colors.append("lightgray")
+    print(f"s_rankings_draw: {s_rankings_draw}")
+    print(f"node_colors: {node_colors}")
+    print(node_colors)
 
-    # Build NX graph from the sampled subgraph edges (local) mapped to names
-    '''K = nx.Graph()
-    for u_loc, v_loc in zip(ei_sub[0].tolist(), ei_sub[1].tolist()):
-        u_name = local_to_name[int(u_loc)]
-        v_name = local_to_name[int(v_loc)]
-        #print(f"Link between: {u_name} from local {u_loc} and {v_name} from local {v_loc}")
-        if u_name in s_rankings_draw and v_name in s_rankings_draw:
-            K.add_edge(u_name, v_name)
-    pos = nx.spring_layout(K)
-    nx.draw(K, pos=pos, with_labels=True)'''
+    df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
+    df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(s_rankings_draw)]
+    from matplotlib.lines import Line2D
+    legend_elements = []
 
     # Draw using the original graph G
     new_nodes = []
     for enum, n in enumerate(G.nodes(data=True)):
-            if n[0] not in s_rankings_draw: continue
-            new_nodes.append(n[0])
-    k = G.subgraph(new_nodes)
-    pos = nx.spring_layout(k)
-    nx.draw(k, pos=pos, with_labels = True)
-
+        if n[0] not in s_rankings_draw: continue
+        new_nodes.append(n[0])
+        node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n[0]]
+        label = node_name.iloc[1].item()
+        print(label)
+        legend_elements.append(Line2D([0], [0], marker="o", color="w", label=label, markersize=10))
+        
+    K = G.subgraph(new_nodes)
+    print(f"K: {K}")
+    pos = nx.spring_layout(K)
+    print(f"pos: {pos}")
+    nx.draw(K, pos=pos, with_labels=True)
+    #nx.draw_networkx_nodes(K, pos, nodelist=[idx_global], node_color=["red"], node_size=300)
+    plt.legend(handles=legend_elements, title="Nodes", loc="best")
+    plt.title("Node {}")
     # save subgraph plot
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
 
-    return s_rankings_draw, s_rankings_explained_node
+    return s_rankings_draw
 
 
 def collect_pred_labels(config):
@@ -265,7 +286,7 @@ def collect_pred_labels(config):
     pred_likely_pos.to_csv(config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None)
 
 
-def get_node_names_links(n_nodes, ranked_nodes, xai_node, config):
+def get_node_names_links(n_nodes, xai_node, config):
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     df_out_links = pd.read_csv(config.p_out_links, sep=" ", header=None)
     df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(n_nodes)]
@@ -299,5 +320,5 @@ if __name__ == "__main__":
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=['x'], to_undirected=True)
     collect_pred_labels(config)
-    p_nodes, r_nodes = explain_candiate_gene(model, data, path, node_i, G, config)    
-    get_node_names_links(p_nodes, r_nodes, node_i, config)
+    p_nodes = explain_candiate_gene(model, data, path, node_i, G, config)    
+    get_node_names_links(p_nodes, node_i, config)

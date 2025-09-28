@@ -169,46 +169,35 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print(sorted_ranking)
 
     # Plot neighbours
-    #s_rankings_explained_node = [explained_name] + sorted_ranking
     s_rankings_draw = sorted_ranking[:config.show_num_neighbours]
     print(f"s_rankings_draw: {s_rankings_draw}, {len(s_rankings_draw)}")
-    node_colors = []
-    for nd in s_rankings_draw:
-        node = nd
-        if node == idx_global:
-            node_colors.append("red")
-        elif node in candidate_predictions and candidate_predictions[node] == 0:
-            node_colors.append("tab:blue")
-        elif node in candidate_predictions and candidate_predictions[node] == 1:
-            node_colors.append("tab:green")
-        else:
-            node_colors.append("lightgray")
-    print(f"s_rankings_draw: {s_rankings_draw}")
-    print(f"node_colors: {node_colors}")
-    print(node_colors)
-
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(s_rankings_draw)]
     
     # Draw using the original graph G
     new_nodes = []
     legend_elements = []
+    node_color_map = {}
     for enum, n in enumerate(G.nodes(data=True)):
         if n[0] not in s_rankings_draw: continue
         new_nodes.append(n[0])
+        # assign color
+        if n[0] == idx_global:
+            node_color_map[n[0]] = "red" # seed node
+        else:
+            node_color_map[n[0]] = "tab:blue" # others
         node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n[0]]
         label = f"{node_name.iloc[0, 0]}:{node_name.iloc[0, 1]}"
         print(label)
         legend_elements.append(Line2D([0], [0], marker="o", color="w", label=label, markersize=5))
-        
     K = G.subgraph(new_nodes)
-    print(f"K: {K}")
     pos = nx.spring_layout(K)
-    print(f"pos: {pos}")
-    nx.draw(K, pos=pos, with_labels=True)
-    #nx.draw_networkx_nodes(K, pos, nodelist=[idx_global], node_color=["red"], node_size=300)
-    plt.legend(handles=legend_elements, title="Nodes", loc="best")
-    plt.title("Node {}")
+    # extract colors in K's node order
+    colors_in_order = [node_color_map[node] for node in K.nodes()]
+    nx.draw(K, pos=pos, with_labels=True, node_color=colors_in_order)
+    plt.legend(handles=legend_elements, title="Nodes", loc="center left", bbox_to_anchor=(1, 0.5))
+    plt.title(f"Explanation subgraph of seed node :{idx_global}")
+    plt.grid(True)
     # save subgraph plot
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()

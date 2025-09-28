@@ -16,8 +16,8 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
-neighbors_spread: [1000] # [15,10]
-explain_neighbors_spread: [1000] # [15,10]
+neighbors_spread: [500] # [15,10]
+explain_neighbors_spread: [500] # [15,10]
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
 masks_for_seed: 10

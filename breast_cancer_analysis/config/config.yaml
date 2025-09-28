@@ -20,7 +20,7 @@ neighbors_spread: [500] # [15,10]
 explain_neighbors_spread: [500] # [15,10]
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 1
+masks_for_seed: 10
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 11

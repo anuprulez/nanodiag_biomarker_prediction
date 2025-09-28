@@ -3,6 +3,7 @@ import numpy as np
 import torch
 from torch_geometric.explain import Explainer, GNNExplainer
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 import networkx as nx
 from torch_geometric.utils import to_networkx, k_hop_subgraph
 from torch_geometric.loader import NeighborLoader
@@ -188,18 +189,17 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
 
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(s_rankings_draw)]
-    from matplotlib.lines import Line2D
-    legend_elements = []
-
+    
     # Draw using the original graph G
     new_nodes = []
+    legend_elements = []
     for enum, n in enumerate(G.nodes(data=True)):
         if n[0] not in s_rankings_draw: continue
         new_nodes.append(n[0])
         node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n[0]]
-        label = node_name.iloc[1].item()
+        label = f"{node_name.iloc[0, 0]}:{node_name.iloc[0, 1]}"
         print(label)
-        legend_elements.append(Line2D([0], [0], marker="o", color="w", label=label, markersize=10))
+        legend_elements.append(Line2D([0], [0], marker="o", color="w", label=label, markersize=5))
         
     K = G.subgraph(new_nodes)
     print(f"K: {K}")

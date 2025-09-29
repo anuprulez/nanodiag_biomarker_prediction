@@ -44,7 +44,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     # Map likely positives (kept from your flow; we still only explain xai_node)
     nodes_with_idxs = {}
     for i, node in enumerate(G):
-        if y[i] == 1:
+        if y[i] in [0, 1, 2, 3, 4]: # use [1] for extracting only likely positives
             nodes_with_idxs[node] = i
     print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')
 
@@ -177,7 +177,12 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print("Seed nodes in plotted nodes")
     print(df_seed_nodes)
     lst_seed_nodes = df_seed_nodes.iloc[:, 0].tolist()
-    
+    draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_nodes)
+    return s_rankings_draw
+
+
+def draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_nodes):
+
     # Draw using the original graph G
     new_nodes = []
     legend_elements = []
@@ -208,7 +213,6 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
 
-    return s_rankings_draw
 
 
 def collect_pred_labels(config):
@@ -314,7 +318,8 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 7868
+    node_i = 68
+    # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     path = f"{plot_local_path}subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=['x'], to_undirected=True)

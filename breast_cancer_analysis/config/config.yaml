@@ -2,9 +2,9 @@ SEED: 32
 n_edges: 14251734 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 50
+n_epo: 10
 k_folds: 5
-batch_size: 128 #128
+batch_size: 32 #128
 num_classes: 5
 gene_dim: 86
 hidden_dim: 128
@@ -16,10 +16,10 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
 model_type: "pna"
-neighbors_spread: [500] # [15,10]
-explain_neighbors_spread: [500] # [15,10]
+neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15,10] for two-hop; [-1] for all in one-hop
+explain_neighbors_spread: [-1, 50, 25] # [500] [15,10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
-neighbour_predictions: [0, 1, 2, 3, 4] # positive, likely positive
+neighbour_predictions: [0, 1] # positive, likely positive
 masks_for_seed: 10
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced

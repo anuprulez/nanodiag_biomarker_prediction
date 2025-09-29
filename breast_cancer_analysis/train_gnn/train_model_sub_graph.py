@@ -23,9 +23,19 @@ model_activation = {}
 def hook_fn(module, input, output):
     model_activation[module.__class__.__name__] = output.detach()
 
+def make_hook(name):
+    def _hook(module, inp, out):
+        model_activation[name] = out.detach()
+    return _hook
 
-def create_masks(mapped_node_ids, mask_list):
-    mask = mapped_node_ids.index.isin(mask_list)
+
+'''def create_masks(mapped_node_ids, mask_list):
+    mask = mapped_node_ids.isin(mask_list)
+    return torch.tensor(mask, dtype=torch.bool)'''
+
+def create_masks(mapped_node_ids: pd.Series, mask_list):
+    # True where the SERIES VALUE (node id/name) is in the mask list
+    mask = mapped_node_ids.isin(mask_list).to_numpy()
     return torch.tensor(mask, dtype=torch.bool)
 
 
@@ -156,8 +166,9 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
     
     for tr_idx, batch in enumerate(train_loader):
         batch = batch.to(device, non_blocking=True)
+        #print(f"Batch tr: {tr_idx}, {batch.x.shape}, {batch.edge_index.shape}")
         optimizer.zero_grad(set_to_none=True)
-        out = model(batch.x, batch.edge_index)  # [num_batch_nodes, C]
+        out = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size # first seed_n nodes = seeds
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
@@ -180,8 +191,6 @@ def val_evaluate(loader, model, criterion, device):
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[:batch.batch_size])
-        #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
-
         out = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         logits = out[:seed_n]
@@ -204,7 +213,6 @@ def test_evaluate(loader, model, criterion, device):
     pred_labels, true_labels, all_probs, all_pred_probs, test_ids = [], [], [], [], []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
-        #print(f"Test/Val batch shape: {batch.x.shape}; {batch.x}")
         out = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
@@ -213,7 +221,6 @@ def test_evaluate(loader, model, criterion, device):
         batch_max_prob = batch_prob.max(dim=1).values
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
-        #print(f"Test evaluate shapes: {logits.shape}, {batch_prob.shape}, {batch_max_prob.shape}")
 
         total_loss += float(detach(loss)) * seed_n
         batch_pred_label = logits.argmax(-1)
@@ -253,10 +260,13 @@ def train_gnn_model(config):
     model = model.cuda()
 
     layer_pnaconv4 = model.pnaconv4
-    layer_pnaconv4.register_forward_hook(hook_fn)
+    #layer_pnaconv4.register_forward_hook(hook_fn)
 
     layer_batch_norm4 = model.batch_norm4
-    layer_batch_norm4.register_forward_hook(hook_fn)
+    #layer_batch_norm4.register_forward_hook(hook_fn)
+
+    layer_pnaconv4.register_forward_hook(make_hook("pnaconv4"))
+    layer_batch_norm4.register_forward_hook(make_hook("batch_norm4"))
     
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
@@ -274,11 +284,16 @@ def train_gnn_model(config):
     split_tr_node_ids, val_node_ids = train_test_split(tr_node_ids, shuffle=True, test_size=config.test_size, random_state=42)
 
     print(f"Intersection between train and val genes: {set(split_tr_node_ids).intersection(set(val_node_ids))}")
-    print(f"Intersection between train and test genes: {set(split_tr_node_ids).intersection(set(te_nodes))}")
+    print(f"Intersection between train and test genes: {set(split_tr_node_ids).intersection(set(te_node_ids))}")
     print(f"Intersection between val and test genes: {set(val_node_ids).intersection(set(te_node_ids))}")
+    print(f"Tr nodes: {len(split_tr_node_ids)}, Te nodes: {len(te_node_ids)}, Val nodes: {len(val_node_ids)}")
 
     data.train_mask = create_masks(mapped_f_name, split_tr_node_ids)
     data.val_mask = create_masks(mapped_f_name, val_node_ids)
+    data.test_mask  = create_masks(mapped_f_name, te_node_ids)
+
+    #print(data.train_mask.shape)
+    print(f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}")
 
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
     val_ids_epo = list()
@@ -312,12 +327,12 @@ def train_gnn_model(config):
     print(sorted(val_ids_epo)[:5], sorted(val_node_ids)[:5], len(val_ids_epo), len(val_node_ids))
     
     print("Plot and report all training epochs")
-    plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
+    plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, te_loss_epo, val_acc_epo, te_acc_epo, config)
     print(f"CV Training Loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"CV Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
 
     ## Restore the best trained model for downstream usages
-    print(f"[Restore] Loaded best model from epoch {best_epoch} (val acc {best_te_acc:.2f}).")
+    print(f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_te_acc:.2f}).")
     if best_state is not None:
         model.load_state_dict(best_state)
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs

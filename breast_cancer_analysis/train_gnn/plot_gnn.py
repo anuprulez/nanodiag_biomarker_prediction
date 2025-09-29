@@ -31,7 +31,7 @@ def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     plt.close(fig)
 
 
-def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
+def plot_loss_acc(n_epo, tr_loss, te_loss, val_acc, te_acc, config):
     """
     Signature unchanged. Saves two PDFs and (as before) shows the last figure.
     """
@@ -43,6 +43,7 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
     dpi = getattr(config, "dpi", 200)
 
     tr_loss = np.asarray(tr_loss)
+    te_loss = np.asarray(te_loss)
     val_acc = np.asarray(val_acc)
     te_acc = None if te_acc is None else np.asarray(te_acc)
 
@@ -51,14 +52,16 @@ def plot_loss_acc(n_epo, tr_loss, val_acc, te_acc, config):
     # --- Training loss
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(x_val, tr_loss, linewidth=2)
+    ax.plot(x_val, te_loss, linewidth=2)
     ax.set_ylabel("Loss")
     ax.set_xlabel("Epochs")
     ax.grid(True)
-    ax.set_title("Training loss")
+    plt.legend(["Training", "Test"])
+    ax.set_title("Loss over epochs")
     _save(
         fig,
         plot_local_path
-        / f"{k_folds}_folds_CV_{n_edges}_links_{n_epo}_epochs_training_loss.pdf",
+        / f"Model_loss_{n_edges}_links_{n_epo}_epochs.pdf",
         dpi,
     )
 

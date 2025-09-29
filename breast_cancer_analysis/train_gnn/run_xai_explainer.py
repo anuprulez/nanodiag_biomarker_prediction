@@ -44,7 +44,9 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     # Map likely positives (kept from your flow; we still only explain xai_node)
     nodes_with_idxs = {}
     for i, node in enumerate(G):
-        if y[i] in [0, 1, 2, 3, 4]: # use [1] for extracting only likely positives
+        # use [1] for extracting only likely positives
+        # use [1, 2, 3, 4, 5] for extracting negatives
+        if y[i] in [0, 1, 2, 3, 4]:
             nodes_with_idxs[node] = i
     print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')
 
@@ -55,7 +57,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
 
     print(f"idx_global: {idx_global}")
 
-    # Sample neighborhood with NeighborLoader (batch_size=1 keeps seed at local idx 0)
+    # Sample neighborhood with NeighborLoader
     loader = NeighborLoader(
         dataset,
         num_neighbors=config.explain_neighbors_spread,
@@ -136,8 +138,6 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         src_pred = int(predictions_sub[src_loc].item())
         trg_pred = int(predictions_sub[trg_loc].item())
 
-        #print(f"Source/target predictions: {src_pred} for {src_loc}, {trg_pred} for {trg_loc}")
-
         if src_name != explained_name:
             seen_genes.add(src_name)
         if trg_name != explained_name:
@@ -145,11 +145,9 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
 
         # Your original logic considered [0,1] as P/LP
         if src_pred in neighbour_predictions:
-            #print(f"Source pred 0/1: {src_pred}, {src_name}")
             candidates[explained_name][src_name] = candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
             candidate_predictions[src_name] = src_pred
         if trg_pred in neighbour_predictions:
-            #print(f"Target pred 0/1: {trg_pred}, {trg_name}")
             candidates[explained_name][trg_name] = candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
             candidate_predictions[src_name] = trg_pred
 
@@ -318,7 +316,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 68
+    node_i = 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     path = f"{plot_local_path}subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")

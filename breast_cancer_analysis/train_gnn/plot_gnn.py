@@ -39,7 +39,6 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, val_acc, te_acc, config):
     n_edges = config.n_edges
     # Preserve original behavior: override n_epo from config
     n_epo = getattr(config, "n_epo", n_epo)
-    k_folds = getattr(config, "k_folds", 1)
     dpi = getattr(config, "dpi", 200)
 
     tr_loss = np.asarray(tr_loss)
@@ -78,7 +77,7 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, val_acc, te_acc, config):
     _save(
         fig,
         plot_local_path
-        / f"{k_folds}_folds_CV_{n_edges}_links_{n_epo}_epochs_validation_test_accuracy.pdf",
+        / f"Model_validation_test_accuracy_{n_edges}_links_{n_epo}_epochs.pdf",
         dpi,
     )
     # Match original behavior: show at end

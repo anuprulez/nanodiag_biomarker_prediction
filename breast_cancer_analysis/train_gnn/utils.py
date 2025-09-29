@@ -122,9 +122,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
         data.x[te_mask, col_idx] = te_norm_feature_val
         
     train_x = data.x[data.test_mask == 0]
-    train_y = data.y[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]
-    test_y = data.y[data.test_mask == 1]
 
     # save normalized data
     torch.save(data, config.p_torch_data)

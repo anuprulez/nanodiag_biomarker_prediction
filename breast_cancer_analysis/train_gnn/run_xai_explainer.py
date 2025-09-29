@@ -46,7 +46,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     for i, node in enumerate(G):
         # use [1] for extracting only likely positives
         # use [1, 2, 3, 4, 5] for extracting negatives
-        if y[i] in [0, 1, 2, 3, 4]:
+        if y[i] in neighbour_predictions: #[0, 1, 2, 3, 4]
             nodes_with_idxs[node] = i
     print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')
 
@@ -210,7 +210,6 @@ def draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_no
     # save subgraph plot
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
-
 
 
 def collect_pred_labels(config):

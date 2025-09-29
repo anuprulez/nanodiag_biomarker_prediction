@@ -173,6 +173,10 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print(f"s_rankings_draw: {s_rankings_draw}, {len(s_rankings_draw)}")
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(s_rankings_draw)]
+    df_seed_nodes = df_out_genes[(df_out_genes.iloc[:, 0].isin(s_rankings_draw) & df_out_genes.iloc[:, 2] > 0.0)]
+    print("Seed nodes in plotted nodes")
+    print(df_seed_nodes)
+    lst_seed_nodes = df_seed_nodes.iloc[:, 0].tolist()
     
     # Draw using the original graph G
     new_nodes = []
@@ -183,7 +187,9 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         new_nodes.append(n[0])
         # assign color
         if n[0] == idx_global:
-            node_color_map[n[0]] = "red" # seed node
+            node_color_map[n[0]] = "red" # explained node
+        elif n[0] in lst_seed_nodes:
+               node_color_map[n[0]] = "green" # seed node
         else:
             node_color_map[n[0]] = "tab:blue" # others
         node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n[0]]
@@ -230,6 +236,10 @@ def collect_pred_labels(config):
     pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
                                     (df_labels["pred_labels"].isin([2]))]
     
+    pred_negatives = df_labels[(df_labels["labels"].isin([3, 4, 5])) & \
+                                    (df_labels["pred_labels"].isin([3, 4, 5]))]
+
+    pred_negatives.to_csv(config.p_pred_negatives, sep="\t", index=None)
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
 

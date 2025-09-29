@@ -20,7 +20,7 @@ neighbors_spread: [500] # [15,10]
 explain_neighbors_spread: [500] # [15,10]
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 10
+masks_for_seed: 1
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 11
@@ -39,6 +39,7 @@ p_test_probe_genes: ${p_base}test_probe_genes_bc.csv
 p_train_probe_genes: ${p_base}train_probe_genes_bc.csv
 p_pred_likely_pos: ${p_base}pred_likely_pos_bc.csv
 p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc.csv
+p_pred_negatives: ${p_base}pred_negatives.csv
 p_torch_data: ${p_base}data_bc.pt
 p_torch_embed: ${p_base}embed_conv_bc.pt
 p_torch_embed_batch_norm: ${p_base}embed_batch_norm_bc.pt

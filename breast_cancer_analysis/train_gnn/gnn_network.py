@@ -120,9 +120,9 @@ class GraphSAGE(torch.nn.Module):
         return self.cls(h)
 
 
-
 def _mlp(in_dim, out_dim):
     return Sequential(Linear(in_dim, out_dim), ReLU(), Linear(out_dim, out_dim))
+
 
 class GIN(torch.nn.Module):
     def __init__(self, config):
@@ -209,7 +209,6 @@ class GCNII(torch.nn.Module):
             h = self.bn[i](F.relu(h))
         h = F.dropout(h, p=self.p_drop, training=self.training)
         return self.lin_out(h)
-
 
 
 class APPNPNet(torch.nn.Module):

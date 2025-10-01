@@ -60,7 +60,7 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, val_acc, te_acc, config):
     _save(
         fig,
         plot_local_path
-        / f"Model_loss_{n_edges}_links_{n_epo}_epochs.pdf",
+        / f"Model_loss_{n_edges}_links_{n_epo}_epochs_{config.model_type}.pdf",
         dpi,
     )
 
@@ -77,7 +77,7 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, val_acc, te_acc, config):
     _save(
         fig,
         plot_local_path
-        / f"Model_validation_test_accuracy_{n_edges}_links_{n_epo}_epochs.pdf",
+        / f"Model_validation_test_accuracy_{n_edges}_links_{n_epo}_epochs_{config.model_type}.pdf",
         dpi,
     )
     # Match original behavior: show at end
@@ -122,7 +122,7 @@ def plot_confusion_matrix(true_labels, predicted_labels, config, classes=[1, 2, 
     ax.tick_params(axis="y", rotation=0)
     plt.tight_layout()
     ax.grid(False)  # heatmaps look cleaner without overlaid grid
-    _save(fig, plot_local_path / f"Confusion_matrix_NPPI_{n_edges}_NEpochs_{n_epo}.pdf", dpi)
+    _save(fig, plot_local_path / f"Confusion_matrix_NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf", dpi)
 
 
 def plot_precision_recall(y_true, y_scores, config):
@@ -170,7 +170,7 @@ def plot_precision_recall(y_true, y_scores, config):
     ax.set_title("Multiclass Precision–Recall Curve")
     ax.legend(loc="best")
     ax.grid(True)
-    _save(fig, plot_local_path / f"Precision_recall_{n_edges}_N_Epochs_{n_epo}.pdf", dpi)
+    _save(fig, plot_local_path / f"Precision_recall_{n_edges}_N_Epochs_{n_epo}_{config.model_type}.pdf", dpi)
 
 
 def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
@@ -208,7 +208,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     g.set_xticks(sorted(df_p_labels["pred_labels"].unique()))
     plt.tight_layout()
     ax.grid(True, axis="y")
-    _save(fig, plot_local_path / f"Histogram_positive__NPPI_{n_edges}_NEpochs_{n_epo}.pdf", dpi)
+    _save(fig, plot_local_path / f"Histogram_positive__NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf", dpi)
 
     # KDE (add jitter because labels are discrete)
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -219,7 +219,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     ax.set_title("Masked positive genes predicted into different classes.")
     plt.tight_layout()
     ax.grid(True)
-    _save(fig, plot_local_path / f"KDE_positive__NPPI_{n_edges}_NEpochs_{n_epo}.pdf", dpi)
+    _save(fig, plot_local_path / f"KDE_positive__NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf", dpi)
 
 
 def plot_features(features, labels, config, title, flag):
@@ -247,7 +247,7 @@ def plot_features(features, labels, config, title, flag):
     sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=0.9, ax=ax, palette=config.color_palette)
     ax.set_title(title)
     ax.legend(title="Label", loc="best", frameon=True)
-    _save(fig, plot_local_path / f"umap_nedbit_dnam_features_{flag}.pdf", dpi)
+    _save(fig, plot_local_path / f"umap_nedbit_dnam_features_{flag}_{config.model_type}.pdf", dpi)
 
 
 def plot_node_embed(features, labels, config, feature_type):
@@ -275,7 +275,7 @@ def plot_node_embed(features, labels, config, feature_type):
     sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=1.0, ax=ax, palette=config.color_palette)
     ax.set_title(f"UMAP Visualization of node embeddings from last {feature_type} layer")
     ax.legend(title="Class", loc="best", frameon=True)
-    _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}.pdf", dpi)
+    _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{config.model_type}.pdf", dpi)
 
 
 def plot_radar(models: dict, class_labels, config, title="Per-class Accuracy (Radar)"):
@@ -330,6 +330,6 @@ def plot_radar(models: dict, class_labels, config, title="Per-class Accuracy (Ra
     ax.set_title(title, y=1.08, fontsize=14)
     ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.05))
     plt.tight_layout()
-    _save(fig, plot_local_path / f"radar_plot.pdf", dpi)
+    _save(fig, plot_local_path / f"radar_plot_{config.model_type}.pdf", dpi)
 
 

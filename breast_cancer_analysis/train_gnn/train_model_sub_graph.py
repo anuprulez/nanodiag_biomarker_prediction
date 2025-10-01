@@ -258,11 +258,34 @@ def setup_hooks(model, data, config):
     test_x = data.x[data.test_mask == 1]
     test_y = data.y[data.test_mask == 1]
 
-    plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
-    plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")
+    #plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
+    #plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")
 
     print(f"model_activation: {store}")
     return store
+
+
+def choose_model(config, data):
+    if config.model_type == "pna":
+        model = gnn_network.GPNA(config, data)
+    elif config.model_type == "gcn":
+        model = gnn_network.GCN(config)
+    elif config.model_type == "gsage":
+        model = gnn_network.GraphSAGE(config)
+    elif config.model_type == "gin":
+        model = gnn_network.GraphSAGE(config)
+    elif config.model_type == "gatv2":
+        model = gnn_network.GATv2(config)
+    elif config.model_type == "gcn2":
+        model = gnn_network.GCNII(config)
+    elif config.model_type == "appnet":
+        model = gnn_network.APPNPNet(config)
+    elif config.model_type == "gtran":
+        model = gnn_network.GraphTransformer(config)
+    else:
+        model = gnn_network.GPNA(config, data)
+        
+    return model
 
 
 def train_gnn_model(config):
@@ -283,8 +306,8 @@ def train_gnn_model(config):
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
-    print("Initialize model")
-    model = gnn_network.GPNA(config, data)
+    print(f"Initialize model: {config.model_type}")
+    model = choose_model(config, data)
     model = model.cuda()
 
     # loss fn

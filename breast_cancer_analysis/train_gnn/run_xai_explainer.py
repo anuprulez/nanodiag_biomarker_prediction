@@ -240,7 +240,7 @@ def collect_pred_labels(config):
     print(df_labels)
     true_labels = torch.load(config.p_true_labels, weights_only=False)
     pred_labels = torch.load(config.p_pred_labels, weights_only=False)
-    pred_probs = torch.load(config.p_pred_probs, weights_only=False)
+    pred_probs = torch.load(config.p_best_class_pred_probs, weights_only=False)
     true_labels = [int(item) + 1 for item in true_labels]
     pred_labels = [int(item) + 1 for item in pred_labels]
 
@@ -334,7 +334,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 68 #7868
+    node_i = 2794 #68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     path = f"{plot_local_path}subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")

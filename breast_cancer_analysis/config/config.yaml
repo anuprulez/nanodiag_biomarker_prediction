@@ -1,8 +1,8 @@
 SEED: 32
-n_edges: 14251734 #14251734 # 2000000
+n_edges: 10000 #14251734 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 5
+n_epo: 2
 k_folds: 5
 batch_size: 32 #128
 num_classes: 5
@@ -15,7 +15,7 @@ n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
-model_type: "pna" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
+model_type: "gtran" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15,10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15,10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
@@ -31,23 +31,24 @@ p_out_links: ${p_base}out_links_bc.csv
 p_out_genes: ${p_base}out_genes_bc.csv
 p_out_gene_rankings: ${p_base}out_gene_rankings_bc.csv
 p_nedbit_features: ${p_base}nedbit_features_bc.csv
-p_dnam_features: ${p_base}dnam_features_bc.csv
-p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc.csv
-p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
 p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_bc.csv
-p_test_probe_genes: ${p_base}test_probe_genes_bc.csv
-p_train_probe_genes: ${p_base}train_probe_genes_bc.csv
-p_pred_likely_pos: ${p_base}pred_likely_pos_bc.csv
-p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc.csv
-p_pred_negatives: ${p_base}pred_negatives.csv
-p_torch_data: ${p_base}data_bc.pt
-p_torch_embed: ${p_base}embed_conv_bc.pt
-p_torch_embed_batch_norm: ${p_base}embed_batch_norm_bc.pt
-p_true_labels: ${p_base}true_labels_bc.pt
-p_torch_model: ${p_model}best_model_bc.pt
-p_pred_labels: ${p_base}pred_labels_bc.pt
-p_pred_probs: ${p_base}pred_probs_bc.pt
-p_test_loader_ids: ${p_base}test_ids_bc.pt
+p_dnam_features: ${p_base}dnam_features_bc_${model_type}.csv
+p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc_${model_type}.csv
+p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm_${model_type}.csv
+p_test_probe_genes: ${p_base}test_probe_genes_bc_${model_type}.csv
+p_train_probe_genes: ${p_base}train_probe_genes_bc_${model_type}.csv
+p_pred_likely_pos: ${p_base}pred_likely_pos_bc_${model_type}.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
+p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
+p_torch_data: ${p_base}data_bc_${model_type}.pt
+p_torch_embed: ${p_base}embed_conv_bc_${model_type}.pt
+p_torch_embed_batch_norm: ${p_base}embed_batch_norm_bc_${model_type}.pt
+p_true_labels: ${p_base}true_labels_bc_${model_type}.pt
+p_torch_model: ${p_model}best_model_bc_${model_type}.pt
+p_pred_labels: ${p_base}pred_labels_bc_${model_type}.pt
+p_all_class_pred_probs: ${p_base}all_class_pred_probs_bc_${model_type}.pt
+p_best_class_pred_probs: ${p_base}best_class_pred_probs_bc_${model_type}.pt
+p_test_loader_ids: ${p_base}test_ids_bc_${model_type}.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
@@ -59,8 +60,8 @@ p_snp_probes: ${p_base}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CS
 p_platform: ${p_base}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
 p_seeds: ${p_base}seed_probes.csv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
 # Parameters
-size_negative: 40000 # Number of negative samples to draw (highly variable probes).
-corr_threshold: 0.8 #0.5 # Correlation threshold for gene-gene links
+size_negative: 10000 # Number of negative samples to draw (highly variable probes).
+corr_threshold: 0.33 #0.5 # Correlation threshold for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1
@@ -68,7 +69,7 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
 download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'

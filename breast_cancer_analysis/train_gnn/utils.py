@@ -3,8 +3,10 @@ import torch.nn.functional as F
 from torch_geometric.data import Data
 from sklearn.preprocessing import normalize, RobustScaler
 from torch_geometric.utils import to_undirected, is_undirected, coalesce
+
 import pandas as pd
 import numpy as np
+import json
 
 import plot_gnn
 
@@ -12,6 +14,12 @@ import plot_gnn
 def read_csv(csv_path, sep=",", engine="c", header=None):
     df = pd.read_csv(csv_path, sep=sep, header=header, engine=engine)
     return df
+
+
+def save_accuracy_scores(data, file_path):
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
 
 def detach_from_gpu(tensor):
     return tensor.cpu().detach().numpy()

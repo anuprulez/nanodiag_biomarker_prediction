@@ -4,6 +4,8 @@ import torch.nn.functional as F
 from torch_geometric.loader import NeighborLoader
 from sklearn.model_selection import train_test_split
 from torch_geometric.utils import coalesce
+from sklearn.metrics import f1_score, precision_recall_fscore_support
+import joblib
 
 import numpy as np
 import pandas as pd
@@ -210,7 +212,7 @@ def val_evaluate(loader, model, criterion, device):
 def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
-    pred_labels, true_labels, all_probs, all_pred_probs, test_ids = [], [], [], [], []
+    pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids = [], [], [], [], []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         out = model(batch.x, batch.edge_index)
@@ -227,13 +229,13 @@ def test_evaluate(loader, model, criterion, device):
         pred_labels.extend(detach(batch_pred_label))
         true_labels.extend(detach(targets))
         all_probs.extend(detach(batch_prob))
-        all_pred_probs.extend(detach(batch_max_prob))
+        best_class_pred_probs.extend(detach(batch_max_prob))
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
 
     avg_loss = total_loss / max(1, total_count)
     avg_acc = total_correct / max(1, total_count)
-    return avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs, test_ids
+    return avg_loss, avg_acc, pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids
 
 
 def setup_hooks(model, data, config):
@@ -296,7 +298,7 @@ def train_gnn_model(config):
     n_epo = config.n_epo
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
-    
+
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
@@ -312,6 +314,7 @@ def train_gnn_model(config):
 
     # loss fn
     criterion = torch.nn.CrossEntropyLoss()
+
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     tr_loss_epo = list()
@@ -364,6 +367,7 @@ def train_gnn_model(config):
             torch.save(model.state_dict(), config.p_torch_model)   # <-- best checkpoint
     
     print("Plot and report all training epochs")
+    
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, te_loss_epo, val_acc_epo, te_acc_epo, config)
     print(f"CV Training Loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"CV Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
@@ -373,14 +377,37 @@ def train_gnn_model(config):
     if best_state is not None:
         model.load_state_dict(best_state)
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
-    final_test_loss, final_test_acc, pred_labels, true_labels, all_probs, all_pred_prob, test_ids = \
+    final_test_loss, final_test_acc, pred_labels, true_labels, all_class_pred_probs, best_class_pred_probs, test_ids = \
         test_evaluate(test_loader, model, criterion, device)
+
     # Save predictions, true labels, model
     torch.save(test_ids, config.p_test_loader_ids)
     torch.save(true_labels, config.p_true_labels)
     torch.save(pred_labels, config.p_pred_labels)
-    torch.save(all_pred_prob, config.p_pred_probs)
+    torch.save(best_class_pred_probs, config.p_best_class_pred_probs)
+    torch.save(all_class_pred_probs, config.p_all_class_pred_probs)
+
     print(f"CV Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}, {final_test_loss: .2f}")
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.plot_precision_recall(true_labels, all_probs, config)
-    #plot_gnn.plot_radar({"Net-A": [0.82, 0.76, 0.91, 0.65, 0.88], "Net-B": [0.79, 0.81, 0.87, 0.70, 0.90]}, [1, 2, 3, 4, 5], config)
+    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, config)
+
+    te_f1_macro = f1_score(true_labels, pred_labels, average='macro')
+    te_f1_weighted = f1_score(true_labels, pred_labels, average='weighted')
+    te_f1_micro = f1_score(true_labels, pred_labels, average="micro")
+    te_prec, te_recall, *_ = precision_recall_fscore_support(true_labels, pred_labels, average="weighted")
+
+    metrics = {
+        "te_f1_macro": te_f1_macro,
+        "te_f1_weighted": te_f1_weighted,
+        "te_f1_micro": te_f1_micro,
+        "te_precision": te_prec,
+        "te_recall":te_recall,
+        "tr_loss": tr_loss_epo,
+        "te_loss": te_loss_epo,
+        "val_acc": val_acc_epo,
+        "te_acc": te_acc_epo
+    }
+
+    print(f"All metrics: {metrics}")
+ 
+    utils.save_accuracy_scores(metrics, f"{config.p_plot}all_metrics_{config.model_type}.json")

@@ -13,6 +13,7 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
 )
+
 from sklearn.preprocessing import label_binarize
 
 # Global styling (adjust as you like; calls remain the same)
@@ -276,60 +277,4 @@ def plot_node_embed(features, labels, config, feature_type):
     ax.set_title(f"UMAP Visualization of node embeddings from last {feature_type} layer")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{config.model_type}.pdf", dpi)
-
-
-def plot_radar(models: dict, class_labels, config, title="Per-class Accuracy (Radar)"):
-    """
-    models: dict of {model_name: list/np.array of per-class accuracies}
-            Accuracies can be in [0,1] or [0,100]; auto-scaled to [0,1].
-    class_labels: list of class names (length = number of classes)
-    """
-    feature_type = "pred_comparison"
-    dpi = getattr(config, "dpi", 200)
-    plot_local_path = _as_path(config.p_plot)
-    # --- validate and prepare ---
-    n_classes = len(class_labels)
-    assert n_classes >= 3, "Radar works best with >=3 classes."
-    for k, v in models.items():
-        assert len(v) == n_classes, f"{k} has {len(v)} values, expected {n_classes}"
-
-    # auto-scale to [0,1] if values look like percentages
-    scaled = {}
-    for name, vals in models.items():
-        arr = np.asarray(vals, dtype=float)
-        if arr.max() > 1.0:  # assume given in %
-            arr = arr / 100.0
-        scaled[name] = arr
-
-    # angles for each axis + closing the polygon
-    angles = np.linspace(0, 2 * np.pi, n_classes, endpoint=False).tolist()
-    angles += angles[:1]
-
-    # set up plot
-    fig = plt.figure(figsize=(7, 7))
-    ax = plt.subplot(111, polar=True)
-    ax.set_theta_offset(np.pi / 2)   # start at top
-    ax.set_theta_direction(-1)       # clockwise
-
-    # axis labels
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(class_labels, fontsize=11)
-
-    # radial grid (0.0 to 1.0)
-    ax.set_rlabel_position(0)
-    ax.set_yticks([0.2, 0.4, 0.6, 0.8, 1.0])
-    ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8", "1.0"], fontsize=9)
-    ax.set_ylim(0, 1)
-
-    # plot each model
-    for name, arr in scaled.items():
-        values = arr.tolist() + arr[:1].tolist()  # close polygon
-        ax.plot(angles, values, linewidth=2, label=name)
-        ax.fill(angles, values, alpha=0.15)
-
-    ax.set_title(title, y=1.08, fontsize=14)
-    ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.05))
-    plt.tight_layout()
-    _save(fig, plot_local_path / f"radar_plot_{config.model_type}.pdf", dpi)
-
 

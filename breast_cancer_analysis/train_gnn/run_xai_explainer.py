@@ -25,6 +25,22 @@ def load_model(model_path, data):
     )
     return model
 
+def plot_feature_importance(explanation, data, node_idx, config):
+    feat_imp = explanation.node_mask[node_idx].detach().cpu().numpy()
+    # Plot top-k features
+    k = min(100, len(feat_imp))
+    top_idx = feat_imp.argsort()[-k:][::-1]
+    feat_names = [f"f{i}" for i in range(data.num_node_features)]
+    print(feat_names)
+    plt.figure(figsize=(6, 5))
+    plt.barh([feat_names[i] for i in top_idx][::-1], feat_imp[top_idx][::-1])
+    plt.xlabel("Importance")
+    plt.title(f"Node {node_idx} — top-{k} feature importances")
+    plt.tight_layout()
+    path = f"{config.p_plot}feature_importance_{node_idx}.pdf"
+    plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
+    plt.show()
+
 
 def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     """
@@ -87,6 +103,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
 
     # --------- Aggregate explainer masks on SUBGRAPH ----------
     mean_mask = torch.zeros(ei_sub.shape[1], dtype=torch.float32)
+    explanation = None
     for seed_run in range(masks_for_seed):
         print(f"seed run: {seed_run+1}/{masks_for_seed}")
         explainer = Explainer(
@@ -103,6 +120,8 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         )
         explanation = explainer(x_sub, ei_sub, index=idx_local)
         mean_mask += explanation.edge_mask.detach().cpu()
+
+    #plot_feature_importance(explanation, xai_node, config)
     mean_mask /= float(masks_for_seed)
     print("Shape of mean mask (subgraph):", tuple(mean_mask.shape))
 

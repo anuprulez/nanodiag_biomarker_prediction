@@ -1,45 +1,57 @@
 SEED: 32
-n_edges: 9000 # all edges to use: 1500000, all: 16223942 :16223942
-n_epo: 1
+n_edges: 10000 #14251734
+# all edges with 0.5 correlation and 10000 negatives
+n_epo: 20
 k_folds: 5
-batch_size: 128
+batch_size: 32 #128
 num_classes: 5
-gene_dim: 40
+gene_dim: 40 # Number of NedBit features + 17 day0 + 17 day8
 hidden_dim: 128
 learning_rate: 0.0001
 test_size: 0.33
-scale_features: "0,1,3"
+keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
+# All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
 n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
+model_type: "pna" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
+neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
+explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+explanation_nodes_ratio: 1.0
+neighbour_predictions: [0, 1, 2, 3, 4] # positive, likely positive
+masks_for_seed: 2
+explainer_epochs: 200  # Number of explanation epochs
+graph_subtype: "bidirectional" # directional; induced
+show_num_neighbours: 11
 p_base: ../data_corr_0.5_negative_10000/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
-p_seed_features: ${p_base}seed_features.tsv
+p_seed_features: ${p_base}seed_features.csv
 p_out_links: ${p_base}out_links_aml.csv
 p_out_genes: ${p_base}out_genes_aml.csv
 p_out_gene_rankings: ${p_base}out_gene_rankings_aml.csv
-p_merged_signals: ${p_base}merged_signals_aml.csv
 p_nedbit_features: ${p_base}nedbit_features_aml.csv
-p_dnam_features: ${p_base}dnam_features_aml.csv
-p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_aml.csv
-p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm.csv
 p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_aml.csv
-p_test_probe_genes: ${p_base}test_probe_genes_aml.csv
-p_train_probe_genes: ${p_base}train_probe_genes_aml.csv
-p_pred_likely_pos: ${p_base}pred_likely_pos_aml.csv
-p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml.csv
-p_torch_data: ${p_base}data_aml.pt
-p_torch_embed: ${p_base}embed_conv_aml.pt
-p_torch_embed_batch_norm: ${p_base}embed_batch_norm_aml.pt
-p_true_labels: ${p_base}true_labels_aml.pt
-p_torch_model: ${p_base}model_aml.pt
-p_pred_labels: ${p_base}pred_labels_aml.pt
-p_pred_probs: ${p_base}pred_probs_aml.pt
+p_dnam_features: ${p_base}dnam_features_aml_${model_type}.csv
+p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_aml_${model_type}.csv
+p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm_${model_type}.csv
+p_test_probe_genes: ${p_base}test_probe_genes_aml_${model_type}.csv
+p_train_probe_genes: ${p_base}train_probe_genes_aml_${model_type}.csv
+p_pred_likely_pos: ${p_base}pred_likely_pos_aml_${model_type}.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml_${model_type}.csv
+p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
+p_torch_data: ${p_base}data_aml_${model_type}.pt
+p_torch_embed: ${p_base}embed_conv_aml_${model_type}.pt
+p_torch_embed_batch_norm: ${p_base}embed_batch_norm_aml_${model_type}.pt
+p_true_labels: ${p_base}true_labels_aml_${model_type}.pt
+p_torch_model: ${p_model}best_model_aml_${model_type}.pt
+p_pred_labels: ${p_base}pred_labels_aml_${model_type}.pt
+p_all_class_pred_probs: ${p_base}all_class_pred_probs_aml_${model_type}.pt
+p_best_class_pred_probs: ${p_base}best_class_pred_probs_aml_${model_type}.pt
+p_test_loader_ids: ${p_base}test_ids_aml_${model_type}.pt
 p_plot: ${p_base}
 p_data: ${p_base}
 p_model: ../model/
-exp_epo: 5
 
 # Preprocess AML Illumina arrays
 # Input files

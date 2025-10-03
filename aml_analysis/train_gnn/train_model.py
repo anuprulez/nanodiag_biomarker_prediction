@@ -1,3 +1,4 @@
+import copy
 import torch
 import torch.nn.functional as F
 
@@ -11,10 +12,11 @@ import plot_gnn
 import utils
 
 detach = utils.detach_from_gpu
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model_activation = {}
-    
+
+
 # Define the hook function
 def hook_fn(module, input, output):
     model_activation[module.__class__.__name__] = output.detach()
@@ -64,11 +66,17 @@ def predict_data_test(model, data):
     true_labels = data.y[data.test_mask]
     test_correct = pred_labels == true_labels
     test_acc = int(test_correct.sum()) / float(int(data.test_mask.sum()))
-    return test_acc, detach(pred_labels), detach(true_labels), pred, te_probs, detach(pred_max_probs)
+    return (
+        test_acc,
+        detach(pred_labels),
+        detach(true_labels),
+        pred,
+        te_probs,
+        detach(pred_max_probs),
+    )
 
 
 def extract_node_embeddings(model, data, model_activation, config):
-    data_local_path = config.p_data
     conv_name = "PNAConv"
     activation_name = "BatchNorm1d"
     bn4_activation = model_activation[activation_name]
@@ -82,9 +90,11 @@ def extract_node_embeddings(model, data, model_activation, config):
     torch.save(pred_embeddings_conv4, config.p_torch_embed)
     torch.save(pred_embeddings_batch_norm4, config.p_torch_embed_batch_norm)
     torch.save(true_labels, config.p_true_labels)
-    print("Plot UMAP embeddings")    
+    print("Plot UMAP embeddings")
     plot_gnn.plot_node_embed(pred_embeddings_conv4, true_labels, config, conv_name)
-    plot_gnn.plot_node_embed(pred_embeddings_batch_norm4, true_labels, config, activation_name)
+    plot_gnn.plot_node_embed(
+        pred_embeddings_batch_norm4, true_labels, config, activation_name
+    )
 
 
 def save_model(model, config):
@@ -97,9 +107,7 @@ def save_model(model, config):
 def load_model(config, model_path, data):
     model = gnn_network.GPNA(config, data)
     print(model)
-    model.load_state_dict(
-        torch.load(model_path, map_location=device)
-    )
+    model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
 
@@ -111,11 +119,9 @@ def train_gnn_model(config):
     k_folds = config.k_folds
     n_epo = config.n_epo
     batch_size = config.batch_size
-    data_local_path = config.p_data
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
-    
-    
+
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
@@ -132,15 +138,19 @@ def train_gnn_model(config):
 
     layer_batch_norm4 = model.batch_norm4
     layer_batch_norm4.register_forward_hook(hook_fn)
-    
+
     data = data.cuda()
+
     criterion = torch.nn.CrossEntropyLoss()
     # optimizer
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     tr_loss_epo = list()
     te_acc_epo = list()
     val_acc_epo = list()
-    
+    best_te_acc = -float("inf")
+    best_state = None
+    best_epoch = -1
+
     # loop over epochs
     print("Start epoch training...")
     for epoch in range(n_epo):
@@ -150,14 +160,20 @@ def train_gnn_model(config):
         for fold, (train_index, val_index) in enumerate(kfold.split(tr_node_ids)):
             val_node_ids = tr_node_ids[val_index]
             train_nodes_ids = tr_node_ids[train_index]
-            print(f"Epoch {epoch+1}, Fold {fold+1}: train nodes: {len(train_nodes_ids)}, val nodes: {len(val_node_ids)}")
-            data.val_mask, _, _ = utils.create_test_masks(mapped_f_name, val_node_ids, out_genes)
+            print(
+                f"Epoch {epoch + 1}, Fold {fold + 1}: train nodes: {len(train_nodes_ids)}, val nodes: {len(val_node_ids)}"
+            )
+            data.val_mask, _, _ = utils.create_test_masks(
+                mapped_f_name, val_node_ids, out_genes
+            )
             n_batches = int((len(train_index) + 1) / float(batch_size))
             batch_tr_loss = list()
             # loop over batches
-            print(f"Start fold training for epoch: {epoch+1}, fold: {fold+1}...")
+            print(f"Start fold training for epoch: {epoch + 1}, fold: {fold + 1}...")
             for bat in range(n_batches):
-                batch_tr_node_ids = train_nodes_ids[bat * batch_size: (bat+1) * batch_size]
+                batch_tr_node_ids = train_nodes_ids[
+                    bat * batch_size : (bat + 1) * batch_size
+                ]
                 data.batch_train_mask = create_masks(mapped_f_name, batch_tr_node_ids)
                 tr_loss = train(data, optimizer, model, criterion)
                 tr_loss = detach(tr_loss)
@@ -165,8 +181,12 @@ def train_gnn_model(config):
             tr_loss_fold.append(np.round(np.mean(batch_tr_loss), 2))
             # predict using trained model
             val_acc = predict_data_val(model, data)
-            print(f"Epoch {epoch+1}/{n_epo}, fold {fold+1}/{k_folds} average training loss: {np.mean(batch_tr_loss):.2f}")
-            print(f"Epoch: {epoch+1}/{n_epo}, Fold: {fold+1}/{k_folds}, val accuracy: {val_acc:.2f}")
+            print(
+                f"Epoch {epoch + 1}/{n_epo}, fold {fold + 1}/{k_folds} average training loss: {np.mean(batch_tr_loss):.2f}"
+            )
+            print(
+                f"Epoch: {epoch + 1}/{n_epo}, Fold: {fold + 1}/{k_folds}, val accuracy: {val_acc:.2f}"
+            )
             val_acc_fold.append(val_acc)
 
         print("-------------------")
@@ -174,23 +194,43 @@ def train_gnn_model(config):
         te_acc_epo.append(te_acc)
         tr_loss_epo.append(np.round(np.mean(tr_loss_fold), 2))
         val_acc_epo.append(np.round(np.mean(val_acc_fold), 2))
+        if te_acc > best_te_acc:
+            best_te_acc = te_acc
+            best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch + 1
+            print(
+                f"Saving the model state, best epoch was {best_epoch} with test acc {te_acc:.2f}."
+            )
+            torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
         print()
-        print(f"Epoch {epoch+1}: Training Loss: {np.mean(tr_loss_fold):.2f}")
-        print(f"Epoch {epoch+1}: Val accuracy: {np.mean(val_acc_fold):.2f}")
-        print(f"Epoch {epoch+1}: Test accuracy: {np.mean(te_acc):.2f}")
+        print(f"Epoch {epoch + 1}: Training Loss: {np.mean(tr_loss_fold):.2f}")
+        print(f"Epoch {epoch + 1}: Val accuracy: {np.mean(val_acc_fold):.2f}")
+        print(f"Epoch {epoch + 1}: Test accuracy: {np.mean(te_acc):.2f}")
         print()
     print("==============")
+
+    print("Plot and report all training epochs")
     plot_gnn.plot_loss_acc(n_epo, tr_loss_epo, val_acc_epo, te_acc_epo, config)
     print(f"CV Training Loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"CV Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
-    final_test_acc, pred_labels, true_labels, all_pred, all_probs, all_pred_prob = predict_data_test(model, data)
+
+    ## Restore the best trained model for downstream usages
+    print(
+        f"[Restore] Loaded best model from epoch {best_epoch} (val acc {best_te_acc:.2f})."
+    )
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    final_test_acc, pred_labels, true_labels, all_pred, all_probs, all_pred_prob = (
+        predict_data_test(model, data)
+    )
 
     # Save predictions, true labels, model
     torch.save(pred_labels, config.p_pred_labels)
     torch.save(all_pred_prob, config.p_pred_probs)
-    torch.save(model, config.p_torch_model)
-    _ = save_model(model, config)
-    print(f"CV Test acc after {n_epo} epochs: {final_test_acc:.2f}")
+    print(
+        f"CV Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}"
+    )
     extract_node_embeddings(model, data, model_activation, config)
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.plot_precision_recall(true_labels, all_probs, all_pred_prob, config)
+    plot_gnn.plot_precision_recall(true_labels, all_probs, config)
+    # plot_gnn.plot_radar({"Net-A": [0.82, 0.76, 0.91, 0.65, 0.88], "Net-B": [0.79, 0.81, 0.87, 0.70, 0.90]}, [1, 2, 3, 4, 5], config)

@@ -1,9 +1,12 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
-from sklearn.preprocessing import normalize, RobustScaler
+from sklearn.preprocessing import normalize, RobustScaler, MinMaxScaler
+from torch_geometric.utils import to_undirected, is_undirected, coalesce
+
 import pandas as pd
 import numpy as np
+import json
 
 import plot_gnn
 
@@ -12,8 +15,15 @@ def read_csv(csv_path, sep=",", engine="c", header=None):
     df = pd.read_csv(csv_path, sep=sep, header=header, engine=engine)
     return df
 
+
+def save_accuracy_scores(data, file_path):
+    with open(file_path, "w") as f:
+        json.dump(data, f)
+
+
 def detach_from_gpu(tensor):
     return tensor.cpu().detach().numpy()
+
 
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
     gene_names = out_genes.loc[:, 1]
@@ -46,19 +56,19 @@ def filter_tr_genes(test_probe_ids, out_genes):
             tr_gene_ids.append(item[0])
             tr_genes_names.append(item[1])
     return tr_gene_ids, tr_genes_names
-    
+
 
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating data ojbect for GNN...")
     p_data = config.p_data
-    sfeatures_ids = config.scale_features.split(",")
-    sfeatures_ids = [int(i) for i in sfeatures_ids]
+    sfeatures_names = config.keep_feature_names.split(",")
+    sfeatures_ids = [int(i) for i in range(len(sfeatures_names))]
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     labels = np.array(labels)
 
     print("Final features before normalisation")
     print(features)
-    
+
     x = features
     y = labels
     # shift labels from 1...5 to 0..4 for ML training
@@ -66,34 +76,57 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     y = torch.tensor(y, dtype=torch.long)
     # create data object
     x = torch.tensor(x.to_numpy(), dtype=torch.float)
+    num_nodes = x.shape[0]
+    print(f"Number of nodes: {num_nodes}")
     edge_index = torch.tensor(l_probes.to_numpy(), dtype=torch.long)
-    data = Data(x=x, edge_index=edge_index.t().contiguous())
+    edge_index = edge_index.t().contiguous()
+    # create undirected graph
+    edge_index = to_undirected(edge_index, num_nodes=num_nodes)
+    edge_index, _ = coalesce(edge_index, None, num_nodes, num_nodes)
+    data = Data(x=x, edge_index=edge_index)
+    print(
+        f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}"
+    )  # should be True
+    print(f"edge_index.shape: {edge_index.shape}")
+    assert edge_index.dim() == 2
+    assert edge_index.size(0) == 2  # must be 2×E
+    assert edge_index.dtype == torch.long
     # set up true labels
     data.y = y
-    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
+    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(
+        mapped_feature_ids, te_nodes, out_genes
+    )
 
     print("Post creating test masks")
-    df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
+    df_test_probe_genes = pd.DataFrame(
+        zip(test_probe_ids, test_probe_genes),
+        columns=["test_gene_ids", "test_gene_names"],
+    )
+    df_test_probe_genes = df_test_probe_genes.sort_values(
+        by="test_gene_ids"
+    ).reset_index(drop=True)
     df_test_probe_genes.to_csv(p_data + config.p_test_probe_genes, index=None)
 
     tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
-    df_tr_probe_genes = pd.DataFrame(zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"])
+    df_tr_probe_genes = pd.DataFrame(
+        zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"]
+    )
     df_tr_probe_genes.to_csv(p_data + config.p_train_probe_genes, index=None)
 
-    print(f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}")
+    print(
+        f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}"
+    )
 
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]
     print(f"Train x shape: {train_x.shape}")
-    print(f"Train x shape: {test_x.shape}")
+    print(f"Test x shape: {test_x.shape}")
 
     for col_idx in sfeatures_ids:
         # Apply normalization for train data
-        print("Scaling column: {}".format(col_idx))
         tr_feature_val = data.x[data.test_mask == 0][:, col_idx]
         tr_feature_val = tr_feature_val.reshape(-1, 1)
-        tr_transformer = RobustScaler().fit(tr_feature_val)
-        tr_norm_feature_val = tr_transformer.transform(tr_feature_val)
+        tr_norm_feature_val = MinMaxScaler().fit_transform(tr_feature_val)
         tr_norm_feature_val = torch.tensor(tr_norm_feature_val, dtype=torch.float)
         tr_norm_feature_val = tr_norm_feature_val.squeeze()
         tr_mask = data.test_mask == 0
@@ -101,17 +134,11 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
         # Apply normalization for test data separately to avoid data leakage
         te_feature_val = data.x[data.test_mask == 1][:, col_idx]
         te_feature_val = te_feature_val.reshape(-1, 1)
-        te_transformer = RobustScaler().fit(te_feature_val)
-        te_norm_feature_val = te_transformer.transform(te_feature_val)
+        te_norm_feature_val = MinMaxScaler().fit_transform(te_feature_val)
         te_norm_feature_val = torch.tensor(te_norm_feature_val, dtype=torch.float)
         te_norm_feature_val = te_norm_feature_val.squeeze()
         te_mask = data.test_mask == 1
         data.x[te_mask, col_idx] = te_norm_feature_val
-        
-    train_x = data.x[data.test_mask == 0]
-    train_y = data.y[data.test_mask == 0]
-    test_x = data.x[data.test_mask == 1]
-    test_y = data.y[data.test_mask == 1]
 
     # save normalized data
     torch.save(data, config.p_torch_data)
@@ -120,7 +147,3 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     df_preprocessed_data = pd.DataFrame(preprocessed_data.numpy())
     df_preprocessed_data["labels"] = preprocessed_data_labels.numpy()
     df_preprocessed_data.to_csv(config.p_nedbit_dnam_features_norm, sep=",", index=None)
-
-    print("Plotting UMAP using raw features")
-    plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
-    plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")

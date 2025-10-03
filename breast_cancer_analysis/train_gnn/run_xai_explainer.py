@@ -3,22 +3,21 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.explain import Explainer, GNNExplainer
-import matplotlib.pyplot as plt
-import seaborn as sns
-from matplotlib.lines import Line2D
-import networkx as nx
+
 from torch_geometric.utils import to_networkx
 from torch_geometric.loader import NeighborLoader
 
 from omegaconf.omegaconf import OmegaConf
 
 import gnn_network
+import plot_gnn
 
 
 class LogitsOnly(nn.Module):
     def __init__(self, base):
         super().__init__()
         self.base = base  # your PNA model that returns (logits, penultimate)
+
     def forward(self, *args, **kwargs):
         out = self.base(*args, **kwargs)
         # handle either tuple (logits, penult) or plain logits
@@ -26,59 +25,20 @@ class LogitsOnly(nn.Module):
             out = out[0]
         return out
 
+
 def load_model(model_path, data):
-    device = 'cpu'
+    device = "cpu"
     model = gnn_network.GPNA(config, data)
-    model.load_state_dict(
-        torch.load(model_path, map_location=device)
-    )
+    model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
-def plot_feature_importance(data, node_mask, mean_mask, xai_node, config):
-    num_features = data.num_node_features
-    # Assign groups
-    n_nedbit_features = len(config.keep_feature_names.split(","))
-    n_bc_features = 50
-    n_normal_features = 30
-    group_ids = np.zeros(num_features, dtype=int)
-    group_ids[:n_nedbit_features] = 0 # Nedbit features
-    group_ids[n_nedbit_features: n_nedbit_features + n_bc_features] = 1 # Breast cancer patients
-    group_ids[n_nedbit_features + n_bc_features:] = 2  # Normal patients
-    group_names = ["Nedbit", "Breast cancer", "Normal"]
-    # Collect distributions per group
-    distributions = []
-    labels = []
-    means = []
-    for g in range(3):
-        idx = np.where(group_ids == g)[0]
-        distributions.append(node_mask[:, idx].flatten()) # all node importances for features in group
-        labels.append(group_names[g])
-        means.append(mean_mask[idx].mean()) # mean across features in group
 
-    # Plot violin plot
-    plt.figure(figsize=(7, 5))
-    sns.violinplot(data=distributions)
-    plt.xticks(range(3), labels)
-    plt.ylabel("Feature importance")
-    plt.title("Feature importance distributions per group (Nedbit, BC, Normal)")
-
-    # Overlay means
-    for i, m in enumerate(means):
-        plt.scatter(i, m, color="red", marker="o", zorder=5, label="Mean" if i == 0 else "")
-
-    plt.legend()
-    plt.tight_layout()
-    plt.grid(True)
-    path = f"{config.p_plot}Feature_importance_violin_node_{xai_node}.pdf"
-    plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
-
-
-def explain_candiate_gene(model, dataset, path, xai_node, G, config):
+def explain_candiate_gene(model, dataset, xai_node, G, config):
     """
     Explain xai_node using a sampled neighborhood from NeighborLoader (no full-graph ops).
     """
     assert G is not None
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     masks_for_seed = config.masks_for_seed
     explainer_epochs = config.explainer_epochs
     neighbour_predictions = config.neighbour_predictions
@@ -91,9 +51,9 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     for i, node in enumerate(G):
         # use [1] for extracting only likely positives
         # use [1, 2, 3, 4, 5] for extracting negatives
-        if y[i] in neighbour_predictions: #[0, 1, 2, 3, 4]
+        if y[i] in neighbour_predictions:  # [0, 1, 2, 3, 4]
             nodes_with_idxs[node] = i
-    print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')
+    print("[+]", len(nodes_with_idxs), "likely positive nodes found in the graph")
 
     if xai_node not in nodes_with_idxs:
         raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")
@@ -111,7 +71,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         shuffle=False,
         num_workers=8,
         pin_memory=True,
-        subgraph_type=config.graph_subtype
+        subgraph_type=config.graph_subtype,
     )
 
     # Pull exactly one sampled subgraph for this seed
@@ -136,17 +96,17 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     explanation = None
     wrapped = LogitsOnly(model)
     for seed_run in range(masks_for_seed):
-        print(f"seed run: {seed_run+1}/{masks_for_seed}")
+        print(f"seed run: {seed_run + 1}/{masks_for_seed}")
         explainer = Explainer(
             model=wrapped,
             algorithm=GNNExplainer(epochs=explainer_epochs),
-            explanation_type='model',
-            node_mask_type='attributes',
-            edge_mask_type='object',
+            explanation_type="model",
+            node_mask_type="attributes",
+            edge_mask_type="object",
             model_config=dict(
-                mode='multiclass_classification',
-                task_level='node',
-                return_type='raw',
+                mode="multiclass_classification",
+                task_level="node",
+                return_type="raw",
             ),
         )
         explanation = explainer(x_sub, ei_sub, index=idx_local)
@@ -155,7 +115,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         node_mask[seed_run, :] = explanation.node_mask[0].detach().cpu().numpy()
 
     print(f"Node mask: {node_mask.shape}")
-    
+
     edge_mask /= float(masks_for_seed)
     mean_node_mask = np.mean(node_mask, axis=0)
 
@@ -163,24 +123,49 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     n_sub_nodes = sub_data.num_nodes
     n_sub_edges = ei_sub.shape[1]
     num_nodes_target = max(1, int(round(n_sub_nodes * float(explanation_nodes_ratio))))
-    print(f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}")
+    print(
+        f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}"
+    )
 
     values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
     print("Top edges selected:", len(edge_sel_idx))
 
     # name mapping: local -> global -> name
-    local_to_name = {loc: nodes_names[int(n_id_global[loc])] for loc in range(n_sub_nodes)}
+    local_to_name = {
+        loc: nodes_names[int(n_id_global[loc])] for loc in range(n_sub_nodes)
+    }
 
-    ranking = compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, predictions_sub, neighbour_predictions, num_nodes_target)
-    sorted_ranking = sorted(ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True)
+    print("Computing edge rankings ...")
+    ranking = compute_rankings(
+        xai_node,
+        values,
+        edge_sel_idx,
+        local_to_name,
+        ei_sub,
+        predictions_sub,
+        neighbour_predictions,
+        num_nodes_target,
+    )
+    sorted_ranking = sorted(
+        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    )
 
     # Plot neighbours and feature importances
-    s_rankings_draw = draw_xai_graph(G, sorted_ranking, idx_global, path)
-    plot_feature_importance(data, node_mask, mean_node_mask, xai_node, config)
+    s_rankings_draw = plot_gnn.draw_xai_graph(G, sorted_ranking, idx_global, config)
+    plot_gnn.plot_feature_importance(data, node_mask, mean_node_mask, xai_node, config)
     return s_rankings_draw
 
 
-def compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, predictions_sub, neighbour_predictions, num_nodes_target):
+def compute_rankings(
+    xai_node,
+    values,
+    edge_sel_idx,
+    local_to_name,
+    ei_sub,
+    predictions_sub,
+    neighbour_predictions,
+    num_nodes_target,
+):
     """
     Compute rankings of links over iterations of explanations
     """
@@ -207,16 +192,22 @@ def compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, pred
 
         # Your original logic considered [0,1] as P/LP
         if src_pred in neighbour_predictions:
-            candidates[explained_name][src_name] = candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
+            candidates[explained_name][src_name] = candidates[explained_name].get(
+                src_name, 0.0
+            ) + float(values[k_i].item())
             candidate_predictions[src_name] = src_pred
         if trg_pred in neighbour_predictions:
-            candidates[explained_name][trg_name] = candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
+            candidates[explained_name][trg_name] = candidates[explained_name].get(
+                trg_name, 0.0
+            ) + float(values[k_i].item())
             candidate_predictions[src_name] = trg_pred
 
         if len(seen_genes) >= num_nodes_target:
             break
     candiates_xai = candidates[xai_node]
-    print(f"sorted candiates_xai: {dict(sorted(candiates_xai.items(), key=lambda item: float(item[1]), reverse=True))}")
+    print(
+        f"sorted candiates_xai: {dict(sorted(candiates_xai.items(), key=lambda item: float(item[1]), reverse=True))}"
+    )
     ranking = {}
     for cand_name, score in candidates[explained_name].items():
         if cand_name not in ranking:
@@ -226,51 +217,6 @@ def compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, pred
             ranking[cand_name][1] += float(score)
     print(f"Rankings: {ranking}")
     return ranking
-
-
-def draw_xai_graph(G, sorted_ranking, idx_global, path):
-    """
-    Draw neighbourhood of chosen node
-    """
-    new_nodes = []
-    legend_elements = []
-    node_color_map = {}
-
-    s_rankings_draw = sorted_ranking[:config.show_num_neighbours]
-    print(f"s_rankings_draw: {s_rankings_draw}, {len(s_rankings_draw)}")
-    df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
-    df_plotted_nodes = df_out_genes[df_out_genes.iloc[:, 0].isin(s_rankings_draw)]
-    df_seed_nodes = df_out_genes[(df_out_genes.iloc[:, 0].isin(s_rankings_draw) & df_out_genes.iloc[:, 2] > 0.0)]
-    print("Seed nodes in plotted nodes")
-    print(df_seed_nodes)
-    lst_seed_nodes = df_seed_nodes.iloc[:, 0].tolist()
-
-    for enum, n in enumerate(G.nodes(data=True)):
-        if n[0] not in s_rankings_draw: continue
-        new_nodes.append(n[0])
-        # assign color
-        if n[0] == idx_global:
-            node_color_map[n[0]] = "red" # explained node
-        elif n[0] in lst_seed_nodes:
-               node_color_map[n[0]] = "green" # seed node
-        else:
-            node_color_map[n[0]] = "tab:blue" # others
-        node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n[0]]
-        label = f"{node_name.iloc[0, 0]}:{node_name.iloc[0, 1]}"
-        print(label)
-        legend_elements.append(Line2D([0], [0], marker="o", color="w", label=label, markersize=5))
-    K = G.subgraph(new_nodes)
-    pos = nx.spring_layout(K)
-    # extract colors in K's node order
-    colors_in_order = [node_color_map[node] for node in K.nodes()]
-    nx.draw(K, pos=pos, with_labels=True, node_color=colors_in_order)
-    plt.legend(handles=legend_elements, title="Nodes", loc="center left", bbox_to_anchor=(1, 0.5))
-    plt.title(f"Explanation subgraph of seed node :{idx_global}")
-    plt.grid(True)
-    # save subgraph plot
-    plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
-    plt.close()
-    return s_rankings_draw
 
 
 def collect_pred_labels(config):
@@ -292,14 +238,18 @@ def collect_pred_labels(config):
 
     print(df_labels)
 
-    pred_pos = df_labels[(df_labels["labels"].isin([1])) & \
-                                    (df_labels["pred_labels"].isin([1]))]
-    
-    pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
-                                    (df_labels["pred_labels"].isin([2]))]
-    
-    pred_negatives = df_labels[(df_labels["labels"].isin([3, 4, 5])) & \
-                                    (df_labels["pred_labels"].isin([3, 4, 5]))]
+    pred_pos = df_labels[
+        (df_labels["labels"].isin([1])) & (df_labels["pred_labels"].isin([1]))
+    ]
+
+    pred_likely_pos = df_labels[
+        (df_labels["labels"].isin([2, 3, 4, 5])) & (df_labels["pred_labels"].isin([2]))
+    ]
+
+    pred_negatives = df_labels[
+        (df_labels["labels"].isin([3, 4, 5]))
+        & (df_labels["pred_labels"].isin([3, 4, 5]))
+    ]
 
     pred_negatives.to_csv(config.p_pred_negatives, sep="\t", index=None)
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
@@ -324,10 +274,12 @@ def collect_pred_labels(config):
 
     df_tr_probe_genes = pd.read_csv(config.p_train_probe_genes)
     training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
-    
+
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
 
-    print(f"training_node_ids: {len(training_node_ids)}, tr_probes_genes {len(tr_probes_genes)}")
+    print(
+        f"training_node_ids: {len(training_node_ids)}, tr_probes_genes {len(tr_probes_genes)}"
+    )
 
     tr_genes = list()
     tr_probes = list()
@@ -339,12 +291,18 @@ def collect_pred_labels(config):
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
 
-    pred_likely_pos = pred_likely_pos[~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])]
-    pred_likely_pos = pred_likely_pos[~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])]
+    pred_likely_pos = pred_likely_pos[
+        ~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])
+    ]
+    pred_likely_pos = pred_likely_pos[
+        ~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])
+    ]
 
     print("Pred likely pos with no training genes/probes")
     pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
-    pred_likely_pos.to_csv(config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None)
+    pred_likely_pos.to_csv(
+        config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None
+    )
 
 
 def get_node_names_links(n_nodes, xai_node, config):
@@ -354,7 +312,9 @@ def get_node_names_links(n_nodes, xai_node, config):
     df_xai_node_links_first = df_out_links[df_out_links.iloc[:, 0] == xai_node]
     df_xai_node_links_second = df_out_links[df_out_links.iloc[:, 1] == xai_node]
 
-    df_xai_node_links_plotted_node = df_out_links[(df_out_links.iloc[:, 0].isin(n_nodes) & (df_out_links.iloc[:, 1] == xai_node))]
+    df_xai_node_links_plotted_node = df_out_links[
+        (df_out_links.iloc[:, 0].isin(n_nodes) & (df_out_links.iloc[:, 1] == xai_node))
+    ]
     print(f"Plotted {n_nodes} nodes")
     print("Dataframe of plotted nodes")
     print(df_plotted_nodes)
@@ -364,8 +324,12 @@ def get_node_names_links(n_nodes, xai_node, config):
     print()
     print("All nodes for xai node when xai is in second column")
     print(df_xai_node_links_second)
-    df_xai_node_links_first.to_csv(f"{config.p_data}df_xai_node_links_first_{xai_node}.csv", index=None)
-    df_xai_node_links_second.to_csv(f"{config.p_data}df_xai_node_links_second_{xai_node}.csv", index=None)
+    df_xai_node_links_first.to_csv(
+        f"{config.p_data}df_xai_node_links_first_{xai_node}.csv", index=None
+    )
+    df_xai_node_links_second.to_csv(
+        f"{config.p_data}df_xai_node_links_second_{xai_node}.csv", index=None
+    )
     print("All links between xai node and links cache")
     print(df_xai_node_links_plotted_node)
 
@@ -373,14 +337,13 @@ def get_node_names_links(n_nodes, xai_node, config):
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_local_path = config.p_plot
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 8353 #68 #7868
+    node_i = 8353 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
-    path = f"{plot_local_path}Explaination_subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")
-    G = to_networkx(data, node_attrs=['x'], to_undirected=True)
+    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
     collect_pred_labels(config)
-    p_nodes = explain_candiate_gene(model, data, path, node_i, G, config)    
+    p_nodes = explain_candiate_gene(model, data, node_i, G, config)
     get_node_names_links(p_nodes, node_i, config)

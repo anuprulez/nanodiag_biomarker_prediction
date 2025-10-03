@@ -22,6 +22,7 @@ from omegaconf.omegaconf import OmegaConf
 # Global styling (adjust as you like; calls remain the same)
 sns.set_theme(style="whitegrid", context="talk")
 
+
 def _as_path(p) -> Path:
     p = Path(p)
     p.mkdir(parents=True, exist_ok=True)
@@ -34,6 +35,7 @@ def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     fig.savefig(path, dpi=dpi, bbox_inches="tight")
     plt.close(fig)
 
+
 def plot_radar(config):
     """
     models: dict of {model_name: list/np.array of per-class accuracies}
@@ -41,7 +43,13 @@ def plot_radar(config):
     class_labels: list of class names (length = number of classes)
     """
     # Use your real values. Model_A uses the numbers you provided.
-    metric_keys = ["te_f1_macro", "te_f1_weighted", "te_f1_micro", "te_precision", "te_recall"]
+    metric_keys = [
+        "te_f1_macro",
+        "te_f1_weighted",
+        "te_f1_micro",
+        "te_precision",
+        "te_recall",
+    ]
     models = ["pna", "gcn", "gsage", "gatv2", "gtran"]
     metric_labels = {
         "te_f1_macro": "F1 (macro)",
@@ -50,7 +58,7 @@ def plot_radar(config):
         "te_precision": "Precision",
         "te_recall": "Recall",
     }
-    
+
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
     n_epo = config.n_epo
@@ -64,7 +72,7 @@ def plot_radar(config):
     print(agg_models_perf)
     models = list(agg_models_perf.keys())
     # ===== 2) Prepare data for radar plot =====
-    '''def to_ordered_list(d, keys):
+    """def to_ordered_list(d, keys):
         return [d[k] for k in keys]
 
     angles = np.linspace(0, 2 * np.pi, len(metrics_labels), endpoint=False)
@@ -98,9 +106,9 @@ def plot_radar(config):
 
     plt.tight_layout()
     #plt.savefig("radar_classifiers.png", dpi=200)
-    #plt.show()'''
+    #plt.show()"""
     N = len(models)
-    angles = np.linspace(0, 2*np.pi, N, endpoint=False)
+    angles = np.linspace(0, 2 * np.pi, N, endpoint=False)
     angles = np.concatenate([angles, angles[:1]])  # close the loop
 
     def values_for_metric(key):
@@ -111,11 +119,11 @@ def plot_radar(config):
     # ==== 5) Plot ====
     plt.figure(figsize=(9, 9))
     ax = plt.subplot(111, polar=True)
-    ax.set_theta_offset(np.pi / 2)     # start at top
-    ax.set_theta_direction(-1)         # clockwise
+    ax.set_theta_offset(np.pi / 2)  # start at top
+    ax.set_theta_direction(-1)  # clockwise
 
     # Put model names on axes (corners)
-    ax.set_thetagrids(angles[:-1] * 180/np.pi, models, fontsize=11)
+    ax.set_thetagrids(angles[:-1] * 180 / np.pi, models, fontsize=11)
 
     # Radial limits and ticks (scores assumed in 0..1)
     ax.set_ylim(0.0, 1.0)
@@ -130,7 +138,9 @@ def plot_radar(config):
         ax.fill(angles, vals, alpha=0.10)
 
     # Title, legend, layout
-    plt.title("Model Comparison (Models on Axes, Metrics in Legend)", fontsize=14, pad=20)
+    plt.title(
+        "Model Comparison (Models on Axes, Metrics in Legend)", fontsize=14, pad=20
+    )
     ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.05), frameon=False)
 
     plt.tight_layout()
@@ -141,7 +151,3 @@ def plot_radar(config):
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_radar(config)
-
-
-
-

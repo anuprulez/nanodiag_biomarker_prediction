@@ -10,8 +10,8 @@ import train_model_sub_graph
 
 from omegaconf.omegaconf import OmegaConf
 
-def extract_preprocessed_data(config):
 
+def extract_preprocessed_data(config):
     # Your Zenodo link
     url = config.p_processed_data
     output_dir = config.p_base
@@ -44,14 +44,14 @@ def extract_preprocessed_data(config):
     # Optionally remove the zip after extraction
     os.remove(zip_path)
 
+
 def run_training():
     config = OmegaConf.load("../config/config.yaml")
     extract_preprocessed_data(config) if config.download_preprocessed_data else None
     preprocess_data.read_files(config)
-    #train_model.train_gnn_model(config)
+    # train_model.train_gnn_model(config)
     train_model_sub_graph.train_gnn_model(config)
 
 
 if __name__ == "__main__":
-    
     run_training()

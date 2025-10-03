@@ -13,14 +13,12 @@ import gnn_network
 
 
 def load_model(model_path, data):
-    device = 'cpu' #torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    #data = data.to(device)
+    device = "cpu"  # torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # data = data.to(device)
     model = gnn_network.GPNA(config, data)
-    #model = model.to(device)
+    # model = model.to(device)
     print(model)
-    model.load_state_dict(
-        torch.load(model_path, map_location=device)
-    )
+    model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
 
@@ -33,10 +31,10 @@ def load_local_neighbourhood(xai_node, data):
     explainer_loader = NeighborLoader(
         data,
         input_nodes=ensure_bool(data.test_mask),  # seed nodes = train
-        num_neighbors=[15, 10], #list(config.num_neighbors),
+        num_neighbors=[15, 10],  # list(config.num_neighbors),
         batch_size=1,
         shuffle=False,
-        num_workers=8, #config.num_workers,
+        num_workers=8,  # config.num_workers,
         pin_memory=True,
         directed=True,
     )
@@ -50,11 +48,12 @@ def load_local_neighbourhood(xai_node, data):
                 batch.x.detach().cpu(),
                 batch.edge_index.detach().cpu(),
                 batch.y.detach().cpu(),
-                global_ids.clone(),   # n_id mapping
-                local_i
+                global_ids.clone(),  # n_id mapping
+                local_i,
             )
             break
     return seen_explain_batches
+
 
 import math
 import torch
@@ -73,11 +72,11 @@ def _predict(model, x, edge_index):
 
 def predict_candidate_genes_gnn_explainer_khop_GPT(
     model,
-    data,                      # PyG Data with data.x, data.edge_index, data.y
-    xai_node: int,             # GLOBAL node id to explain
-    path: str,                 # where to save the plot (pdf/png)
-    num_hops: int = 1,         # GNN receptive field depth
-    masks_for_seed: int = 1,   # averaging multiple runs; for GNNExplainer deterministic data this is optional
+    data,  # PyG Data with data.x, data.edge_index, data.y
+    xai_node: int,  # GLOBAL node id to explain
+    path: str,  # where to save the plot (pdf/png)
+    num_hops: int = 1,  # GNN receptive field depth
+    masks_for_seed: int = 1,  # averaging multiple runs; for GNNExplainer deterministic data this is optional
     explanation_nodes_ratio: float = 1.0,  # how many nodes to keep via edge importance coverage
     id_to_name: Optional[Dict[int, str]] = None,  # optional global-id -> display-name
     device: Optional[torch.device] = None,
@@ -92,7 +91,9 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
       - sorted list of candidate global ids,
       - ranking dict {global_id: (hit_count, total_importance)}.
     """
-    device = 'cpu' #device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = (
+        "cpu"  # device or torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    )
 
     # ---- 1) Deterministic k-hop subgraph (LOCAL relabeling) ----
     full_x, full_ei, full_y = data.x, data.edge_index, data.y
@@ -101,7 +102,7 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
         node_idx=int(xai_node),
         num_hops=num_hops,
         edge_index=full_ei,
-        relabel_nodes=True
+        relabel_nodes=True,
     )
     # subset: 1D tensor [n_sub] mapping LOCAL -> GLOBAL ids
     # mapping: scalar/local index where the original node appears in subgraph
@@ -117,29 +118,29 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
         explanation_type="model",
         node_mask_type="attributes",
         edge_mask_type="object",
-        model_config=dict(mode="multiclass_classification",
-                          task_level="node",
-                          return_type="log_probs"),
+        model_config=dict(
+            mode="multiclass_classification", task_level="node", return_type="log_probs"
+        ),
     )
 
-    #mean_mask = torch.zeros(sub_ei.size(1), device=device)
-    mean_mask = torch.zeros(sub_ei.shape[1]).to('cpu')
+    # mean_mask = torch.zeros(sub_ei.size(1), device=device)
+    mean_mask = torch.zeros(sub_ei.shape[1]).to("cpu")
 
     for _ in range(masks_for_seed):
         explanation = explainer(sub_x, sub_ei, index=local_idx)
-        #mean_mask += explanation.edge_mask.to(device)
-        mean_mask += explanation.edge_mask.to('cpu')
-    #mean_mask /= max(1, masks_for_seed)  # [num_edges_sub]
+        # mean_mask += explanation.edge_mask.to(device)
+        mean_mask += explanation.edge_mask.to("cpu")
+    # mean_mask /= max(1, masks_for_seed)  # [num_edges_sub]
     mean_mask = torch.div(mean_mask, masks_for_seed)
     print("Shape of mean mask: {}".format(mean_mask.shape))
 
-    '''
+    """
     explainer = Explainer(model=model, algorithm=GNNExplainer(epochs=200), explanation_type='model', node_mask_type='attributes', \
                               edge_mask_type='object', model_config=dict(mode='multiclass_classification', task_level='node', return_type='log_probs',),)
             
             #explanation = explainer(x, edge_index, index=idx)
             explanation = explainer(subg_x, subg_edge_index, index=local_mapping_idx)
-    '''
+    """
 
     # ---- 3) Rank candidate nodes by edge importances (LOCAL → GLOBAL) ----
     # We’ll pick edges in descending importance until we have ~num_nodes_to_cover nodes.
@@ -162,9 +163,12 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
         for node_l in (src, dst):
             if node_l == seed_local:
                 continue
-            local_score[node_l] = local_score.get(node_l, 0.0) + float(values[edge_idx_sorted == epos])
+            local_score[node_l] = local_score.get(node_l, 0.0) + float(
+                values[edge_idx_sorted == epos]
+            )
 
-        covered.add(src); covered.add(dst)
+        covered.add(src)
+        covered.add(dst)
         if len(covered) >= num_nodes_to_cover:
             break
 
@@ -174,9 +178,9 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
         g_id = int(subset[node_l])
         ranking[g_id] = (1, score)  # hit_count=1 here (single seed)
 
-    sorted_global = sorted(ranking.keys(),
-                           key=lambda gid: (ranking[gid][0], ranking[gid][1]),
-                           reverse=True)
+    sorted_global = sorted(
+        ranking.keys(), key=lambda gid: (ranking[gid][0], ranking[gid][1]), reverse=True
+    )
 
     # ---- 4) Plot with original node ids/names using NetworkX ----
     # Build a NetworkX graph in LOCAL space, but label nodes by GLOBAL ids/names.
@@ -189,11 +193,17 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
     if id_to_name is None:
         labels = {i: str(int(subset[i])) for i in range(n_sub)}  # show global ids
     else:
-        labels = {i: id_to_name.get(int(subset[i]), str(int(subset[i]))) for i in range(n_sub)}
+        labels = {
+            i: id_to_name.get(int(subset[i]), str(int(subset[i]))) for i in range(n_sub)
+        }
 
     # Node styling: seed red; 1-hop blue; 2-hop green; else lightgray
     # hop distance on undirected view for clarity
-    hop_d = dict(nx.single_source_shortest_path_length(G_sub.to_undirected(), seed_local, cutoff=num_hops))
+    hop_d = dict(
+        nx.single_source_shortest_path_length(
+            G_sub.to_undirected(), seed_local, cutoff=num_hops
+        )
+    )
     node_colors = []
     for i in range(n_sub):
         if i == seed_local:
@@ -212,13 +222,18 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
 
     pos = nx.spring_layout(G_sub, seed=0)
     plt.figure(figsize=(8, 6))
-    nx.draw(G_sub, pos,
-            with_labels=False,
-            node_color=node_colors,
-            node_size=120,
-            width=edge_widths)
+    nx.draw(
+        G_sub,
+        pos,
+        with_labels=False,
+        node_color=node_colors,
+        node_size=120,
+        width=edge_widths,
+    )
     nx.draw_networkx_labels(G_sub, pos, labels=labels, font_size=6)
-    nx.draw_networkx_nodes(G_sub, pos, nodelist=[seed_local], node_color=["red"], node_size=300)
+    nx.draw_networkx_nodes(
+        G_sub, pos, nodelist=[seed_local], node_color=["red"], node_size=300
+    )
     plt.tight_layout()
     plt.savefig(path, dpi=300, bbox_inches="tight")
     plt.close()
@@ -226,82 +241,105 @@ def predict_candidate_genes_gnn_explainer_khop_GPT(
     return sorted_global, ranking
 
 
-def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explanation_nodes_ratio=1, \
-                                          masks_for_seed=10, G=None, num_pos='all'):
-    
-    #sub_x, sub_edge_index, sub_labels, g_ids, local_i = sub_dataset[xai_node]
-    #labels = data.y
-    #print("Explaining...")
-    #print(sub_x)
-    #print(sub_edge_index)
-    #print(sub_labels)
-    #print(g_ids)
-    #print(local_i)
-    x           = dataset.x
-    labels      = dataset.y
-    edge_index  = dataset.edge_index
+def predict_candidate_genes_gnn_explainer(
+    model,
+    dataset,
+    path,
+    xai_node,
+    explanation_nodes_ratio=1,
+    masks_for_seed=10,
+    G=None,
+    num_pos="all",
+):
+    # sub_x, sub_edge_index, sub_labels, g_ids, local_i = sub_dataset[xai_node]
+    # labels = data.y
+    # print("Explaining...")
+    # print(sub_x)
+    # print(sub_edge_index)
+    # print(sub_labels)
+    # print(g_ids)
+    # print(local_i)
+    x = dataset.x
+    labels = dataset.y
+    edge_index = dataset.edge_index
 
-    ranking         = {}
-    candidates      = {}
+    ranking = {}
+    candidates = {}
     nodes_with_idxs = {}
     subg_numnodes_d = {}
 
-    #nodes_names = list(G.nodes)
-    
+    # nodes_names = list(G.nodes)
+
     i = 0
-    '''for node in G:
+    """for node in G:
         if labels[i] == 1:
             if node == xai_node:
                 print(node, dataset.x[i], dataset.y[i])
             nodes_with_idxs[node] = i
         i += 1
-    print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')'''
+    print('[+]', len(nodes_with_idxs), 'likely positive nodes found in the graph')"""
 
-    #sub_nodes_with_idxs = dict(itertools.islice(nodes_with_idxs.items(), 1))
-    sub_nodes_with_idxs = {"8337": 8337} #{k: v for k, v in nodes_with_idxs.items() if v == xai_node}
+    # sub_nodes_with_idxs = dict(itertools.islice(nodes_with_idxs.items(), 1))
+    sub_nodes_with_idxs = {
+        "8337": 8337
+    }  # {k: v for k, v in nodes_with_idxs.items() if v == xai_node}
     print(sub_nodes_with_idxs)
     # Get the subgraphs of a positive nodes
     for node in sub_nodes_with_idxs:
         idx = sub_nodes_with_idxs[node]
         print("Node idx: {}".format(idx))
-        subg_nodes, subg_edge_index, local_mapping_idx, _ = k_hop_subgraph(idx, 1, edge_index, relabel_nodes=True)
+        subg_nodes, subg_edge_index, local_mapping_idx, _ = k_hop_subgraph(
+            idx, 1, edge_index, relabel_nodes=True
+        )
         if idx not in subg_numnodes_d:
             subg_numnodes_d[idx] = [len(subg_nodes), subg_edge_index.shape[1]]
-        print(f"Node {node}, {idx}: {subg_nodes}, {subg_edge_index}, {local_mapping_idx}")
+        print(
+            f"Node {node}, {idx}: {subg_nodes}, {subg_edge_index}, {local_mapping_idx}"
+        )
 
     # Get explanations of all the positive genes
     nodes_explained = 0
     num_pos = len(sub_nodes_with_idxs)
     print(sub_nodes_with_idxs, num_pos)
-    
+
     subg_x = x[subg_nodes]
     print(f"print(subg_x): {subg_x}, {subg_x.shape}")
     print(f"print(subg_edge_index): {subg_edge_index}, {subg_edge_index.shape}")
     print(subg_x)
-    #subg_x = subg_x.to(device)
-    #subg_nodes = subg_nodes.to(device)
-    #subg_edge_index = subg_edge_index.to(device)
-    #model = model.to(device)
+    # subg_x = subg_x.to(device)
+    # subg_nodes = subg_nodes.to(device)
+    # subg_edge_index = subg_edge_index.to(device)
+    # model = model.to(device)
 
     for node in tqdm(sub_nodes_with_idxs):
         idx = sub_nodes_with_idxs[node]
 
         candidates[node] = {}
 
-        mean_mask = torch.zeros(subg_edge_index.shape[1]).to('cpu')
+        mean_mask = torch.zeros(subg_edge_index.shape[1]).to("cpu")
 
         for i in range(masks_for_seed):
             print(f"seed run: {i}/{masks_for_seed}")
-            explainer = Explainer(model=model, algorithm=GNNExplainer(epochs=200), explanation_type='model', node_mask_type='attributes', \
-                              edge_mask_type='object', model_config=dict(mode='multiclass_classification', task_level='node', return_type='log_probs',),)
-            
-            #explanation = explainer(x, edge_index, index=idx)
+            explainer = Explainer(
+                model=model,
+                algorithm=GNNExplainer(epochs=200),
+                explanation_type="model",
+                node_mask_type="attributes",
+                edge_mask_type="object",
+                model_config=dict(
+                    mode="multiclass_classification",
+                    task_level="node",
+                    return_type="log_probs",
+                ),
+            )
+
+            # explanation = explainer(x, edge_index, index=idx)
             explanation = explainer(subg_x, subg_edge_index, index=local_mapping_idx)
-            mean_mask += explanation.edge_mask.to('cpu')
+            mean_mask += explanation.edge_mask.to("cpu")
 
         mean_mask = torch.div(mean_mask, masks_for_seed)
         print("Shape of mean mask: {}".format(mean_mask.shape))
-        num_nodes = int(round(subg_numnodes_d[idx][0]*explanation_nodes_ratio))
+        num_nodes = int(round(subg_numnodes_d[idx][0] * explanation_nodes_ratio))
         print("Number of nodes: {}".format(num_nodes))
         print(sub_nodes_with_idxs)
         print()
@@ -311,7 +349,7 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
         print("Number of selected edges: {}".format(len(indices)))
 
         model.eval()
-        #out = model(data.x, data.edge_index)
+        # out = model(data.x, data.edge_index)
         out = model(subg_x, subg_edge_index)
         predictions = out.argmax(dim=1)
         print("Predictions done!")
@@ -319,14 +357,14 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
         seen_genes = set()
 
         for i in range(len(indices)):
-            src     = subg_edge_index[0][indices[i]]
-            trgt    = subg_edge_index[1][indices[i]]
+            src = subg_edge_index[0][indices[i]]
+            trgt = subg_edge_index[1][indices[i]]
 
-            src_name    = nodes_names[src]
-            trgt_name   = nodes_names[trgt]
+            src_name = nodes_names[src]
+            trgt_name = nodes_names[trgt]
 
-            src_pred    = predictions[src]
-            trgt_pred   = predictions[trgt]
+            src_pred = predictions[src]
+            trgt_pred = predictions[trgt]
 
             # if gene has not been seen and it is not the explained node
             # we add it to the seen genes set
@@ -335,20 +373,20 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
             if trgt_name != node:
                 seen_genes.add(trgt_name)
 
-            #if src_pred == 1: # LP
-            if src_pred in [0, 1]: # P, LP
+            # if src_pred == 1: # LP
+            if src_pred in [0, 1]:  # P, LP
                 if src_name not in candidates[node]:
                     candidates[node][src_name] = values[i]
                 else:
                     candidates[node][src_name] += values[i]
 
-            #if trgt_pred == 1: # LP
-            if src_pred in [0, 1]: # P, LP
+            # if trgt_pred == 1: # LP
+            if src_pred in [0, 1]:  # P, LP
                 if trgt_name not in candidates[node]:
                     candidates[node][trgt_name] = values[i]
                 else:
                     candidates[node][trgt_name] += values[i]
-            
+
             # when the seen geens set reaches the num_nodes threshold
             # break the loop
             if len(seen_genes) >= num_nodes:
@@ -361,8 +399,10 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
             else:
                 ranking[candidate][0] += 1
                 ranking[candidate][1] += candidates[seed][candidate].item()
-    
-    sorted_ranking  = sorted(ranking, key=lambda x: (ranking[x][0], ranking[x][1]), reverse=True)
+
+    sorted_ranking = sorted(
+        ranking, key=lambda x: (ranking[x][0], ranking[x][1]), reverse=True
+    )
 
     print(sorted_ranking, len(sorted_ranking))
 
@@ -370,26 +410,27 @@ def predict_candidate_genes_gnn_explainer(model, dataset, path, xai_node, explan
     s_rankings_draw = s_rankings_explained_node[:10]
     new_nodes = []
     for enum, n in enumerate(G.nodes(data=True)):
-            if n[0] not in s_rankings_draw: continue
-            new_nodes.append(n[0])
+        if n[0] not in s_rankings_draw:
+            continue
+        new_nodes.append(n[0])
 
     k = G.subgraph(new_nodes)
     pos = nx.spring_layout(k)
-    nx.draw(k, pos=pos, with_labels = True)
-    plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
+    nx.draw(k, pos=pos, with_labels=True)
+    plt.savefig(path, format="pdf", bbox_inches="tight", dpi=300)
     return new_nodes, s_rankings_explained_node
 
 
 def collect_pred_labels(config):
     print("Collecting datasets ...")
-    #df_nebit_features = pd.read_csv(config.p_nedbit_dnam_features, sep=",")
+    # df_nebit_features = pd.read_csv(config.p_nedbit_dnam_features, sep=",")
     df_test_probe_genes = pd.read_csv(config.p_test_probe_genes, sep=",")
-    #probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
-    #df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
-    #df_nebit_features_test.reset_index(drop=True, inplace=True)
-    #feature_name = df_nebit_features_test.iloc[:, 0]
-    #labels = df_nebit_features_test.iloc[:, -1]
-    #df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
+    # probe_gene_list = df_test_probe_genes.iloc[:, 1].tolist()
+    # df_nebit_features_test = df_nebit_features[df_nebit_features["name"].isin(probe_gene_list)]
+    # df_nebit_features_test.reset_index(drop=True, inplace=True)
+    # feature_name = df_nebit_features_test.iloc[:, 0]
+    # labels = df_nebit_features_test.iloc[:, -1]
+    # df_labels = pd.DataFrame(zip(feature_name.tolist(), labels.tolist()), columns=["feature_name", "labels"])
     df_test_probe_genes.columns = ["test_gene_ids", "test_gene_names"]
     df_labels = df_test_probe_genes
 
@@ -408,12 +449,14 @@ def collect_pred_labels(config):
 
     print(df_labels)
 
-    pred_pos = df_labels[(df_labels["labels"].isin([1])) & \
-                                    (df_labels["pred_labels"].isin([1]))]
-    
-    pred_likely_pos = df_labels[(df_labels["labels"].isin([2, 3, 4, 5])) & \
-                                    (df_labels["pred_labels"].isin([2]))]
-    
+    pred_pos = df_labels[
+        (df_labels["labels"].isin([1])) & (df_labels["pred_labels"].isin([1]))
+    ]
+
+    pred_likely_pos = df_labels[
+        (df_labels["labels"].isin([2, 3, 4, 5])) & (df_labels["pred_labels"].isin([2]))
+    ]
+
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
 
@@ -436,10 +479,12 @@ def collect_pred_labels(config):
 
     df_tr_probe_genes = pd.read_csv(config.p_train_probe_genes)
     training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
-    
+
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
 
-    print(f"training_node_ids: {len(training_node_ids)}, tr_probes_genes {len(tr_probes_genes)}")
+    print(
+        f"training_node_ids: {len(training_node_ids)}, tr_probes_genes {len(tr_probes_genes)}"
+    )
 
     tr_genes = list()
     tr_probes = list()
@@ -451,12 +496,18 @@ def collect_pred_labels(config):
     tr_probes_genes["genes"] = tr_genes
     tr_probes_genes["probes"] = tr_probes
 
-    pred_likely_pos = pred_likely_pos[~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])]
-    pred_likely_pos = pred_likely_pos[~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])]
+    pred_likely_pos = pred_likely_pos[
+        ~pred_likely_pos["genes"].isin(tr_probes_genes["genes"])
+    ]
+    pred_likely_pos = pred_likely_pos[
+        ~pred_likely_pos["probes"].isin(tr_probes_genes["probes"])
+    ]
 
     print("Pred likely pos with no training genes/probes")
     pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
-    pred_likely_pos.to_csv(config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None)
+    pred_likely_pos.to_csv(
+        config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None
+    )
 
 
 def get_node_names_links(n_nodes, ranked_nodes, config):
@@ -466,11 +517,13 @@ def get_node_names_links(n_nodes, ranked_nodes, config):
     print("Dataframe of plotted nodes")
     print(df_plotted_nodes)
 
+
 import copy, math, torch, networkx as nx, matplotlib.pyplot as plt
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.explain import Explainer, GNNExplainer
 
-def make_bounded_subgraph(data, global_idx, num_neighbors=[10,5], directed=True):
+
+def make_bounded_subgraph(data, global_idx, num_neighbors=[10, 5], directed=True):
     # Single seed ⇒ seed is local index 0
     loader = NeighborLoader(
         data,
@@ -478,16 +531,22 @@ def make_bounded_subgraph(data, global_idx, num_neighbors=[10,5], directed=True)
         num_neighbors=num_neighbors,
         batch_size=1,
         shuffle=False,
-        directed=directed
+        directed=directed,
     )
     batch = next(iter(loader))
     sub_x, sub_ei, subset = batch.x, batch.edge_index, batch.n_id  # local→global
     local_idx = 0
     return sub_x, sub_ei, subset, local_idx
 
+
 def predict_candidate_genes_gnn_explainer_cpu(
-    model, data, xai_node, path, num_neighbors=[10,5],
-    masks_for_seed=1, explanation_nodes_ratio=1.0
+    model,
+    data,
+    xai_node,
+    path,
+    num_neighbors=[10, 5],
+    masks_for_seed=1,
+    explanation_nodes_ratio=1.0,
 ):
     # ---- bounded subgraph around the seed ----
     sub_x, sub_ei, subset, local_idx = make_bounded_subgraph(
@@ -503,10 +562,10 @@ def predict_candidate_genes_gnn_explainer_cpu(
         algorithm=GNNExplainer(epochs=200),  # fewer epochs is fine here
         explanation_type="model",
         node_mask_type="attributes",
-        edge_mask_type="object",            # keep; see note below
-        model_config=dict(mode="multiclass_classification",
-                          task_level="node",
-                          return_type="log_probs"),
+        edge_mask_type="object",  # keep; see note below
+        model_config=dict(
+            mode="multiclass_classification", task_level="node", return_type="log_probs"
+        ),
     )
 
     mean_mask = torch.zeros(sub_ei.size(1))
@@ -524,29 +583,32 @@ def predict_candidate_genes_gnn_explainer_cpu(
     for pos in eidx.tolist():
         u, v = int(sub_ei[0, pos]), int(sub_ei[1, pos])
         for n in (u, v):
-            if n == local_idx: 
+            if n == local_idx:
                 continue
             local_score[n] = local_score.get(n, 0.0) + float(mean_mask[pos])
-        covered.add(u); covered.add(v)
+        covered.add(u)
+        covered.add(v)
         if len(covered) >= k_nodes:
             break
 
     # LOCAL → GLOBAL ids
-    ranking = { int(subset[n]): (1, score) for n, score in local_score.items() }
-    sorted_global = sorted(ranking, key=lambda g: (ranking[g][0], ranking[g][1]), reverse=True)
+    ranking = {int(subset[n]): (1, score) for n, score in local_score.items()}
+    sorted_global = sorted(
+        ranking, key=lambda g: (ranking[g][0], ranking[g][1]), reverse=True
+    )
 
     plot_topk_nodes_from_pyg_subgraph(
         sub_edge_index=sub_ei,
         subset=subset,
         local_seed=local_idx,
-        k=10,                    # show top 25 by explainer score
+        k=10,  # show top 25 by explainer score
         edge_mask=mean_mask,
         path=path,
-        directed=False
+        directed=False,
     )
 
     # ---- plot with original global ids ----
-    '''import numpy as np
+    """import numpy as np
     G = nx.Graph()
     n_sub = sub_x.size(0)
     G.add_nodes_from(range(n_sub))
@@ -566,17 +628,17 @@ def predict_candidate_genes_gnn_explainer_cpu(
     nx.draw(G, pos, with_labels=False, node_color=node_colors, node_size=120, width=widths)
     nx.draw_networkx_labels(G, pos, labels=labels, font_size=6)
     nx.draw_networkx_nodes(G, pos, nodelist=[local_idx], node_color=["red"], node_size=300)
-    plt.tight_layout(); plt.savefig(path, dpi=300, bbox_inches="tight"); plt.close()'''
+    plt.tight_layout(); plt.savefig(path, dpi=300, bbox_inches="tight"); plt.close()"""
 
     return sorted_global, ranking
 
 
 def plot_topk_nodes_from_pyg_subgraph(
-    sub_edge_index,          # torch.LongTensor [2, E] (LOCAL indices)
-    subset=None,             # torch.LongTensor [n_sub]; LOCAL -> GLOBAL ids (optional, for labels)
-    local_seed=None,         # int or None; local index of seed to force-include
-    k=10,                    # how many nodes to show
-    edge_mask=None,          # torch.Tensor [E] or None; explainer edge scores
+    sub_edge_index,  # torch.LongTensor [2, E] (LOCAL indices)
+    subset=None,  # torch.LongTensor [n_sub]; LOCAL -> GLOBAL ids (optional, for labels)
+    local_seed=None,  # int or None; local index of seed to force-include
+    k=10,  # how many nodes to show
+    edge_mask=None,  # torch.Tensor [E] or None; explainer edge scores
     path="topk_subgraph.pdf",
     directed=False,
 ):
@@ -632,7 +694,9 @@ def plot_topk_nodes_from_pyg_subgraph(
     if edge_mask is not None:
         # map each H-edge back to its eid in edges list to fetch normalized score
         eid_map = {tuple(e): i for i, e in enumerate(edges)}
-        eid_map.update({(v, u): i for (u, v), i in eid_map.items()})  # handle undirected lookup
+        eid_map.update(
+            {(v, u): i for (u, v), i in eid_map.items()}
+        )  # handle undirected lookup
         em = (edge_mask - edge_mask.min()) / (edge_mask.max() - edge_mask.min() + 1e-12)
         widths = [0.5 + 3.0 * float(em[eid_map[(u, v)]]) for u, v in H.edges()]
 
@@ -640,7 +704,7 @@ def plot_topk_nodes_from_pyg_subgraph(
     if subset is not None:
         labels = {i: str(int(subset[i])) for i in H.nodes()}  # original/global ids
     else:
-        labels = {i: str(i) for i in H.nodes()}               # local ids
+        labels = {i: str(i) for i in H.nodes()}  # local ids
 
     # Highlight seed
     node_colors = []
@@ -652,38 +716,52 @@ def plot_topk_nodes_from_pyg_subgraph(
 
     pos = nx.spring_layout(H, seed=0)
     plt.figure(figsize=(7, 6))
-    nx.draw(H, pos, with_labels=False, node_color=node_colors, node_size=180,
-            width=widths if widths is not None else 1.0)
+    nx.draw(
+        H,
+        pos,
+        with_labels=False,
+        node_color=node_colors,
+        node_size=180,
+        width=widths if widths is not None else 1.0,
+    )
     nx.draw_networkx_labels(H, pos, labels=labels, font_size=7)
     if local_seed is not None and local_seed in H:
-        nx.draw_networkx_nodes(H, pos, nodelist=[local_seed], node_color=["red"], node_size=320)
+        nx.draw_networkx_nodes(
+            H, pos, nodelist=[local_seed], node_color=["red"], node_size=320
+        )
     plt.tight_layout()
     plt.savefig(path, dpi=300, bbox_inches="tight")
     plt.close()
 
 
-
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_local_path = config.p_plot
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    #data = data.to(device)
+    # data = data.to(device)
     model_path = config.p_torch_model
-    #f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
+    # f"{config.p_model}trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
     model = load_model(model_path, data)
-    #model = model.to(device)
+    # model = model.to(device)
     node_i = 8337
-    path = plot_local_path + 'subgraph_{}.pdf'.format(node_i)
-    '''G = to_networkx(data,
+    path = plot_local_path + "subgraph_{}.pdf".format(node_i)
+    """G = to_networkx(data,
                     node_attrs=['x'],
-                    to_undirected=True)'''
-    #collect_pred_labels(config)
-    #seen_explain_batches = load_local_neighbourhood(node_i, data)
-    #local_xai_graph = seen_explain_batches[node_i]
+                    to_undirected=True)"""
+    # collect_pred_labels(config)
+    # seen_explain_batches = load_local_neighbourhood(node_i, data)
+    # local_xai_graph = seen_explain_batches[node_i]
     G = None
-    #plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')
-    #plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_khop_GPT(model, data, node_i, path, num_hops=1)
-    plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_cpu(model, data, node_i, path, num_neighbors=[100], \
-                                                                            masks_for_seed=config.exp_epo, explanation_nodes_ratio=1.0)
+    # plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer(model, data, path, node_i, explanation_nodes_ratio=1, masks_for_seed=config.exp_epo, G=G, num_pos='all')
+    # plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_khop_GPT(model, data, node_i, path, num_hops=1)
+    plotted_nodes, ranked_nodes = predict_candidate_genes_gnn_explainer_cpu(
+        model,
+        data,
+        node_i,
+        path,
+        num_neighbors=[100],
+        masks_for_seed=config.exp_epo,
+        explanation_nodes_ratio=1.0,
+    )
     get_node_names_links(plotted_nodes, ranked_nodes, config)

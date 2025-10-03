@@ -24,6 +24,7 @@ def save_accuracy_scores(data, file_path):
 def detach_from_gpu(tensor):
     return tensor.cpu().detach().numpy()
 
+
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
     gene_names = out_genes.loc[:, 1]
     updated_mask_list = list()
@@ -55,7 +56,7 @@ def filter_tr_genes(test_probe_ids, out_genes):
             tr_gene_ids.append(item[0])
             tr_genes_names.append(item[1])
     return tr_gene_ids, tr_genes_names
-    
+
 
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating data ojbect for GNN...")
@@ -67,7 +68,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
 
     print("Final features before normalisation")
     print(features)
-    
+
     x = features
     y = labels
     # shift labels from 1...5 to 0..4 for ML training
@@ -83,25 +84,38 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     edge_index = to_undirected(edge_index, num_nodes=num_nodes)
     edge_index, _ = coalesce(edge_index, None, num_nodes, num_nodes)
     data = Data(x=x, edge_index=edge_index)
-    print(f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}")  # should be True
+    print(
+        f"Is Graph undirected: {is_undirected(edge_index, num_nodes=num_nodes)}"
+    )  # should be True
     print(f"edge_index.shape: {edge_index.shape}")
     assert edge_index.dim() == 2
-    assert edge_index.size(0) == 2 # must be 2×E
+    assert edge_index.size(0) == 2  # must be 2×E
     assert edge_index.dtype == torch.long
     # set up true labels
     data.y = y
-    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(mapped_feature_ids, te_nodes, out_genes)
+    data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(
+        mapped_feature_ids, te_nodes, out_genes
+    )
 
     print("Post creating test masks")
-    df_test_probe_genes = pd.DataFrame(zip(test_probe_ids, test_probe_genes), columns=["test_gene_ids", "test_gene_names"])
-    df_test_probe_genes = df_test_probe_genes.sort_values(by="test_gene_ids").reset_index(drop=True)
+    df_test_probe_genes = pd.DataFrame(
+        zip(test_probe_ids, test_probe_genes),
+        columns=["test_gene_ids", "test_gene_names"],
+    )
+    df_test_probe_genes = df_test_probe_genes.sort_values(
+        by="test_gene_ids"
+    ).reset_index(drop=True)
     df_test_probe_genes.to_csv(p_data + config.p_test_probe_genes, index=None)
 
     tr_gene_ids, tr_gene_names = filter_tr_genes(test_probe_ids, out_genes)
-    df_tr_probe_genes = pd.DataFrame(zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"])
+    df_tr_probe_genes = pd.DataFrame(
+        zip(tr_gene_ids, tr_gene_names), columns=["tr_gene_ids", "tr_gene_names"]
+    )
     df_tr_probe_genes.to_csv(p_data + config.p_train_probe_genes, index=None)
 
-    print(f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}")
+    print(
+        f"Intersection between train and test genes: {set(tr_gene_ids).intersection(set(test_probe_ids))}"
+    )
 
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]

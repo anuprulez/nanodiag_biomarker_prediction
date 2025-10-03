@@ -3,7 +3,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.loader import NeighborLoader
 from sklearn.model_selection import train_test_split
-from torch_geometric.utils import coalesce
+from torch_geometric.utils import coalesce, degree
 from sklearn.metrics import f1_score, precision_recall_fscore_support
 import joblib
 
@@ -172,14 +172,8 @@ def choose_model(config, data):
         model = gnn_network.GCN(config)
     elif config.model_type == "gsage":
         model = gnn_network.GraphSAGE(config)
-    elif config.model_type == "gin":
-        model = gnn_network.GraphSAGE(config)
     elif config.model_type == "gatv2":
         model = gnn_network.GATv2(config)
-    elif config.model_type == "gcn2":
-        model = gnn_network.GCNII(config)
-    elif config.model_type == "appnet":
-        model = gnn_network.APPNPNet(config)
     elif config.model_type == "gtran":
         model = gnn_network.GraphTransformer(config)
     else:
@@ -199,6 +193,13 @@ def train_gnn_model(config):
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
+    deg = degree(data.edge_index[0], num_nodes=data.num_nodes)  # in-degree or out-degree
+    print(f"Mean degree: {deg.mean().item()}")
+    print(f"Max degree: {deg.max().item()}")
+    print(f"Std dev: {deg.std().item()}")
+    print(f"Median degree: {deg.median().item()}")
+    ratio = deg.max().item() / (deg.mean().item() + 1e-9)
+    print(f"Max / Mean ratio: {ratio}")
     tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
     te_nodes = pd.read_csv(config.p_test_probe_genes, sep=",")
     te_node_ids = te_nodes["test_gene_ids"].tolist()
@@ -260,6 +261,7 @@ def train_gnn_model(config):
 
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
     val_ids_epo = list()
+    print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
             train_loader, model, optimizer, criterion, device, config.model_type
@@ -269,7 +271,7 @@ def train_gnn_model(config):
         )
         val_ids_epo.extend(used_val_ids)
         print(
-            f"[Epoch {epoch:03d} / {n_epo:03d}] "
+            f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )

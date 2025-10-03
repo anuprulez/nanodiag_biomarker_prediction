@@ -1,7 +1,7 @@
 SEED: 32
-n_edges: 14251734 #14251734 
+n_edges: 14251734 #14251734
 # all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 10
+n_epo: 15
 k_folds: 5
 batch_size: 32 #128
 num_classes: 5
@@ -16,7 +16,7 @@ min_dist: 0.8
 cutoff_pval: 5e-2
 dropout: 0.2
 metric: "correlation"
-model_type: "pna" # pna, gcn, gsage, gatv2, gtran ### gcn2, appnet
+model_type: "gsage" # pna, gcn, gsage, gatv2, gtran ### gcn2, appnet
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
@@ -73,7 +73,7 @@ quantile_2: 0.2 # quantile threshold 2
 download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
-download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+download_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1
 # https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1 c_0.33_te_10000
 # https://zenodo.org/records/17199872/files/bc_preprocessed_datasets_to_train_c_0.5_te_10000.zip?download=1

@@ -1,11 +1,11 @@
 SEED: 32
-n_edges: 10000 #14251734
-# all edges with 0.5 correlation and 10000 negatives
-n_epo: 20
+n_edges: 14124836 #14124836
+# all edges 14124836 with 0.5 correlation and 10000 negatives
+n_epo: 10
 k_folds: 5
 batch_size: 32 #128
 num_classes: 5
-gene_dim: 40 # Number of NedBit features + 17 day0 + 17 day8
+gene_dim: 46 # Number of NedBit features + 20 day0 + 20 day8
 hidden_dim: 128
 learning_rate: 0.0001
 test_size: 0.33
@@ -20,7 +20,7 @@ neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for t
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1, 2, 3, 4] # positive, likely positive
-masks_for_seed: 2
+masks_for_seed: 10
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 11
@@ -79,3 +79,5 @@ p_processed_data: https://zenodo.org/records/17205435/files/aml_processed_datase
 # https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1
 
 # https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1
+
+color_palette: "tab10" # Color scale for UMAP plots

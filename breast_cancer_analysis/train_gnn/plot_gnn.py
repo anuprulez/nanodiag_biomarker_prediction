@@ -69,9 +69,10 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, config):
         dpi,
     )
 
-    # --- Validation/Test accuracy
+    # Validation/Test/Train accuracy
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.plot(x_val, val_acc, tr_acc, linewidth=2, label="Validation")
+    ax.plot(x_val, val_acc, linewidth=2, label="Validation")
+    ax.plot(x_val, tr_acc, linewidth=2, label="Train")
     if te_acc is not None:
         ax.plot(x_val, te_acc, linewidth=2, label="Test")
     ax.set_ylabel("Accuracy")
@@ -85,8 +86,6 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, config):
         / f"Model_accuracy_{n_edges}_links_{n_epo}_epochs_{config.model_type}.pdf",
         dpi,
     )
-    # Match original behavior: show at end
-    plt.show()
 
 
 def plot_confusion_matrix(

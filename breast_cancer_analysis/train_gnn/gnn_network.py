@@ -47,6 +47,7 @@ class GPNA(torch.nn.Module):
         hidden_dim = config["hidden_dim"]
         aggregators = ["mean", "min", "max", "std"]
         scalers = ["identity", "amplification", "attenuation"]
+        p_drop = config.get("dropout", 0.2)
         deg = self.__find_deg(train_dataset)
         SEED = config["SEED"]
         torch.manual_seed(SEED)
@@ -59,17 +60,18 @@ class GPNA(torch.nn.Module):
         self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
         self.batch_norm3 = BatchNorm1d(hidden_dim)
         self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
-        self.model_activation = dict()
+        self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = self.pnaconv1(x, edge_index)
-        h = self.batch_norm1(F.relu(h))
-        h = self.pnaconv2(h, edge_index)
-        h = self.batch_norm2(F.relu(h))
-        h = self.pnaconv3(h, edge_index)
-        h = self.batch_norm3(F.relu(h))
+        h = F.relu(self.batch_norm1(self.pnaconv1(x, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.batch_norm2(self.pnaconv2(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.batch_norm3(self.pnaconv3(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
         out_pnaconv4 = self.pnaconv4(h, edge_index)
-        out_batch_norm4 = self.batch_norm4(F.relu(out_pnaconv4))
+        out_batch_norm4 = F.relu(self.batch_norm4(out_pnaconv4))
+        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
         out = self.classifier(out_batch_norm4)
         return out, out_pnaconv4, out_batch_norm4
 
@@ -81,10 +83,11 @@ class GCN(torch.nn.Module):
 
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        SEED = config["SEED"]
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.get("dropout", 0.2)
         torch.manual_seed(SEED)
         self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
@@ -95,18 +98,20 @@ class GCN(torch.nn.Module):
         self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
         self.batch_norm3 = BatchNorm1d(hidden_dim)
         self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
+        self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
-        h = self.batch_norm1(F.relu(h))
-        h = self.conv2(h, edge_index)
-        h = self.batch_norm2(F.relu(h))
-        h = self.conv3(h, edge_index)
-        h = self.batch_norm3(F.relu(h))
-        h = self.conv4(h, edge_index)
-        h = self.batch_norm4(F.relu(h))
-        out = self.classifier(h)
-        return out
+        h = F.relu(self.batch_norm1(self.conv1(x, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.batch_norm2(self.conv2(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.batch_norm3(self.conv3(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        out_conv4 = self.conv4(h, edge_index)
+        out_batch_norm4 = F.relu(self.batch_norm4(out_conv4))
+        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
+        out = self.classifier(out_batch_norm4)
+        return out, out_conv4, out_batch_norm4
 
 
 class GraphSAGE(torch.nn.Module):
@@ -136,9 +141,98 @@ class GraphSAGE(torch.nn.Module):
         h = F.dropout(h, p=self.p_drop, training=self.training)
         h = F.relu(self.bn3(self.conv3(h, edge_index)))
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn4(self.conv4(h, edge_index)))
+        out_conv4 = self.conv4(h, edge_index)
+        out_batch_norm4 = F.relu(self.bn4(out_conv4))
+        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
+        return self.cls(out_batch_norm4), out_conv4, out_batch_norm4
+
+
+class GATv2(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        num_classes = config["num_classes"]
+        gene_dim = config["gene_dim"]
+        hidden_dim = config["hidden_dim"]
+        heads = config.get("heads", 4)
+        p_drop = config.get("dropout", 0.2)
+        torch.manual_seed(config["SEED"])
+
+        self.conv1 = GATv2Conv(
+            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv2 = GATv2Conv(
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv3 = GATv2Conv(
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv4 = GATv2Conv(
+            hidden_dim,
+            (hidden_dim // 2) // heads,
+            heads=heads,
+            dropout=p_drop,
+            concat=True,
+        )
+        self.bn1 = BatchNorm1d(hidden_dim)
+        self.bn2 = BatchNorm1d(hidden_dim)
+        self.bn3 = BatchNorm1d(hidden_dim)
+        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.cls = Linear(hidden_dim // 2, num_classes)
+        self.p_drop = p_drop
+
+    def forward(self, x, edge_index):
+        h = F.relu(self.bn1(self.conv1(x, edge_index)))
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
+        h = F.relu(self.bn2(self.conv2(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.bn3(self.conv3(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        out_conv4 = self.conv4(h, edge_index)
+        out_batch_norm4 = F.relu(self.bn4(out_conv4))
+        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
+        return self.cls(out_batch_norm4), out_conv4, out_batch_norm4
+
+
+class GraphTransformer(torch.nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        num_classes = config["num_classes"]
+        gene_dim = config["gene_dim"]
+        hidden_dim = config["hidden_dim"]
+        heads = config.get("heads", 4)
+        p_drop = config.get("dropout", 0.2)
+        torch.manual_seed(config["SEED"])
+
+        self.conv1 = TransformerConv(
+            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv2 = TransformerConv(
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv3 = TransformerConv(
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+        )
+        self.conv4 = TransformerConv(
+            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
+        )
+        self.bn1 = BatchNorm1d(hidden_dim)
+        self.bn2 = BatchNorm1d(hidden_dim)
+        self.bn3 = BatchNorm1d(hidden_dim)
+        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.cls = Linear(hidden_dim // 2, num_classes)
+        self.p_drop = p_drop
+
+    def forward(self, x, edge_index):
+        h = F.relu(self.bn1(self.conv1(x, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.bn2(self.conv2(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = F.relu(self.bn3(self.conv3(h, edge_index)))
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        out_conv4 = self.conv4(h, edge_index)
+        out_batch_norm4 = F.relu(self.bn4(out_conv4))
+        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
+        return self.cls(out_batch_norm4), out_conv4, out_batch_norm4
 
 
 def _mlp(in_dim, out_dim):
@@ -177,55 +271,6 @@ class GIN(torch.nn.Module):
         return self.cls(h)
 
 
-class GATv2(torch.nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.3)
-        torch.manual_seed(config["SEED"])
-
-        self.conv1 = GATv2Conv(
-            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv2 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv3 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv4 = GATv2Conv(
-            hidden_dim,
-            (hidden_dim // 2) // heads,
-            heads=heads,
-            dropout=p_drop,
-            concat=True,
-        )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
-        self.p_drop = p_drop
-
-    def forward(self, x, edge_index):
-        h = F.elu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv4(h, edge_index))
-        h = self.bn4(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
-
-
 class GCNII(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -235,7 +280,7 @@ class GCNII(torch.nn.Module):
         num_layers = config.get("num_layers", 8)
         alpha = config.get("alpha", 0.1)  # initial residual weight
         theta = config.get("theta", 0.5)  # identity mapping strength
-        p_drop = config.get("dropout", 0.5)
+        p_drop = config.get("dropout", 0.2)
         torch.manual_seed(config["SEED"])
 
         self.lin_in = Linear(gene_dim, hidden_dim)
@@ -270,7 +315,7 @@ class APPNPNet(torch.nn.Module):
         hidden_dim = config["hidden_dim"]
         K = config.get("K", 10)  # propagation steps
         alpha = config.get("alpha", 0.1)  # teleport proba
-        p_drop = config.get("dropout", 0.5)
+        p_drop = config.get("dropout", 0.2)
         torch.manual_seed(config["SEED"])
 
         self.lin1 = Linear(gene_dim, hidden_dim)
@@ -288,48 +333,3 @@ class APPNPNet(torch.nn.Module):
         h0 = F.dropout(h0, p=self.p_drop, training=self.training)
         logits = self.lin3(h0)
         return self.prop(logits, edge_index)
-
-
-class GraphTransformer(torch.nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.2)
-        torch.manual_seed(config["SEED"])
-
-        self.conv1 = TransformerConv(
-            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv2 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv3 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
-        )
-        self.conv4 = TransformerConv(
-            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
-        )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
-        self.p_drop = p_drop
-
-    def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv4(h, edge_index))
-        h = self.bn4(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)

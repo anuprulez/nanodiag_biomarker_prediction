@@ -24,19 +24,6 @@ def create_masks(mapped_node_ids: pd.Series, mask_list):
     return torch.tensor(mask, dtype=torch.bool)
 
 
-def predict_data_val(model, data):
-    """
-    Predict using trained model and test data
-    """
-    # predict on test fold
-    model.eval()
-    out = model(data.x, data.edge_index)
-    pred = out.argmax(dim=1)
-    val_correct = pred[data.val_mask] == data.y[data.val_mask]
-    val_acc = int(val_correct.sum()) / float(int(data.val_mask.sum()))
-    return val_acc
-
-
 def ensure_bool(m):
     return m if m.dtype == torch.bool else m.bool()
 
@@ -49,7 +36,7 @@ def make_neighbor_loaders(data, config):
 
     train_loader = NeighborLoader(
         data,
-        input_nodes=ensure_bool(data.train_mask),  # seed nodes = train
+        input_nodes=ensure_bool(data.train_mask), # seed nodes = train
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
@@ -81,13 +68,12 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, device):
+def train_one_epoch(train_loader, model, optimizer, criterion, device, model_type):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
     for tr_idx, batch in enumerate(train_loader):
         batch = batch.to(device, non_blocking=True)
-        # print(f"Batch tr: {tr_idx}, {batch.x.shape}, {batch.edge_index.shape}")
         optimizer.zero_grad(set_to_none=True)
         out, *_ = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # first seed_n nodes = seeds
@@ -96,6 +82,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
         loss = criterion(logits, targets)
         loss.backward()
         optimizer.step()
+
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
@@ -106,14 +93,14 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
 
 
 @torch.no_grad()
-def val_evaluate(loader, model, criterion, device):
+def val_evaluate(loader, model, criterion, device, model_type):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[: batch.batch_size])
-        out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
+        out, *_ = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
@@ -129,7 +116,7 @@ def val_evaluate(loader, model, criterion, device):
 
 
 @torch.no_grad()
-def test_evaluate(loader, model, criterion, device):
+def test_evaluate(loader, model, criterion, device, model_type):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     (
@@ -275,10 +262,10 @@ def train_gnn_model(config):
     val_ids_epo = list()
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, device
+            train_loader, model, optimizer, criterion, device, config.model_type
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
-            val_loader, model, criterion, device
+            val_loader, model, criterion, device, config.model_type
         )
         val_ids_epo.extend(used_val_ids)
         print(
@@ -286,7 +273,7 @@ def train_gnn_model(config):
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
+        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device, config.model_type)
         print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -330,7 +317,7 @@ def train_gnn_model(config):
         test_ids,
         embs_pna4,
         embs_bn4,
-    ) = test_evaluate(test_loader, model, criterion, device)
+    ) = test_evaluate(test_loader, model, criterion, device, config.model_type)
 
     # Save predictions, true labels, model
     torch.save(test_ids, config.p_test_loader_ids)

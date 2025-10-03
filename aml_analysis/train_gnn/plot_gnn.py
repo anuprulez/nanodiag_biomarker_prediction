@@ -98,7 +98,7 @@ def plot_confusion_matrix(
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    normalize = getattr(config, "normalize", None)  # 'true' | 'pred' | 'all' | None
+    normalize = getattr(config, "normalize", None)
 
     y_true = np.asarray([int(x) + 1 for x in true_labels])
     y_pred = np.asarray([int(x) + 1 for x in predicted_labels])
@@ -129,7 +129,7 @@ def plot_confusion_matrix(
     ax.tick_params(axis="x", rotation=45)
     ax.tick_params(axis="y", rotation=0)
     plt.tight_layout()
-    ax.grid(False)  # heatmaps look cleaner without overlaid grid
+    ax.grid(False)
     _save(
         fig,
         plot_local_path

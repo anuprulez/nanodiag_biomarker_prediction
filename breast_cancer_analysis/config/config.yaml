@@ -1,5 +1,5 @@
 SEED: 32
-n_edges: 14251734 #14251734 # 2000000
+n_edges: 14251734 #14251734 
 # all edges 14251734 with 0.33 correlation and 10000 negatives
 n_epo: 10
 k_folds: 5
@@ -14,12 +14,13 @@ keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
+dropout: 0.2
 metric: "correlation"
-model_type: "pna" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
+model_type: "pna" # pna, gcn, gsage, gatv2, gtran ### gcn2, appnet
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
-neighbour_predictions: [0, 1, 2, 3, 4] # positive, likely positive
+neighbour_predictions: [0, 1] # positive, likely positive
 masks_for_seed: 10
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced

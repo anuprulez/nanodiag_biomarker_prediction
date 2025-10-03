@@ -83,9 +83,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     explainer_epochs = config.explainer_epochs
     neighbour_predictions = config.neighbour_predictions
     explanation_nodes_ratio = config.explanation_nodes_ratio
-
-    x           = dataset.x
-    y           = dataset.y
+    y = dataset.y
     nodes_names = list(G.nodes)
 
     # Map likely positives (kept from your flow; we still only explain xai_node)
@@ -140,7 +138,6 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     for seed_run in range(masks_for_seed):
         print(f"seed run: {seed_run+1}/{masks_for_seed}")
         explainer = Explainer(
-            #model=model,
             model=wrapped,
             algorithm=GNNExplainer(epochs=explainer_epochs),
             explanation_type='model',
@@ -149,7 +146,6 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
             model_config=dict(
                 mode='multiclass_classification',
                 task_level='node',
-                #return_type='log_probs',
                 return_type='raw',
             ),
         )
@@ -159,31 +155,36 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
         node_mask[seed_run, :] = explanation.node_mask[0].detach().cpu().numpy()
 
     print(f"Node mask: {node_mask.shape}")
-    print(node_mask)
+    
     edge_mask /= float(masks_for_seed)
     mean_node_mask = np.mean(node_mask, axis=0)
-    print(mean_node_mask)
-    plot_feature_importance(data, node_mask, mean_node_mask, config)
-    print("Shape of edge mask (subgraph):", tuple(edge_mask.shape))
-    print("Shape of node mask (subgraph):", tuple(mean_node_mask.shape))
 
     # Rank candidates from SUBGRAPH
     n_sub_nodes = sub_data.num_nodes
     n_sub_edges = ei_sub.shape[1]
     num_nodes_target = max(1, int(round(n_sub_nodes * float(explanation_nodes_ratio))))
     print(f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}")
-    print(f"ei_sub: {ei_sub}")
 
     values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
     print("Top edges selected:", len(edge_sel_idx))
-    print("Top edges selected idx:", edge_sel_idx)
-    print("Top edges selected values:", values)
 
     # name mapping: local -> global -> name
     local_to_name = {loc: nodes_names[int(n_id_global[loc])] for loc in range(n_sub_nodes)}
-    print(f"local_to_name: {local_to_name}")
-    explained_name = xai_node
 
+    ranking = compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, predictions_sub, neighbour_predictions, num_nodes_target)
+    sorted_ranking = sorted(ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True)
+
+    # Plot neighbours and feature importances
+    s_rankings_draw = draw_xai_graph(G, sorted_ranking, idx_global, path)
+    plot_feature_importance(data, node_mask, mean_node_mask, xai_node, config)
+    return s_rankings_draw
+
+
+def compute_rankings(xai_node, values, edge_sel_idx, local_to_name, ei_sub, predictions_sub, neighbour_predictions, num_nodes_target):
+    """
+    Compute rankings of links over iterations of explanations
+    """
+    explained_name = xai_node
     candidates = {explained_name: {}}
     candidate_predictions = {}
     seen_genes = set()
@@ -224,10 +225,17 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
             ranking[cand_name][0] += 1
             ranking[cand_name][1] += float(score)
     print(f"Rankings: {ranking}")
-    sorted_ranking = sorted(ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True)
-    print(sorted_ranking)
+    return ranking
 
-    # Plot neighbours
+
+def draw_xai_graph(G, sorted_ranking, idx_global, path):
+    """
+    Draw neighbourhood of chosen node
+    """
+    new_nodes = []
+    legend_elements = []
+    node_color_map = {}
+
     s_rankings_draw = sorted_ranking[:config.show_num_neighbours]
     print(f"s_rankings_draw: {s_rankings_draw}, {len(s_rankings_draw)}")
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
@@ -236,16 +244,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print("Seed nodes in plotted nodes")
     print(df_seed_nodes)
     lst_seed_nodes = df_seed_nodes.iloc[:, 0].tolist()
-    draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_nodes)
-    return s_rankings_draw
 
-
-def draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_nodes):
-
-    # Draw using the original graph G
-    new_nodes = []
-    legend_elements = []
-    node_color_map = {}
     for enum, n in enumerate(G.nodes(data=True)):
         if n[0] not in s_rankings_draw: continue
         new_nodes.append(n[0])
@@ -271,6 +270,7 @@ def draw_xai_graph(G, s_rankings_draw, idx_global, lst_seed_nodes, df_plotted_no
     # save subgraph plot
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
     plt.close()
+    return s_rankings_draw
 
 
 def collect_pred_labels(config):
@@ -376,9 +376,9 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 766 #68 #7868
+    node_i = 8353 #68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
-    path = f"{plot_local_path}subgraph_{node_i}.pdf"
+    path = f"{plot_local_path}Explaination_subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=['x'], to_undirected=True)
     collect_pred_labels(config)

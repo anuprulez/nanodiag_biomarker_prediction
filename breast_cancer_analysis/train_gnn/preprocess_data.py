@@ -11,6 +11,16 @@ def merge_features(config):
     """
     print("Reading Nedbit and signals features...")
     df_nebit_features = utils.read_csv(config.p_nedbit_features, sep=",", header='infer', engine=None)
+    print("Original Nedbit features")
+    print(df_nebit_features)
+    # extract features according to provided column names
+    keep_feature_names = ["name"]
+    keep_feature_names.extend(config.keep_feature_names.split(","))
+    print(keep_feature_names)
+    df_nebit_features = df_nebit_features[keep_feature_names]
+    print("Selected Nedbit features")
+    print(df_nebit_features)
+
     feature_names = df_nebit_features["name"].tolist()
     df_merged_signals = utils.read_csv(config.p_combined_pos_neg_signals, sep="\t", engine="c", header='infer')
     dnam_signals = df_merged_signals[feature_names]
@@ -18,8 +28,12 @@ def merge_features(config):
     dnam_signals_transpose.to_csv(config.p_dnam_features)
     dnam_signals_transpose = dnam_signals_transpose.reset_index()
     dnam_features = dnam_signals_transpose.iloc[:, 1:]
+    print(f"DNA Meth features: {dnam_features.shape}")
+    print(f"Nebit features: {df_nebit_features.shape}")
     df_nebit_dnam_features = pd.concat([df_nebit_features, dnam_features], axis=1)
-    nebit_dnam_features_embeddings = df_nebit_dnam_features.iloc[:, 2:]
+    print(f"Combined features: {df_nebit_dnam_features.shape}")
+    # exclude name column
+    nebit_dnam_features_embeddings = df_nebit_dnam_features.iloc[:, 1:]
     print("Assigning labels...")
     df_apu_labels = utils.read_csv(config.p_out_gene_rankings, sep=" ", header=None)
     l_name = list()
@@ -34,6 +48,8 @@ def merge_features(config):
     labels = df_labels["labels"].tolist()
     df_nebit_dnam_features["labels"] = labels
     df_nebit_dnam_features.to_csv(config.p_nedbit_dnam_features, sep=",", index=None)
+    print(f"nebit_dnam_features_embeddings: {nebit_dnam_features_embeddings.shape}")
+    print(nebit_dnam_features_embeddings)
     return nebit_dnam_features_embeddings, labels
 
 

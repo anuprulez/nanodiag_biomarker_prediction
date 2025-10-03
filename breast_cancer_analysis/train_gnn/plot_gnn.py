@@ -248,7 +248,7 @@ def plot_features(features, labels, config, title, flag):
     sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=0.9, ax=ax, palette=config.color_palette)
     ax.set_title(title)
     ax.legend(title="Label", loc="best", frameon=True)
-    _save(fig, plot_local_path / f"umap_nedbit_dnam_features_{flag}_{config.model_type}.pdf", dpi)
+    _save(fig, plot_local_path / f"UMAP_nedbit_dnam_features_{flag}_{config.model_type}.pdf", dpi)
 
 
 def plot_node_embed(features, labels, pred_labels, config, feature_type):

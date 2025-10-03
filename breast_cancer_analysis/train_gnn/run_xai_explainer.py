@@ -1,8 +1,10 @@
 import pandas as pd
+import numpy as np
 import torch
 import torch.nn as nn
 from torch_geometric.explain import Explainer, GNNExplainer
 import matplotlib.pyplot as plt
+import seaborn as sns
 from matplotlib.lines import Line2D
 import networkx as nx
 from torch_geometric.utils import to_networkx
@@ -32,21 +34,43 @@ def load_model(model_path, data):
     )
     return model
 
-def plot_feature_importance(explanation, data, node_idx, config):
-    feat_imp = explanation.node_mask[node_idx].detach().cpu().numpy()
-    # Plot top-k features
-    k = min(100, len(feat_imp))
-    top_idx = feat_imp.argsort()[-k:][::-1]
-    feat_names = [f"f{i}" for i in range(data.num_node_features)]
-    print(feat_names)
-    plt.figure(figsize=(6, 5))
-    plt.barh([feat_names[i] for i in top_idx][::-1], feat_imp[top_idx][::-1])
-    plt.xlabel("Importance")
-    plt.title(f"Node {node_idx} — top-{k} feature importances")
+def plot_feature_importance(data, node_mask, mean_mask, xai_node, config):
+    num_features = data.num_node_features
+    # Assign groups
+    n_nedbit_features = len(config.keep_feature_names.split(","))
+    n_bc_features = 50
+    n_normal_features = 30
+    group_ids = np.zeros(num_features, dtype=int)
+    group_ids[:n_nedbit_features] = 0 # Nedbit features
+    group_ids[n_nedbit_features: n_nedbit_features + n_bc_features] = 1 # Breast cancer patients
+    group_ids[n_nedbit_features + n_bc_features:] = 2  # Normal patients
+    group_names = ["Nedbit", "Breast cancer", "Normal"]
+    # Collect distributions per group
+    distributions = []
+    labels = []
+    means = []
+    for g in range(3):
+        idx = np.where(group_ids == g)[0]
+        distributions.append(node_mask[:, idx].flatten()) # all node importances for features in group
+        labels.append(group_names[g])
+        means.append(mean_mask[idx].mean()) # mean across features in group
+
+    # Plot violin plot
+    plt.figure(figsize=(7, 5))
+    sns.violinplot(data=distributions)
+    plt.xticks(range(3), labels)
+    plt.ylabel("Feature importance")
+    plt.title("Feature importance distributions per group (Nedbit, BC, Normal)")
+
+    # Overlay means
+    for i, m in enumerate(means):
+        plt.scatter(i, m, color="red", marker="o", zorder=5, label="Mean" if i == 0 else "")
+
+    plt.legend()
     plt.tight_layout()
-    path = f"{config.p_plot}feature_importance_{node_idx}.pdf"
+    plt.grid(True)
+    path = f"{config.p_plot}Feature_importance_violin_node_{xai_node}.pdf"
     plt.savefig(path, format='pdf', bbox_inches='tight', dpi=300)
-    plt.show()
 
 
 def explain_candiate_gene(model, dataset, path, xai_node, G, config):
@@ -109,9 +133,9 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print("Predictions (subgraph) done!")
 
     # --------- Aggregate explainer masks on SUBGRAPH ----------
-    mean_mask = torch.zeros(ei_sub.shape[1], dtype=torch.float32)
+    edge_mask = torch.zeros(ei_sub.shape[1], dtype=torch.float32)
+    node_mask = np.zeros((masks_for_seed, x_sub.shape[1]))
     explanation = None
-    exp_model = lambda x, ei: model(x, ei)[0]  # returns logits only
     wrapped = LogitsOnly(model)
     for seed_run in range(masks_for_seed):
         print(f"seed run: {seed_run+1}/{masks_for_seed}")
@@ -130,11 +154,18 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
             ),
         )
         explanation = explainer(x_sub, ei_sub, index=idx_local)
-        mean_mask += explanation.edge_mask.detach().cpu()
+        edge_mask += explanation.edge_mask.detach().cpu()
+        print(explanation.node_mask.shape)
+        node_mask[seed_run, :] = explanation.node_mask[0].detach().cpu().numpy()
 
-    #plot_feature_importance(explanation, xai_node, config)
-    mean_mask /= float(masks_for_seed)
-    print("Shape of mean mask (subgraph):", tuple(mean_mask.shape))
+    print(f"Node mask: {node_mask.shape}")
+    print(node_mask)
+    edge_mask /= float(masks_for_seed)
+    mean_node_mask = np.mean(node_mask, axis=0)
+    print(mean_node_mask)
+    plot_feature_importance(data, node_mask, mean_node_mask, config)
+    print("Shape of edge mask (subgraph):", tuple(edge_mask.shape))
+    print("Shape of node mask (subgraph):", tuple(mean_node_mask.shape))
 
     # Rank candidates from SUBGRAPH
     n_sub_nodes = sub_data.num_nodes
@@ -143,7 +174,7 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
     print(f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}")
     print(f"ei_sub: {ei_sub}")
 
-    values, edge_sel_idx = torch.topk(mean_mask, k=n_sub_edges)
+    values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
     print("Top edges selected:", len(edge_sel_idx))
     print("Top edges selected idx:", edge_sel_idx)
     print("Top edges selected values:", values)
@@ -345,7 +376,7 @@ if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 2794 #68 #7868
+    node_i = 766 #68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     path = f"{plot_local_path}subgraph_{node_i}.pdf"
     print(f"Creating graph with all nodes ...")

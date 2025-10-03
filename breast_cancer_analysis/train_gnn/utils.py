@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.data import Data
-from sklearn.preprocessing import normalize, RobustScaler
+from sklearn.preprocessing import normalize, RobustScaler, MinMaxScaler
 from torch_geometric.utils import to_undirected, is_undirected, coalesce
 
 import pandas as pd
@@ -60,8 +60,8 @@ def filter_tr_genes(test_probe_ids, out_genes):
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating data ojbect for GNN...")
     p_data = config.p_data
-    sfeatures_ids = config.scale_features.split(",")
-    sfeatures_ids = [int(i) for i in sfeatures_ids]
+    sfeatures_names = config.keep_feature_names.split(",")
+    sfeatures_ids = [int(i) for i in range(len(sfeatures_names))]
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     labels = np.array(labels)
 
@@ -110,11 +110,9 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
 
     for col_idx in sfeatures_ids:
         # Apply normalization for train data
-        print("Scaling column: {}".format(col_idx))
         tr_feature_val = data.x[data.test_mask == 0][:, col_idx]
         tr_feature_val = tr_feature_val.reshape(-1, 1)
-        tr_transformer = RobustScaler().fit(tr_feature_val)
-        tr_norm_feature_val = tr_transformer.transform(tr_feature_val)
+        tr_norm_feature_val = MinMaxScaler().fit_transform(tr_feature_val)
         tr_norm_feature_val = torch.tensor(tr_norm_feature_val, dtype=torch.float)
         tr_norm_feature_val = tr_norm_feature_val.squeeze()
         tr_mask = data.test_mask == 0
@@ -122,8 +120,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
         # Apply normalization for test data separately to avoid data leakage
         te_feature_val = data.x[data.test_mask == 1][:, col_idx]
         te_feature_val = te_feature_val.reshape(-1, 1)
-        te_transformer = RobustScaler().fit(te_feature_val)
-        te_norm_feature_val = te_transformer.transform(te_feature_val)
+        te_norm_feature_val = MinMaxScaler().fit_transform(te_feature_val)
         te_norm_feature_val = torch.tensor(te_norm_feature_val, dtype=torch.float)
         te_norm_feature_val = te_norm_feature_val.squeeze()
         te_mask = data.test_mask == 1

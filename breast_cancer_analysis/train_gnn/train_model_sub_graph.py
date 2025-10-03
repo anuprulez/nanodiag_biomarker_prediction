@@ -309,5 +309,7 @@ def train_gnn_model(config):
 
     print(f"All metrics: {metrics}")
     utils.save_accuracy_scores(metrics, f"{config.p_plot}all_metrics_{config.model_type}.json")
+    print("Plotting UMAP plots for final embeddings")
     plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, config, "PNAConv4")
     plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, config, "BatchNorm1d")
+    print("Finished.")

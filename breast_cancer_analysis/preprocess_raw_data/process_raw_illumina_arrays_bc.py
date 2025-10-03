@@ -23,8 +23,8 @@ from omegaconf.omegaconf import OmegaConf
 
 # ----------------------------- Helper Functions ------------------------------
 
-def extract_preprocessed_data(config):
 
+def extract_preprocessed_data(config):
     # Your Zenodo link
     url = config.p_raw_data
     output_dir = config.p_base
@@ -57,6 +57,7 @@ def extract_preprocessed_data(config):
     # Optionally remove the zip after extraction
     os.remove(zip_path)
 
+
 def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
     """
     Expand a mapper with columns: ["probeID", "UCSC_RefGene_Name"] where names
@@ -65,7 +66,9 @@ def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
     Returns DataFrame with columns ["ID_REF", "Genes"].
     """
     if not {"probeID", "UCSC_RefGene_Name"} <= set(probe_mapper.columns):
-        raise ValueError("probe_mapper must contain 'probeID' and 'UCSC_RefGene_Name' columns.")
+        raise ValueError(
+            "probe_mapper must contain 'probeID' and 'UCSC_RefGene_Name' columns."
+        )
 
     probe_mapper = probe_mapper.dropna(subset=["probeID", "UCSC_RefGene_Name"])
     expanded_probe_ids: List[str] = []
@@ -129,8 +132,8 @@ def build_correlation_edges(
     # corrcoef expects rows as variables when input is 2D array; transpose:
     corr = np.corrcoef(features_df.T)
     corr_df = pd.DataFrame(corr, index=feature_names, columns=feature_names)
-    
-    mask = (corr_df > threshold)
+
+    mask = corr_df > threshold
     np.fill_diagonal(mask.values, False)  # remove self-relations
 
     in_nodes, out_nodes = [], []
@@ -171,6 +174,7 @@ def extract_seed_features(
 
 # --------------------------------- Pipeline ----------------------------------
 
+
 def process_arrays(
     config,
 ) -> None:
@@ -197,7 +201,9 @@ def process_arrays(
 
     # Merge probe-gene map with array signals
     print("Mapping genes and probes...")
-    df_probe_signals = df_probe_gene_mapper.merge(df_arrays, how="inner", left_on="ID_REF", right_on="ID_REF")
+    df_probe_signals = df_probe_gene_mapper.merge(
+        df_arrays, how="inner", left_on="ID_REF", right_on="ID_REF"
+    )
     print("Probe signals head:\n%s", df_probe_signals.head())
 
     # ------------------------- Platform / X,Y filtering ------------------------
@@ -205,18 +211,24 @@ def process_arrays(
     df_platform = pd.read_csv(config.p_platform, sep=",")
     if not {"ID", "CHR"} <= set(df_platform.columns):
         raise ValueError("Platform file must contain 'ID' and 'CHR' columns.")
-    xy_ids = df_platform.loc[df_platform["CHR"].isin(["X", "Y"]), "ID"].astype(str).tolist()
+    xy_ids = (
+        df_platform.loc[df_platform["CHR"].isin(["X", "Y"]), "ID"].astype(str).tolist()
+    )
 
     # ------------------------------ SNP filtering ------------------------------
     print("Filtering SNP probes: %s", config.p_snp_probes)
-    snp_probes = pd.read_csv(config.p_snp_probes, sep=",", header=None)[0].astype(str).tolist()
+    snp_probes = (
+        pd.read_csv(config.p_snp_probes, sep=",", header=None)[0].astype(str).tolist()
+    )
     print("Loaded %d SNP probes", len(snp_probes))
 
     df_no_snp_xy = filter_snps_xy(df_probe_signals, snp_probes, xy_ids)
 
     # ----------------------------- Feature building ----------------------------
     info_cols = df_no_snp_xy[["ID_REF", "Genes"]].copy()
-    feature_names = (df_no_snp_xy["ID_REF"].astype(str) + "_" + df_no_snp_xy["Genes"].astype(str)).tolist()
+    feature_names = (
+        df_no_snp_xy["ID_REF"].astype(str) + "_" + df_no_snp_xy["Genes"].astype(str)
+    ).tolist()
 
     # Signals-only matrix (samples x features)
     data_only = df_no_snp_xy.iloc[:, 2:].reset_index(drop=True)
@@ -229,12 +241,16 @@ def process_arrays(
     print("Loading seeds: %s", config.p_seeds)
     df_seeds = pd.read_csv(config.p_seeds, sep="\t")
     # P-value and chromosome filters
-    df_seeds = df_seeds.loc[(df_seeds["P.Value"] <= config.cutoff_pval) & (df_seeds["CHR"] != "X")].copy()
+    df_seeds = df_seeds.loc[
+        (df_seeds["P.Value"] <= config.cutoff_pval) & (df_seeds["CHR"] != "X")
+    ].copy()
     print("Seeds after P.val filtering:\n%s", df_seeds)
 
     # Positive features: any feature whose probe part is in seeds
     all_seed_probes = set(df_seeds["probeID"].astype(str).tolist())
-    positive_features = [c for c in df_merged.columns if c.split("_", 1)[0] in all_seed_probes]
+    positive_features = [
+        c for c in df_merged.columns if c.split("_", 1)[0] in all_seed_probes
+    ]
     print("Positive features selected: %d", len(positive_features))
     df_pos = df_merged[positive_features]
 
@@ -247,7 +263,10 @@ def process_arrays(
     df_neg_pool = df_merged[negative_pool]
 
     # Select highly variable negatives (up to size_negative)
-    print("Selecting highly variable negative features (target n=%d)...", config.size_negative)
+    print(
+        "Selecting highly variable negative features (target n=%d)...",
+        config.size_negative,
+    )
     df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
     print("Selected %d negative features.", df_neg_hv.shape[1])
 
@@ -255,7 +274,10 @@ def process_arrays(
     combined = pd.concat([df_pos, df_neg_hv], axis=1)  # samples x features
     combined.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
 
-    print("Computing feature–feature correlations (threshold=%.2f)...", config.corr_threshold)
+    print(
+        "Computing feature–feature correlations (threshold=%.2f)...",
+        config.corr_threshold,
+    )
     edges, corr_df = build_correlation_edges(combined, threshold=config.corr_threshold)
     print(corr_df.head())
 
@@ -275,7 +297,7 @@ def create_network_gene_ids(ppi_path, links_path):
     gene = {}
     ngene = 0
     mat = {}
-    with open(ppi_path, 'r') as flink, open(links_path, 'w') as fout_link:
+    with open(ppi_path, "r") as flink, open(links_path, "w") as fout_link:
         for line in flink:
             node1, node2 = line.strip().split()
             if node1 != node2:
@@ -285,10 +307,10 @@ def create_network_gene_ids(ppi_path, links_path):
                 if node2 not in gene:
                     gene[node2] = ngene
                     ngene += 1
-            
+
                 id1 = gene[node1]
                 id2 = gene[node2]
-            
+
                 if (id1, id2) not in mat and (id2, id1) not in mat:
                     mat[(id1, id2)] = mat[(id2, id1)] = 1
                     fout_link.write(f"{id1} {id2}\n")
@@ -296,13 +318,12 @@ def create_network_gene_ids(ppi_path, links_path):
 
 
 def mark_seed_genes(seed_genes_path, genes_path, gene):
-    
     score_seed_gene = {}
     max_score = 0
     nseedgene = 0
     notfoundseedgene = 0
 
-    with open(seed_genes_path, 'r') as fin:
+    with open(seed_genes_path, "r") as fin:
         for line in fin:
             name_gene, score = line.strip().split()
             score = float(score)
@@ -318,9 +339,9 @@ def mark_seed_genes(seed_genes_path, genes_path, gene):
     print(f"{notfoundseedgene} seed genes not found")
     print(f"{nseedgene} seed genes present")
     print(f"Maximum score {max_score}")
-    
-    #out_gene = "data/output/out_gene"
-    with open(genes_path, 'w') as fout_gene:
+
+    # out_gene = "data/output/out_gene"
+    with open(genes_path, "w") as fout_gene:
         for name_gene, gene_id in gene.items():
             if name_gene in score_seed_gene:
                 adapt_score = max_score - score_seed_gene[name_gene]
@@ -332,35 +353,59 @@ def mark_seed_genes(seed_genes_path, genes_path, gene):
 def calculate_features(links_data_path, genes_data_path, nedbit_path):
     # nedbit-features-calculator out_links out_genes nedbit_features
     # nedbit-features-calculator
-    
+
     print("calculating nedbit features ...")
     print(links_data_path, genes_data_path, nedbit_path)
-    result = subprocess.run(['nedbit-features-calculator', links_data_path, genes_data_path, nedbit_path], capture_output=True, text=True)
+    result = subprocess.run(
+        ["nedbit-features-calculator", links_data_path, genes_data_path, nedbit_path],
+        capture_output=True,
+        text=True,
+    )
     print(result.stdout)
     if result.stderr:
         print("Error:", result.stderr)
 
 
-def assign_initial_labels(nedbit_path, header, output_gene_ranking_path, q1=0.05, q2=0.2):
+def assign_initial_labels(
+    nedbit_path, header, output_gene_ranking_path, q1=0.05, q2=0.2
+):
     # apu_label_propagation nedbit_features HEADER_PRESENCE output_gene_ranking 0.05 0.2
     # apu-label-propagation
     print("propagating labels ...")
-    result = subprocess.run(['apu-label-propagation', nedbit_path, header, output_gene_ranking_path, q1, q2], capture_output=True, text=True)
+    result = subprocess.run(
+        [
+            "apu-label-propagation",
+            nedbit_path,
+            header,
+            output_gene_ranking_path,
+            q1,
+            q2,
+        ],
+        capture_output=True,
+        text=True,
+    )
     print(result.stdout)
     if result.stderr:
         print("Error:", result.stderr)
 
+
 # ----------------------------------  Main  -----------------------------------
 
+
 def main() -> None:
-    
     config = OmegaConf.load("../config/config.yaml")
     extract_preprocessed_data(config) if config.download_raw_data else None
     process_arrays(config)
     genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
     mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
     calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
-    assign_initial_labels(config.p_nedbit_features, str(config.nedbit_header), config.p_out_gene_rankings, str(config.quantile_1), str(config.quantile_2))
+    assign_initial_labels(
+        config.p_nedbit_features,
+        str(config.nedbit_header),
+        config.p_out_gene_rankings,
+        str(config.quantile_1),
+        str(config.quantile_2),
+    )
 
 
 if __name__ == "__main__":

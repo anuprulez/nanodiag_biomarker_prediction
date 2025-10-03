@@ -1,21 +1,28 @@
 import pandas as pd
-import numpy as np
 import torch
+import torch.nn as nn
 from torch_geometric.explain import Explainer, GNNExplainer
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 import networkx as nx
-from torch_geometric.utils import to_networkx, k_hop_subgraph
+from torch_geometric.utils import to_networkx
 from torch_geometric.loader import NeighborLoader
-from tqdm import tqdm
-import math
-import copy
-from typing import Optional, Dict, Tuple, List
 
 from omegaconf.omegaconf import OmegaConf
 
 import gnn_network
 
+
+class LogitsOnly(nn.Module):
+    def __init__(self, base):
+        super().__init__()
+        self.base = base  # your PNA model that returns (logits, penultimate)
+    def forward(self, *args, **kwargs):
+        out = self.base(*args, **kwargs)
+        # handle either tuple (logits, penult) or plain logits
+        if isinstance(out, tuple):
+            out = out[0]
+        return out
 
 def load_model(model_path, data):
     device = 'cpu'
@@ -97,17 +104,20 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
 
     model.eval()
     with torch.no_grad():
-        out_sub = model(x_sub, ei_sub)
+        out_sub, *_ = model(x_sub, ei_sub)
         predictions_sub = out_sub.argmax(dim=1).cpu()  # local predictions
     print("Predictions (subgraph) done!")
 
     # --------- Aggregate explainer masks on SUBGRAPH ----------
     mean_mask = torch.zeros(ei_sub.shape[1], dtype=torch.float32)
     explanation = None
+    exp_model = lambda x, ei: model(x, ei)[0]  # returns logits only
+    wrapped = LogitsOnly(model)
     for seed_run in range(masks_for_seed):
         print(f"seed run: {seed_run+1}/{masks_for_seed}")
         explainer = Explainer(
-            model=model,
+            #model=model,
+            model=wrapped,
             algorithm=GNNExplainer(epochs=explainer_epochs),
             explanation_type='model',
             node_mask_type='attributes',
@@ -115,7 +125,8 @@ def explain_candiate_gene(model, dataset, path, xai_node, G, config):
             model_config=dict(
                 mode='multiclass_classification',
                 task_level='node',
-                return_type='log_probs',
+                #return_type='log_probs',
+                return_type='raw',
             ),
         )
         explanation = explainer(x_sub, ei_sub, index=idx_local)

@@ -129,9 +129,6 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
         te_mask = data.test_mask == 1
         data.x[te_mask, col_idx] = te_norm_feature_val
 
-    train_x = data.x[data.test_mask == 0]
-    test_x = data.x[data.test_mask == 1]
-
     # save normalized data
     torch.save(data, config.p_torch_data)
     preprocessed_data = data.x.detach()
@@ -139,7 +136,3 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     df_preprocessed_data = pd.DataFrame(preprocessed_data.numpy())
     df_preprocessed_data["labels"] = preprocessed_data_labels.numpy()
     df_preprocessed_data.to_csv(config.p_nedbit_dnam_features_norm, sep=",", index=None)
-
-    #print("Plotting UMAP using raw features")
-    #plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
-    #plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")

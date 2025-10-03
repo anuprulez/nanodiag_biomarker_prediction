@@ -263,7 +263,7 @@ def plot_node_embed(features, labels, pred_labels, config, feature_type):
     dpi = getattr(config, "dpi", 200)
 
     labels = [int(item) for item in labels]
-    # [int(item) + 1 for item in labels]
+
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,

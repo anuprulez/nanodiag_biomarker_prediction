@@ -233,6 +233,10 @@ def train_gnn_model(config):
     data.val_mask = create_masks(mapped_f_name, val_node_ids)
     data.test_mask  = create_masks(mapped_f_name, te_node_ids)
     print(f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}")
+    print("Plotting UMAP using raw features")
+    test_x = data.x[data.test_mask == 1]
+    test_y = data.y[data.test_mask == 1]
+    plot_gnn.plot_features(test_x, test_y, config, "UMAP of raw NedBit + DNA Methylation features", "test_before_GNN")
 
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
     val_ids_epo = list()

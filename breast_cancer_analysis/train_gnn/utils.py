@@ -128,7 +128,7 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
         te_norm_feature_val = te_norm_feature_val.squeeze()
         te_mask = data.test_mask == 1
         data.x[te_mask, col_idx] = te_norm_feature_val
-        
+
     train_x = data.x[data.test_mask == 0]
     test_x = data.x[data.test_mask == 1]
 

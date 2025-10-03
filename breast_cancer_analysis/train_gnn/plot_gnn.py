@@ -13,7 +13,6 @@ from sklearn.metrics import (
     average_precision_score,
     confusion_matrix,
 )
-
 from sklearn.preprocessing import label_binarize
 
 # Global styling (adjust as you like; calls remain the same)
@@ -24,6 +23,7 @@ def _as_path(p) -> Path:
     p = Path(p)
     p.mkdir(parents=True, exist_ok=True)
     return p
+
 
 def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -251,7 +251,7 @@ def plot_features(features, labels, config, title, flag):
     _save(fig, plot_local_path / f"umap_nedbit_dnam_features_{flag}_{config.model_type}.pdf", dpi)
 
 
-def plot_node_embed(features, labels, config, feature_type):
+def plot_node_embed(features, labels, pred_labels, config, feature_type):
     """
     UMAP of node embeddings
     """
@@ -262,7 +262,8 @@ def plot_node_embed(features, labels, config, feature_type):
     umap_random_state = getattr(config, "umap_random_state", 42)
     dpi = getattr(config, "dpi", 200)
 
-    labels = [int(item) + 1 for item in labels]
+    labels = [int(item) for item in labels]
+    # [int(item) + 1 for item in labels]
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -274,7 +275,6 @@ def plot_node_embed(features, labels, config, feature_type):
 
     fig, ax = plt.subplots(figsize=(8, 6))
     sns.scatterplot(x="UMAP1", y="UMAP2", hue="Label", data=df, s=50, alpha=1.0, ax=ax, palette=config.color_palette)
-    ax.set_title(f"UMAP Visualization of node embeddings from last {feature_type} layer")
+    ax.set_title(f"Embeddings UMAP of last {feature_type} layer")
     ax.legend(title="Class", loc="best", frameon=True)
-    _save(fig, plot_local_path / f"umap_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{config.model_type}.pdf", dpi)
-
+    _save(fig, plot_local_path / f"UMAP_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{config.model_type}.pdf", dpi)

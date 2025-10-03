@@ -19,36 +19,11 @@ import utils
 detach = utils.detach_from_gpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    
-# Define the hook function
-def hook_fn(module, input, output, store):
-    store[module.__class__.__name__] = output.detach()
-
-
-def make_hook(name, store):
-    def _hook(module, inp, out):
-        store[name] = out.detach()
-    return _hook
-
 
 def create_masks(mapped_node_ids: pd.Series, mask_list):
     # True where the SERIES VALUE (node id/name) is in the mask list
     mask = mapped_node_ids.isin(mask_list).to_numpy()
     return torch.tensor(mask, dtype=torch.bool)
-
-
-def train(data, optimizer, model, criterion):
-    # Clear gradients
-    optimizer.zero_grad()
-    # forward pass
-    out = model(data.x, data.edge_index)
-    # compute error using training mask
-    loss = criterion(out[data.batch_train_mask], data.y[data.batch_train_mask])
-    # compute gradients
-    loss.backward()
-    # optimize weights
-    optimizer.step()
-    return loss
 
 
 def predict_data_val(model, data):
@@ -62,60 +37,6 @@ def predict_data_val(model, data):
     val_correct = pred[data.val_mask] == data.y[data.val_mask]
     val_acc = int(val_correct.sum()) / float(int(data.val_mask.sum()))
     return val_acc
-
-
-def predict_data_test(model, data):
-    model.eval()
-    model = model.cuda()
-    out = model(data.x, data.edge_index)
-    pred = out.argmax(dim=1)
-    probs = F.softmax(out, dim=1)
-    te_probs = detach(probs[data.test_mask])
-    pred_max_probs = probs[data.test_mask].max(dim=1).values
-    pred_labels = pred[data.test_mask]
-    true_labels = data.y[data.test_mask]
-    test_correct = pred_labels == true_labels
-    test_acc = int(test_correct.sum()) / float(int(data.test_mask.sum()))
-    return test_acc, detach(pred_labels), detach(true_labels), pred, te_probs, detach(pred_max_probs)
-
-
-def extract_node_embeddings(model, data, model_activation, config):
-    conv_name = "pnaconv4"
-    activation_name = "batch_norm4"
-    print("Extracting node embeddings")
-    conv4_activation = model_activation["pnaconv4"]
-    bn4_activation   = model_activation["batch_norm4"]
-    print(f"conv4_activation: {conv4_activation.shape}")
-    print(f"bn4_activation: {bn4_activation.shape}")
-
-    pred_embeddings_conv4 = conv4_activation[data.test_mask]
-    pred_embeddings_batch_norm4 = bn4_activation[data.test_mask]
-    true_labels = data.y[data.test_mask]
-    pred_embeddings_conv4 = detach(pred_embeddings_conv4)
-    pred_embeddings_batch_norm4 = detach(pred_embeddings_batch_norm4)
-    true_labels = detach(true_labels)
-    torch.save(pred_embeddings_conv4, config.p_torch_embed)
-    torch.save(pred_embeddings_batch_norm4, config.p_torch_embed_batch_norm)
-    torch.save(true_labels, config.p_true_labels)
-    print("Plot UMAP embeddings")
-    plot_gnn.plot_node_embed(pred_embeddings_conv4, true_labels, config, conv_name)
-    plot_gnn.plot_node_embed(pred_embeddings_batch_norm4, true_labels, config, activation_name)
-
-
-def save_model(model, config):
-    model_local_path = config.p_model
-    model_path = f"{model_local_path}/trained_model_edges_{config.n_edges}_epo_{config.n_epo}.ptm"
-    torch.save(model.state_dict(), model_path)
-    return model_path
-
-
-def load_model(config, model_path, data):
-    model = gnn_network.GPNA(config, data)
-    print(model)
-    model.load_state_dict(
-        torch.load(model_path, map_location=device)
-    )
-    return model
 
 
 def ensure_bool(m):
@@ -170,7 +91,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
         batch = batch.to(device, non_blocking=True)
         #print(f"Batch tr: {tr_idx}, {batch.x.shape}, {batch.edge_index.shape}")
         optimizer.zero_grad(set_to_none=True)
-        out = model(batch.x, batch.edge_index)
+        out, *_ = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size # first seed_n nodes = seeds
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
@@ -185,6 +106,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
     avg_acc = total_correct / max(1, total_count)
     return avg_loss, avg_acc
 
+
 @torch.no_grad()
 def val_evaluate(loader, model, criterion, device):
     model.eval()
@@ -193,7 +115,7 @@ def val_evaluate(loader, model, criterion, device):
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[:batch.batch_size])
-        out = model(batch.x, batch.edge_index)
+        out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
@@ -212,13 +134,16 @@ def val_evaluate(loader, model, criterion, device):
 def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
-    pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids = [], [], [], [], []
+    pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids, \
+        emb_pna4, emb_bn4 = [], [], [], [], [], [], []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
-        out = model(batch.x, batch.edge_index)
+        out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
         logits = out[:seed_n]
+        emb_pna4.extend(detach(out_pna4[:seed_n]))
+        emb_bn4.extend(detach(out_bn4[:seed_n]))
         batch_prob = F.softmax(logits, dim=1)
         batch_max_prob = batch_prob.max(dim=1).values
         targets = batch.y[:seed_n].long()
@@ -235,36 +160,7 @@ def test_evaluate(loader, model, criterion, device):
 
     avg_loss = total_loss / max(1, total_count)
     avg_acc = total_correct / max(1, total_count)
-    return avg_loss, avg_acc, pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids
-
-
-def setup_hooks(model, data, config):
-    store = {}
-    hooks = [
-        model.pnaconv4.register_forward_hook(make_hook("pnaconv4", store)),
-        model.batch_norm4.register_forward_hook(make_hook("batch_norm4", store)),
-    ]
-
-    layer_pnaconv4 = model.pnaconv4
-    layer_pnaconv4.register_forward_hook(hook_fn)
-
-    layer_batch_norm4 = model.batch_norm4
-    layer_batch_norm4.register_forward_hook(hook_fn)
-
-    layer_pnaconv4.register_forward_hook(make_hook("pnaconv4"))
-    layer_batch_norm4.register_forward_hook(make_hook("batch_norm4"))
-
-    train_x = data.x[data.train_mask == 1]
-    train_y = data.y[data.train_mask == 1]
-
-    test_x = data.x[data.test_mask == 1]
-    test_y = data.y[data.test_mask == 1]
-
-    #plot_gnn.plot_features(train_x, train_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "train_before_GNN")
-    #plot_gnn.plot_features(test_x, test_y, config, "UMAP Visualization of NedBit + DNA Methylation features", "test_before_GNN")
-
-    print(f"model_activation: {store}")
-    return store
+    return avg_loss, avg_acc, pred_labels, true_labels, all_probs, best_class_pred_probs, test_ids, emb_pna4, emb_bn4
 
 
 def choose_model(config, data):
@@ -286,7 +182,6 @@ def choose_model(config, data):
         model = gnn_network.GraphTransformer(config)
     else:
         model = gnn_network.GPNA(config, data)
-        
     return model
 
 
@@ -349,7 +244,7 @@ def train_gnn_model(config):
         print(f"[Epoch {epoch:03d} / {n_epo:03d}] "
                   f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
                   f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}")
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
+        te_loss, te_acc, *_  = test_evaluate(test_loader, model, criterion, device)
         print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -377,7 +272,7 @@ def train_gnn_model(config):
     if best_state is not None:
         model.load_state_dict(best_state)
     # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
-    final_test_loss, final_test_acc, pred_labels, true_labels, all_class_pred_probs, best_class_pred_probs, test_ids = \
+    final_test_loss, final_test_acc, pred_labels, true_labels, all_class_pred_probs, best_class_pred_probs, test_ids, embs_pna4, embs_bn4 = \
         test_evaluate(test_loader, model, criterion, device)
 
     # Save predictions, true labels, model
@@ -409,5 +304,6 @@ def train_gnn_model(config):
     }
 
     print(f"All metrics: {metrics}")
- 
     utils.save_accuracy_scores(metrics, f"{config.p_plot}all_metrics_{config.model_type}.json")
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, config, "BatchNorm1d")

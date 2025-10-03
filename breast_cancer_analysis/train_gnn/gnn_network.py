@@ -52,10 +52,10 @@ class GPNA(torch.nn.Module):
         h = self.batch_norm2(F.relu(h))
         h = self.pnaconv3(h, edge_index)
         h = self.batch_norm3(F.relu(h))
-        h = self.pnaconv4(h, edge_index)
-        h = self.batch_norm4(F.relu(h))
-        out = self.classifier(h)
-        return out
+        out_pnaconv4 = self.pnaconv4(h, edge_index)
+        out_batch_norm4 = self.batch_norm4(F.relu(out_pnaconv4))
+        out = self.classifier(out_batch_norm4)
+        return out, out_pnaconv4, out_batch_norm4
 
 
 class GCN(torch.nn.Module):

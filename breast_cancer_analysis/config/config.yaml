@@ -1,8 +1,8 @@
 SEED: 32
-n_edges: 10000 #14251734 # 2000000
+n_edges: 14251734 #14251734 # 2000000
 # all edges 1576516 old; new 14251734 (of of this, 2M nodes work) with 0.33 correlation and 10000 negatives
 # 7508571 nodes with 0.5 correlation and 10000 negatives
-n_epo: 2
+n_epo: 20
 k_folds: 5
 batch_size: 32 #128
 num_classes: 5
@@ -15,7 +15,7 @@ n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
 metric: "correlation"
-model_type: "gtran" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
+model_type: "pna" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15,10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15,10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0

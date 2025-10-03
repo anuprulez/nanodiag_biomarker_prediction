@@ -111,7 +111,6 @@ def explain_candiate_gene(model, dataset, xai_node, G, config):
         )
         explanation = explainer(x_sub, ei_sub, index=idx_local)
         edge_mask += explanation.edge_mask.detach().cpu()
-        print(explanation.node_mask.shape)
         node_mask[seed_run, :] = explanation.node_mask[0].detach().cpu().numpy()
 
     print(f"Node mask: {node_mask.shape}")
@@ -151,7 +150,10 @@ def explain_candiate_gene(model, dataset, xai_node, G, config):
     )
 
     # Plot neighbours and feature importances
-    s_rankings_draw = plot_gnn.draw_xai_graph(G, sorted_ranking, idx_global, config)
+    print("Drawing neighbourhood with local G")
+    s_rankings_draw = plot_gnn.draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, local_to_name, config)
+    print("Drawing neighbourhood with global G")
+    plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, config)
     plot_gnn.plot_feature_importance(data, node_mask, mean_node_mask, xai_node, config)
     return s_rankings_draw
 
@@ -340,10 +342,11 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data)
-    node_i = 8353 # 68 #7868
+    node_i = 7615 #7478 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    # Collect dataframes for different axes
     collect_pred_labels(config)
     p_nodes = explain_candiate_gene(model, data, node_i, G, config)
     get_node_names_links(p_nodes, node_i, config)

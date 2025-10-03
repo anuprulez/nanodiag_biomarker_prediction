@@ -267,7 +267,7 @@ def train_gnn_model(config):
         test_x,
         test_y,
         config,
-        "UMAP of raw features (NedBit + DNA Methylation)",
+        f"UMAP of raw features (NedBit + DNA Methylation): {config.model_type}",
         "test_before_GNN",
     )
 
@@ -308,7 +308,7 @@ def train_gnn_model(config):
     print("Plot and report all training epochs")
 
     plot_gnn.plot_loss_acc(
-        n_epo, tr_loss_epo, te_loss_epo, val_acc_epo, te_acc_epo, config
+        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, config
     )
     print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")

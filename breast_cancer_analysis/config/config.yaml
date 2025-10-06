@@ -1,8 +1,7 @@
 SEED: 32
-n_edges: 14251734 #14251734
+n_edges: 1000 #14251734
 # all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 15
-k_folds: 5
+n_epo: 1
 batch_size: 32 #128
 num_classes: 5
 gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
@@ -14,14 +13,18 @@ keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 n_neighbors: 20
 min_dist: 0.8
 cutoff_pval: 5e-2
-dropout: 0.2
+dropout: 0.2 # Best values: GraphTransformer (d=0.2)
+heads: 4
+class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 metric: "correlation"
-model_type: "gsage" # pna, gcn, gsage, gatv2, gtran ### gcn2, appnet
+dpi: 300
+model_type: "GraphTransformer" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+best_trained_model: ${model_type} # Find the best trained model via training and then set it
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 10
+masks_for_seed: 3
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 11
@@ -73,7 +76,7 @@ quantile_2: 0.2 # quantile threshold 2
 download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
-download_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1
 # https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1 c_0.33_te_10000
 # https://zenodo.org/records/17199872/files/bc_preprocessed_datasets_to_train_c_0.5_te_10000.zip?download=1

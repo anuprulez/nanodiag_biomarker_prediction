@@ -14,6 +14,7 @@ import gnn_network
 import plot_gnn
 import utils
 
+
 detach = utils.detach_from_gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -68,7 +69,7 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, device, model_type):
+def train_one_epoch(train_loader, model, optimizer, criterion, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
@@ -93,7 +94,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device, model_typ
 
 
 @torch.no_grad()
-def val_evaluate(loader, model, criterion, device, model_type):
+def val_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
@@ -116,7 +117,7 @@ def val_evaluate(loader, model, criterion, device, model_type):
 
 
 @torch.no_grad()
-def test_evaluate(loader, model, criterion, device, model_type):
+def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     (
@@ -165,23 +166,7 @@ def test_evaluate(loader, model, criterion, device, model_type):
     )
 
 
-def choose_model(config, data):
-    if config.model_type == "pna":
-        model = gnn_network.GPNA(config, data)
-    elif config.model_type == "gcn":
-        model = gnn_network.GCN(config)
-    elif config.model_type == "gsage":
-        model = gnn_network.GraphSAGE(config)
-    elif config.model_type == "gatv2":
-        model = gnn_network.GATv2(config)
-    elif config.model_type == "gtran":
-        model = gnn_network.GraphTransformer(config)
-    else:
-        model = gnn_network.GPNA(config, data)
-    return model
-
-
-def train_gnn_model(config):
+def train_gnn_model(config, chosen_model):
     """
     Create network architecture and assign loss, optimizers ...
     """
@@ -206,8 +191,10 @@ def train_gnn_model(config):
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
-    print(f"Initialize model: {config.model_type}")
-    model = choose_model(config, data)
+    print(f"Initialize model: {chosen_model}")
+    model = utils.choose_model(config, data, chosen_model)
+    for name, module in model.named_modules():
+        print(f"{name}: {module}")
     model = model.cuda()
 
     # loss fn
@@ -254,8 +241,9 @@ def train_gnn_model(config):
     plot_gnn.plot_features(
         test_x,
         test_y,
+        chosen_model,
         config,
-        f"UMAP of raw features (NedBit + DNA Methylation): {config.model_type}",
+        f"UMAP of raw features (NedBit + DNA Methylation): {chosen_model}",
         "test_before_GNN",
     )
 
@@ -264,10 +252,10 @@ def train_gnn_model(config):
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, device, config.model_type
+            train_loader, model, optimizer, criterion, device
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
-            val_loader, model, criterion, device, config.model_type
+            val_loader, model, criterion, device
         )
         val_ids_epo.extend(used_val_ids)
         print(
@@ -275,7 +263,7 @@ def train_gnn_model(config):
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device, config.model_type)
+        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
         print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -297,7 +285,7 @@ def train_gnn_model(config):
     print("Plot and report all training epochs")
 
     plot_gnn.plot_loss_acc(
-        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, config
+        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, chosen_model, config
     )
     print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
@@ -319,7 +307,7 @@ def train_gnn_model(config):
         test_ids,
         embs_pna4,
         embs_bn4,
-    ) = test_evaluate(test_loader, model, criterion, device, config.model_type)
+    ) = test_evaluate(test_loader, model, criterion, device)
 
     # Save predictions, true labels, model
     torch.save(test_ids, config.p_test_loader_ids)
@@ -353,11 +341,13 @@ def train_gnn_model(config):
 
     print(f"All metrics: {metrics}")
     utils.save_accuracy_scores(
-        metrics, f"{config.p_plot}all_metrics_{config.model_type}.json"
+        metrics, f"{config.p_plot}all_metrics_{chosen_model}.json"
     )
     print("Plotting metrics and UMAP plots for final embeddings")
-    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, config, "PNAConv4")
-    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, config, "BatchNorm1d")
-    plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, config)
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d")
+    plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
+    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
     print("Finished.")

@@ -11,6 +11,7 @@ from omegaconf.omegaconf import OmegaConf
 
 import gnn_network
 import plot_gnn
+import utils
 
 
 class LogitsOnly(nn.Module):
@@ -28,12 +29,13 @@ class LogitsOnly(nn.Module):
 
 def load_model(model_path, data):
     device = "cpu"
+    model = utils.choose_model(config, data, chosen_model)
     model = gnn_network.GPNA(config, data)
     model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
 
-def explain_candiate_gene(model, dataset, xai_node, G, config):
+def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     """
     Explain xai_node using a sampled neighborhood from NeighborLoader (no full-graph ops).
     """
@@ -151,10 +153,10 @@ def explain_candiate_gene(model, dataset, xai_node, G, config):
 
     # Plot neighbours and feature importances
     print("Drawing neighbourhood with local G")
-    s_rankings_draw = plot_gnn.draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, local_to_name, config)
+    s_rankings_draw = plot_gnn.draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, local_to_name, chosen_model, config)
     print("Drawing neighbourhood with global G")
-    plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, config)
-    plot_gnn.plot_feature_importance(data, node_mask, mean_node_mask, xai_node, config)
+    plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config)
+    plot_gnn.plot_feature_importance(data, node_mask, mean_node_mask, xai_node, chosen_model, config)
     return s_rankings_draw
 
 
@@ -341,12 +343,14 @@ if __name__ == "__main__":
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    model = load_model(config.p_torch_model, data)
+    chosen_model = config.best_trained_model
+    model = utils.choose_model(config, data, chosen_model)
+    #model = load_model(config.p_torch_model, data)
     node_i = 7615 #7478 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)
     # Collect dataframes for different axes
     collect_pred_labels(config)
-    p_nodes = explain_candiate_gene(model, data, node_i, G, config)
+    p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
     get_node_names_links(p_nodes, node_i, config)

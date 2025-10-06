@@ -35,7 +35,7 @@ def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     plt.close(fig)
 
 
-def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, config):
+def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, chosen_model, config):
     """
     Signature unchanged. Saves two PDFs and (as before) shows the last figure.
     """
@@ -61,11 +61,11 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, config):
     ax.set_xlabel("Epochs")
     ax.grid(True)
     plt.legend(["Training", "Test"])
-    ax.set_title(f"Model loss over epochs: {config.model_type}")
+    ax.set_title(f"Model loss over epochs: {chosen_model}")
     _save(
         fig,
         plot_local_path
-        / f"Model_loss_{n_edges}_links_{n_epo}_epochs_{config.model_type}.pdf",
+        / f"Model_loss_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf",
         dpi,
     )
 
@@ -79,29 +79,29 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, config):
     ax.set_xlabel("Epochs")
     ax.grid(True)
     ax.legend(loc="best")
-    ax.set_title(f"Model accuracy: {config.model_type}")
+    ax.set_title(f"Model accuracy: {chosen_model}")
     _save(
         fig,
         plot_local_path
-        / f"Model_accuracy_{n_edges}_links_{n_epo}_epochs_{config.model_type}.pdf",
+        / f"Model_accuracy_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf",
         dpi,
     )
 
 
 def plot_confusion_matrix(
-    true_labels, predicted_labels, config, classes=[1, 2, 3, 4, 5]
+    true_labels, predicted_labels, chosen_model, config, classes=None
 ):
     """
-    Signature unchanged. Adds robust label handling and optional normalization via config.normalize if present.
+    Confusion matrix
     """
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    normalize = getattr(config, "normalize", None)  # 'true' | 'pred' | 'all' | None
+    normalize = getattr(config, "normalize", None)
 
-    y_true = np.asarray([int(x) + 1 for x in true_labels])
-    y_pred = np.asarray([int(x) + 1 for x in predicted_labels])
+    y_true = np.asarray([int(x) for x in true_labels])
+    y_pred = np.asarray([int(x) for x in predicted_labels])
 
     # If user passed an explicit classes list, respect it; otherwise infer from data
     class_ticks = (
@@ -124,21 +124,21 @@ def plot_confusion_matrix(
     )
     ax.set_xlabel("Predicted Labels")
     ax.set_ylabel("True Labels")
-    title = f"Confusion Matrix: {config.model_type}"
+    title = f"Confusion Matrix: {chosen_model}"
     ax.set_title(title)
     ax.tick_params(axis="x", rotation=45)
     ax.tick_params(axis="y", rotation=0)
     plt.tight_layout()
-    ax.grid(False)  # heatmaps look cleaner without overlaid grid
+    ax.grid(False)
     _save(
         fig,
         plot_local_path
-        / f"Confusion_matrix_NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf",
+        / f"Confusion_matrix_NPPI_{n_edges}_epochs_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
 
 
-def plot_precision_recall(y_true, y_scores, config):
+def plot_precision_recall(y_true, y_scores, chosen_model, config):
     """
     Multiclass Precision-recall with per-class & micro AP.
     """
@@ -195,13 +195,13 @@ def plot_precision_recall(y_true, y_scores, config):
 
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
-    ax.set_title(f"Multiclass Precision–Recall Curve: {config.model_type}")
+    ax.set_title(f"Multiclass Precision–Recall Curve: {chosen_model}")
     ax.legend(loc="best")
     ax.grid(True)
     _save(
         fig,
         plot_local_path
-        / f"Precision_recall_{n_edges}_N_Epochs_{n_epo}_{config.model_type}.pdf",
+        / f"Precision_recall_{n_edges}_N_Epochs_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
 
@@ -246,7 +246,7 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     _save(
         fig,
         plot_local_path
-        / f"Histogram_positive__NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf",
+        / f"Histogram_positive__NPPI_{n_edges}_epochs_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
 
@@ -262,12 +262,12 @@ def analyse_ground_truth_pos(model, compact_data, out_genes, all_pred, config):
     _save(
         fig,
         plot_local_path
-        / f"KDE_positive__NPPI_{n_edges}_epochs_{n_epo}_{config.model_type}.pdf",
+        / f"KDE_positive__NPPI_{n_edges}_epochs_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
 
 
-def plot_features(features, labels, config, title, flag):
+def plot_features(features, labels, chosen_model, config, title, flag):
     """
     UMAP visualization of feature vectors.
     """
@@ -305,12 +305,12 @@ def plot_features(features, labels, config, title, flag):
     ax.legend(title="Label", loc="best", frameon=True)
     _save(
         fig,
-        plot_local_path / f"UMAP_nedbit_dnam_features_{flag}_{config.model_type}.pdf",
+        plot_local_path / f"UMAP_nedbit_dnam_features_{flag}_{chosen_model}.pdf",
         dpi,
     )
 
 
-def plot_node_embed(features, labels, pred_labels, config, feature_type):
+def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature_type):
     """
     UMAP of node embeddings
     """
@@ -345,17 +345,17 @@ def plot_node_embed(features, labels, pred_labels, config, feature_type):
         ax=ax,
         palette=config.color_palette,
     )
-    ax.set_title(f"Embeddings UMAP of last {feature_type} layer: {config.model_type}")
+    ax.set_title(f"Embeddings UMAP of last {feature_type} layer: {chosen_model}")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(
         fig,
         plot_local_path
-        / f"UMAP_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{config.model_type}.pdf",
+        / f"UMAP_node_embeddings_{n_neighbors}_{min_dist}_{feature_type}_{chosen_model}.pdf",
         dpi,
     )
 
 
-def plot_feature_importance(data, node_mask, mean_mask, xai_node, config):
+def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, config):
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
     n_epo = getattr(config, "n_epo", config.n_epo)
@@ -403,13 +403,13 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, config):
     _save(
         fig,
         plot_local_path
-        / f"Feature_importance_violin_node_{xai_node}_edges_{n_edges}_epo_{n_epo}_{config.model_type}.pdf",
+        / f"Feature_importance_violin_node_{xai_node}_edges_{n_edges}_epo_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
     plt.close()
 
 
-def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, config):
+def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chosen_model, config):
     """
     Draw neighbourhood of chosen node
     """
@@ -505,14 +505,14 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, confi
     _save(
         fig,
         plot_local_path
-        / f"Explanation_local_subgraph_node_{idx_global}_edges_{n_edges}_epo_{n_epo}_{config.model_type}.pdf",
+        / f"Explanation_local_subgraph_node_{idx_global}_edges_{n_edges}_epo_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
     plt.close()
     return s_rankings_draw
 
 
-def draw_xai_global_graph(G, sorted_ranking, idx_global, config):
+def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
     """
     Draw neighbourhood of chosen node
     """
@@ -568,7 +568,7 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, config):
     _save(
         fig,
         plot_local_path
-        / f"Explaination_global_subgraph_node_{idx_global}_edges_{n_edges}_epo_{n_epo}_{config.model_type}.pdf",
+        / f"Explaination_global_subgraph_node_{idx_global}_edges_{n_edges}_epo_{n_epo}_{chosen_model}.pdf",
         dpi,
     )
     plt.close()

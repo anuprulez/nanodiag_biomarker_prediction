@@ -88,7 +88,7 @@ class GCN(torch.nn.Module):
         gene_dim = config.gene_dim
         hidden_dim = config.hidden_dim
         SEED = config.SEED
-        p_drop = config.get("dropout", 0.2)
+        p_drop = config["dropout"]
         torch.manual_seed(SEED)
         self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
@@ -123,7 +123,7 @@ class GraphSAGE(torch.nn.Module):
         num_classes = config["num_classes"]
         gene_dim = config["gene_dim"]
         hidden_dim = config["hidden_dim"]
-        p_drop = config.get("dropout", 0.2)
+        p_drop = config["dropout"]
         torch.manual_seed(config["SEED"])
 
         self.conv1 = SAGEConv(gene_dim, hidden_dim)
@@ -159,23 +159,24 @@ class GATv2(torch.nn.Module):
         num_classes = config["num_classes"]
         gene_dim = config["gene_dim"]
         hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.2)
+        heads = config["heads"]
+        p_drop = config["dropout"]
         torch.manual_seed(config["SEED"])
 
         self.conv1 = GATv2Conv(
-            gene_dim, hidden_dim // heads, heads=heads
+            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv2 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv3 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv4 = GATv2Conv(
             hidden_dim,
             (hidden_dim // 2) // heads,
             heads=heads,
+            dropout=p_drop,
             concat=True,
         )
         self.bn1 = BatchNorm1d(hidden_dim)
@@ -186,20 +187,20 @@ class GATv2(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
+        h = F.elu(self.conv1(x, edge_index))
         h = self.bn1(h)
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
+        h = F.elu(self.conv2(h, edge_index))
         h = self.bn2(h)
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
+        h = F.elu(self.conv3(h, edge_index))
         h = self.bn3(h)
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.relu(self.conv4(h, edge_index))
+        out_pnaconv4 = F.elu(self.conv4(h, edge_index))
         out_batch_norm4 = self.bn4(out_pnaconv4)
         out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
         return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
-
+    
 
 class GraphTransformer(torch.nn.Module):
     def __init__(self, config):
@@ -207,21 +208,21 @@ class GraphTransformer(torch.nn.Module):
         num_classes = config["num_classes"]
         gene_dim = config["gene_dim"]
         hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.2)
+        heads = config["heads"]
+        p_drop = config["dropout"]
         torch.manual_seed(config["SEED"])
 
         self.conv1 = TransformerConv(
-            gene_dim, hidden_dim // heads, heads=heads
+            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv2 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv3 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads
+            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv4 = TransformerConv(
-            hidden_dim, (hidden_dim // 2) // heads, heads=heads
+            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
         )
         self.bn1 = BatchNorm1d(hidden_dim)
         self.bn2 = BatchNorm1d(hidden_dim)
@@ -240,7 +241,7 @@ class GraphTransformer(torch.nn.Module):
         h = F.relu(self.conv3(h, edge_index))
         h = self.bn3(h)
         h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.relu(self.conv4(h, edge_index))
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
+        h_pnaconv4 = F.relu(self.conv4(h, edge_index))
+        h_batch_norm4 = self.bn4(h_pnaconv4)
+        h_batch_norm4 = F.dropout(h_batch_norm4, p=self.p_drop, training=self.training)
+        return self.classifier(h_batch_norm4), h_pnaconv4, h_batch_norm4

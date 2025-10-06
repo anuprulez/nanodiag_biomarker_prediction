@@ -335,8 +335,10 @@ def train_gnn_model(config, chosen_model):
         "te_recall": te_recall,
         "tr_loss": tr_loss_epo,
         "te_loss": te_loss_epo,
-        "val_acc": val_acc_epo,
+        "val_loss": val_loss_epo,
+        "tr_acc": tr_acc_epo,
         "te_acc": te_acc_epo,
+        "val_acc": val_acc_epo,
     }
 
     print(f"All metrics: {metrics}")

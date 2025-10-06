@@ -113,6 +113,85 @@ def plot_radar(config):
     plt.savefig(path, dpi=dpi, bbox_inches="tight")
 
 
+def plot_mean_std_loss_acc(config):
+    """
+    Plot mean and standard deviation across multiple runs of training.
+    metrics_list: list of dicts with keys 'tr_loss', 'te_loss', 'val_acc', 'te_acc'.
+    """
+    plot_local_path = _as_path(config.p_plot)
+    n_edges = config.n_edges
+    n_epo = config.n_epo
+    dpi = config.dpi
+
+    n_runs = 5
+    chosen_model = "GraphTransformer"
+    metrics_list = []
+
+    for item in range(n_runs):
+        run_id = item + 1
+        file_path = f"{config.p_base}runs/{run_id}/all_metrics_{chosen_model}.json"
+        with open(file_path) as f:
+            metrics_list.append(json.load(f))
+    print(metrics_list)
+
+    # Convert lists of arrays to stacked numpy arrays (shape: [n_runs, n_epochs])
+    tr_loss = np.array([np.asarray(m["tr_loss"]) for m in metrics_list])
+    te_loss = np.array([np.asarray(m["te_loss"]) for m in metrics_list])
+    val_loss = np.array([np.asarray(m["val_loss"]) for m in metrics_list])
+
+    tr_acc = np.array([np.asarray(m["tr_acc"]) for m in metrics_list])
+    te_acc = np.array([np.asarray(m["te_acc"]) for m in metrics_list])
+    val_acc = np.array([np.asarray(m["val_acc"]) for m in metrics_list])
+
+    # Mean and standard deviation across runs
+    tr_loss_mean, tr_loss_std = tr_loss.mean(axis=0), tr_loss.std(axis=0)
+    te_loss_mean, te_loss_std = te_loss.mean(axis=0), te_loss.std(axis=0)
+    val_loss_mean, val_loss_std = val_loss.mean(axis=0), val_loss.std(axis=0)
+
+    tr_acc_mean, tr_acc_std = tr_acc.mean(axis=0), tr_acc.std(axis=0)
+    val_acc_mean, val_acc_std = val_acc.mean(axis=0), val_acc.std(axis=0)
+    te_acc_mean, te_acc_std = te_acc.mean(axis=0), te_acc.std(axis=0)
+
+    x_val = np.arange(n_epo)
+
+    # --- Loss plot ---
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(x_val, tr_loss_mean, linewidth=2, label="Train loss", color="tab:orange")
+    ax.fill_between(x_val, tr_loss_mean - tr_loss_std, tr_loss_mean + tr_loss_std, alpha=0.2, color="tab:orange")
+
+    ax.plot(x_val, te_loss_mean, linewidth=2, label="Test loss", color="tab:green")
+    ax.fill_between(x_val, te_loss_mean - te_loss_std, te_loss_mean + te_loss_std, alpha=0.2, color="tab:green")
+
+    ax.plot(x_val, val_loss_mean, linewidth=2, label="Val loss", color="tab:blue")
+    ax.fill_between(x_val, val_loss_mean - val_loss_std, val_loss_mean + val_loss_std, alpha=0.2, color="tab:blue")
+
+    ax.set_ylabel("Loss")
+    ax.set_xlabel("Epochs")
+    ax.set_title(f"Mean ± Std Loss over epochs: {chosen_model}")
+    ax.legend()
+    ax.grid(True)
+    _save(fig, plot_local_path / f"Model_loss_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)
+
+    # --- Accuracy plot ---
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.plot(x_val, tr_acc_mean, linewidth=2, label="Train accuracy", color="tab:orange")
+    ax.fill_between(x_val, tr_acc_mean - tr_acc_std, tr_acc_mean + tr_acc_std, alpha=0.2, color="tab:orange")
+
+    ax.plot(x_val, te_acc_mean, linewidth=2, label="Test accuracy", color="tab:green")
+    ax.fill_between(x_val, te_acc_mean - te_acc_std, te_acc_mean + te_acc_std, alpha=0.2, color="tab:green")
+
+    ax.plot(x_val, val_acc_mean, linewidth=2, label="Val accuracy", color="tab:blue")
+    ax.fill_between(x_val, val_acc_mean - val_acc_std, val_acc_mean + val_acc_std, alpha=0.2, color="tab:blue")
+
+    ax.set_ylabel("Accuracy")
+    ax.set_xlabel("Epochs")
+    ax.set_title(f"Mean ± Std Accuracy over epochs: {chosen_model}")
+    ax.legend(loc="best")
+    ax.grid(True)
+    _save(fig, plot_local_path / f"Model_accuracy_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)
+
+
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
-    plot_radar(config)
+    #plot_radar(config)
+    plot_mean_std_loss_acc(config)

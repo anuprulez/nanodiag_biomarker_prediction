@@ -192,18 +192,19 @@ class GATv2(torch.nn.Module):
         heads = config.heads
         torch.manual_seed(SEED)
         self.conv1 = GATv2Conv(
-            gene_dim, hidden_dim // heads, heads=heads
+            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv2 = GATv2Conv(
-            hidden_dim, (2 * hidden_dim) // heads, heads=heads
+            hidden_dim, (2 * hidden_dim) // heads, heads=heads, dropout=p_drop
         )
         self.conv3 = GATv2Conv(
-            (2 * hidden_dim), hidden_dim // heads, heads=heads
+            (2 * hidden_dim), hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv4 = GATv2Conv(
             hidden_dim,
             (hidden_dim // 2) // heads,
-            heads=heads
+            heads=heads,
+            dropout=p_drop
         )
         self.bn1 = LayerNorm(hidden_dim)
         self.bn2 = LayerNorm(2 * hidden_dim)

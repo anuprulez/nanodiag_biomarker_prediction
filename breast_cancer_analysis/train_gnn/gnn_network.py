@@ -1,24 +1,41 @@
 import torch
-from torch_geometric.data import Data
-from torch.nn import Sequential, Linear, BatchNorm1d, ReLU
+from torch.nn import Linear, BatchNorm1d, LayerNorm
 from torch_geometric.nn import (
-    GCNConv,
     PNAConv,
-    TransformerConv,
-    APPNP,
-    GCN2Conv,
-    GINConv,
-    GATv2Conv,
+    GCNConv,
     SAGEConv,
+    GATv2Conv,
+    TransformerConv
 )
 import torch.nn.functional as F
-from torch_geometric.utils import degree
-
-import pandas as pd
-import numpy as np
+from torch_geometric.utils import degree, subgraph
+from torch_geometric.nn.norm import GraphNorm
 
 
 class GPNA(torch.nn.Module):
+
+    def pna_deg_from_train_nodes(self, data, undirected=True, device=None):
+        if device is None:
+            device = data.edge_index.device
+
+        # Induce subgraph containing only training nodes
+        train_n = data.train_mask.nonzero(as_tuple=False).view(-1)
+        # obtain subgraph edges
+        e_sub, _ = subgraph(train_n, data.edge_index,
+                            relabel_nodes=True,
+                            num_nodes=data.num_nodes)
+
+        # If undirected (and edges are stored as one direction), count both ends:
+        dst = torch.cat([e_sub[0], e_sub[1]], dim=0)
+
+        d = degree(dst, num_nodes=train_n.size(0), dtype=torch.long)
+        d = d.to(device)
+        max_deg = int(d.max().item()) if d.numel() > 0 else 0
+        deg_hist = torch.zeros(max_deg + 1, dtype=torch.long, device=device)
+        deg_hist[:d.numel()] += torch.bincount(d, minlength=deg_hist.numel())
+
+        return deg_hist
+
     def __find_deg(self, train_dataset):
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         max_degree = -1
@@ -42,15 +59,15 @@ class GPNA(torch.nn.Module):
 
     def __init__(self, config, train_dataset):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
         scalers = ["identity", "amplification", "attenuation"]
-        p_drop = config.get("dropout", 0.2)
-        deg = self.__find_deg(train_dataset)
-        SEED = config["SEED"]
-        torch.manual_seed(SEED)
+        p_drop = config.dropout
+        #deg = self.__find_deg(train_dataset)
+        deg = self.pna_deg_from_train_nodes(train_dataset)
+        torch.manual_seed(config.SEED)
         self.conv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
         self.conv2 = PNAConv(hidden_dim, 2 * hidden_dim, aggregators, scalers, deg)
         self.conv3 = PNAConv(2 * hidden_dim, hidden_dim, aggregators, scalers, deg)
@@ -63,19 +80,22 @@ class GPNA(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.relu(self.conv4(h, edge_index))
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
         out_batch_norm4 = self.bn4(out_pnaconv4)
-        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GCN(torch.nn.Module):
@@ -102,19 +122,22 @@ class GCN(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.relu(self.conv4(h, edge_index))
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
         out_batch_norm4 = self.bn4(out_pnaconv4)
-        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GraphSAGE(torch.nn.Module):
@@ -138,19 +161,22 @@ class GraphSAGE(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.relu(self.conv4(h, edge_index))
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
         out_batch_norm4 = self.bn4(out_pnaconv4)
-        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GATv2(torch.nn.Module):
@@ -187,19 +213,22 @@ class GATv2(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.elu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        out_pnaconv4 = F.elu(self.conv4(h, edge_index))
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
         out_batch_norm4 = self.bn4(out_pnaconv4)
-        out_batch_norm4 = F.dropout(out_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(out_batch_norm4), out_pnaconv4, out_batch_norm4
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
     
 
 class GraphTransformer(torch.nn.Module):
@@ -232,16 +261,19 @@ class GraphTransformer(torch.nn.Module):
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h_pnaconv4 = F.relu(self.conv4(h, edge_index))
-        h_batch_norm4 = self.bn4(h_pnaconv4)
-        h_batch_norm4 = F.dropout(h_batch_norm4, p=self.p_drop, training=self.training)
-        return self.classifier(h_batch_norm4), h_pnaconv4, h_batch_norm4
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4

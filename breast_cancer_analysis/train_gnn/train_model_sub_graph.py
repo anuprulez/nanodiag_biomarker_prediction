@@ -1,10 +1,15 @@
 import copy
 import torch
+import math
 import torch.nn.functional as F
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+from torch.nn.utils import clip_grad_norm_
 from torch_geometric.loader import NeighborLoader
 from sklearn.model_selection import train_test_split
 from torch_geometric.utils import coalesce, degree
 from sklearn.metrics import f1_score, precision_recall_fscore_support
+
 import joblib
 
 import numpy as np
@@ -69,7 +74,7 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, device):
+def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
@@ -82,7 +87,9 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
         loss.backward()
+        clip_grad_norm_(model.parameters(), max_norm=1.5)
         optimizer.step()
+        scheduler.step()
 
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
@@ -170,7 +177,6 @@ def train_gnn_model(config, chosen_model):
     """
     Create network architecture and assign loss, optimizers ...
     """
-    learning_rate = config.learning_rate
     n_epo = config.n_epo
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
@@ -191,17 +197,9 @@ def train_gnn_model(config, chosen_model):
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
-    print(f"Initialize model: {chosen_model}")
-    model = utils.choose_model(config, data, chosen_model)
-    for name, module in model.named_modules():
-        print(f"{name}: {module}")
-    model = model.cuda()
-
-    # loss fn
-    criterion = torch.nn.CrossEntropyLoss()
-
     # optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    #optimizer = torch.optim.Adam(model.parameters(), \
+    #                             lr=config.learning_rate, weight_decay=config.weight_decay)
     tr_loss_epo = list()
     tr_acc_epo = list()
     te_loss_epo = list()
@@ -232,6 +230,25 @@ def train_gnn_model(config, chosen_model):
     data.train_mask = create_masks(mapped_f_name, split_tr_node_ids)
     data.val_mask = create_masks(mapped_f_name, val_node_ids)
     data.test_mask = create_masks(mapped_f_name, te_node_ids)
+
+    print(f"Initialize model: {chosen_model}")
+    model = utils.choose_model(config, data, chosen_model)
+    for name, module in model.named_modules():
+        print(f"{name}: {module}")
+    model = model.cuda()
+
+    # loss fn
+    criterion = torch.nn.CrossEntropyLoss()
+
+    base_lr = config.learning_rate
+    weight_decay = config.weight_decay #1e-3
+    optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay)
+
+    steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
+    total_steps = steps_per_epoch * config.n_epo
+    scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps,
+                       pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
+
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
     )
@@ -252,7 +269,7 @@ def train_gnn_model(config, chosen_model):
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, device
+            train_loader, model, optimizer, criterion, scheduler, device
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
             val_loader, model, criterion, device

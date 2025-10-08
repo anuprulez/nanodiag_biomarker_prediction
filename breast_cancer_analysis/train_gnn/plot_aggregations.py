@@ -124,7 +124,7 @@ def plot_mean_std_loss_acc(config):
     dpi = config.dpi
 
     n_runs = 5
-    chosen_model = "GraphTransformer"
+    chosen_model = "GCN"
     metrics_list = []
 
     for item in range(n_runs):
@@ -152,7 +152,8 @@ def plot_mean_std_loss_acc(config):
     val_acc_mean, val_acc_std = val_acc.mean(axis=0), val_acc.std(axis=0)
     te_acc_mean, te_acc_std = te_acc.mean(axis=0), te_acc.std(axis=0)
 
-    x_val = np.arange(n_epo)
+    x_val = np.arange(1, n_epo + 1)
+    xticks = np.arange(1, n_epo + 1, 2)
 
     # --- Loss plot ---
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -168,7 +169,8 @@ def plot_mean_std_loss_acc(config):
     ax.set_ylabel("Loss")
     ax.set_xlabel("Epochs")
     ax.set_title(f"Mean ± Std Loss over epochs: {chosen_model}")
-    ax.legend()
+    plt.xticks(xticks)
+    ax.legend(loc="best")
     ax.grid(True)
     _save(fig, plot_local_path / f"Model_loss_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)
 
@@ -186,6 +188,7 @@ def plot_mean_std_loss_acc(config):
     ax.set_ylabel("Accuracy")
     ax.set_xlabel("Epochs")
     ax.set_title(f"Mean ± Std Accuracy over epochs: {chosen_model}")
+    plt.xticks(xticks)
     ax.legend(loc="best")
     ax.grid(True)
     _save(fig, plot_local_path / f"Model_accuracy_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)

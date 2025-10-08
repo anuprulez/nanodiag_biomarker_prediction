@@ -1,12 +1,13 @@
 SEED: 32
-n_edges: 10000 #14251734
+n_edges: 100000 #14251734
 # all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 5
+n_epo: 10
 batch_size: 32 #128
 num_classes: 5
 gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
 hidden_dim: 128
-learning_rate: 0.0001
+learning_rate: 5e-4 #0.0001
+weight_decay: 1e-3
 test_size: 0.33
 keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
@@ -17,9 +18,8 @@ cutoff_pval: 5e-2
 dropout: 0.2 # Best values: GraphTransformer (d=0.2)
 heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
-
 dpi: 300
-model_type: "GraphTransformer" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+model_type: "PNA" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
 best_trained_model: ${model_type} # Find the best trained model via training and then set it
 neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all

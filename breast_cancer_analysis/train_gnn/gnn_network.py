@@ -15,6 +15,7 @@ from torch_geometric.nn.norm import GraphNorm
 class GPNA(torch.nn.Module):
 
     def pna_deg_from_train_nodes(self, data, undirected=True, device=None):
+        # take only training nodes
         if device is None:
             device = data.edge_index.device
 
@@ -36,12 +37,13 @@ class GPNA(torch.nn.Module):
 
         return deg_hist
 
-    def __find_deg(self, train_dataset):
+    def __find_deg(self, dataset):
+        # take entire dataset
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         max_degree = -1
         d = degree(
-            train_dataset.edge_index[1],
-            num_nodes=train_dataset.num_nodes,
+            dataset.edge_index[1],
+            num_nodes=dataset.num_nodes,
             dtype=torch.long,
         )
         max_degree = max(max_degree, int(d.max()))
@@ -49,8 +51,8 @@ class GPNA(torch.nn.Module):
         deg = torch.zeros(max_degree + 1, dtype=torch.long)
         deg = deg.to(device)
         d = degree(
-            train_dataset.edge_index[1],
-            num_nodes=train_dataset.num_nodes,
+            dataset.edge_index[1],
+            num_nodes=dataset.num_nodes,
             dtype=torch.long,
         )
         d = d.to(device)
@@ -73,10 +75,10 @@ class GPNA(torch.nn.Module):
         self.conv3 = PNAConv(2 * hidden_dim, hidden_dim, aggregators, scalers, deg)
         self.conv4 = PNAConv(hidden_dim, hidden_dim // 2, aggregators, scalers, deg)
         self.classifier = Linear(hidden_dim // 2, num_classes)
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(2 * hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
@@ -108,17 +110,17 @@ class GCN(torch.nn.Module):
         gene_dim = config.gene_dim
         hidden_dim = config.hidden_dim
         SEED = config.SEED
-        p_drop = config["dropout"]
+        p_drop = config.dropout
         torch.manual_seed(SEED)
         self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
         self.conv3 = GCNConv(2 * hidden_dim, hidden_dim)
         self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(2 * hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
@@ -143,20 +145,20 @@ class GCN(torch.nn.Module):
 class GraphSAGE(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        p_drop = config["dropout"]
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        torch.manual_seed(SEED)
         self.conv1 = SAGEConv(gene_dim, hidden_dim)
         self.conv2 = SAGEConv(hidden_dim, 2 * hidden_dim)
         self.conv3 = SAGEConv(2 * hidden_dim, hidden_dim)
         self.conv4 = SAGEConv(hidden_dim, hidden_dim // 2)
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(2 * hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 
@@ -182,33 +184,31 @@ class GraphSAGE(torch.nn.Module):
 class GATv2(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config["heads"]
-        p_drop = config["dropout"]
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        heads = config.heads
+        torch.manual_seed(SEED)
         self.conv1 = GATv2Conv(
-            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            gene_dim, hidden_dim // heads, heads=heads
         )
         self.conv2 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            hidden_dim, (2 * hidden_dim) // heads, heads=heads
         )
         self.conv3 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            (2 * hidden_dim), hidden_dim // heads, heads=heads
         )
         self.conv4 = GATv2Conv(
             hidden_dim,
             (hidden_dim // 2) // heads,
-            heads=heads,
-            dropout=p_drop,
-            concat=True,
+            heads=heads
         )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 
@@ -234,29 +234,29 @@ class GATv2(torch.nn.Module):
 class GraphTransformer(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config["heads"]
-        p_drop = config["dropout"]
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        heads = config.heads
+        torch.manual_seed(SEED)
         self.conv1 = TransformerConv(
-            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            gene_dim, hidden_dim // heads, heads=heads
         )
         self.conv2 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            hidden_dim, (2 * hidden_dim) // heads, heads=heads
         )
         self.conv3 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            2 * hidden_dim, hidden_dim // heads, heads=heads
         )
         self.conv4 = TransformerConv(
-            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
+            hidden_dim, (hidden_dim // 2) // heads, heads=heads
         )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 

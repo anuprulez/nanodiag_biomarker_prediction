@@ -207,6 +207,7 @@ def train_gnn_model(config, chosen_model):
     val_loss_epo = list()
     val_acc_epo = list()
     best_te_acc = -float("inf")
+    best_val_acc = -float("inf")
     best_state = None
     best_epoch = -1
 
@@ -290,12 +291,13 @@ def train_gnn_model(config, chosen_model):
         te_acc_epo.append(te_acc)
         te_loss_epo.append(te_loss)
 
-        if te_acc > best_te_acc:
-            best_te_acc = te_acc
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_test_acc = te_acc
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
-                f"Saving the model state, best epoch was {best_epoch} with test acc {te_acc:.2f}."
+                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}, test accuracy {te_acc:.2f}"
             )
             torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
 
@@ -309,7 +311,7 @@ def train_gnn_model(config, chosen_model):
 
     ## Restore the best trained model for downstream usages
     print(
-        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_te_acc:.2f})."
+        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_val_acc:.2f})."
     )
     if best_state is not None:
         model.load_state_dict(best_state)

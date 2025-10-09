@@ -314,58 +314,42 @@ def plot_xai_nodes_raw_values(config):
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    topk = 10
-    cmap = "viridis"  # cividis
+    topk = 300
+    cmap = "cividis"  # cividis viridis  inferno
     path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"
     #path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
     path_signals = config.p_base + "combined_pos_neg_signals_bc.csv"
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
-    print(df_pred_LP)
     df_signals = pd.read_csv(path_signals, sep="\t")
     
     xai_nodes = df_pred_LP[: topk]
-    print("XAI nodes")
-    print(xai_nodes)
     list_nodes = xai_nodes["test_gene_names"].tolist()
-    print(list_nodes)
-    print("Top signals")
     df_top_signals = df_signals[list_nodes]
-    print(df_top_signals)
+
     group_labels = ["Breast Cancer"] * 50 + ["Normal"] * 30
     df_top_signals["Group"] = group_labels
     group_colors = {"Breast Cancer": "darkred", "Normal": "steelblue"}
     row_colors = df_top_signals["Group"].map(group_colors)
 
-    print(df_top_signals)
-
     # Drop the group column before plotting
     data = df_top_signals.drop(columns=["Group"])
-
-    # ----------------------------
-    # Plot heatmap
-    # ----------------------------
     sns.set(style="white", font_scale=1.0)
 
     g = sns.clustermap(
         data,
         row_colors=row_colors,
-        cmap=cmap, #RdBu_r Blues
+        cmap=cmap,
         col_cluster=False,
         row_cluster=False,
         linewidths=0.3,
         figsize=(8, 8),
-        cbar_pos=None,  # we'll add our own colorbar outside
+        cbar_pos=None,
     )
 
-    # --- remove row labels and ticks ---
     g.ax_heatmap.set_yticklabels([])
     g.ax_heatmap.tick_params(left=False)
 
-    # force labels to exist and set rotation
-    labels = list(data.columns)
-
-    # --- widen right margin to host legends ---
-    g.fig.subplots_adjust(right=0.80, top=0.95, bottom=0.05)
+    g.fig.subplots_adjust(top=0.92, right=0.80, left=0.06, bottom=0.06)
 
     # --- add colorbar (heatmap scale) outside on the right ---
     mappable = g.ax_heatmap.collections[0]  # QuadMesh of the heatmap
@@ -379,13 +363,13 @@ def plot_xai_nodes_raw_values(config):
         handles=handles,
         title="Group",
         loc="center left",
-        bbox_to_anchor=(1.05, 1), #(0.85, 0.12),  # under the colorbar
         frameon=False,
-)
-
+    )
     # Titles and formatting
-    plt.suptitle(f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Breast Cancer vs Normal Patients)", fontsize=14, y=1.03)
+    g.ax_heatmap.set_title(f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Breast Cancer vs Normal Patients)", pad=4, fontsize=14)
+    g.ax_col_dendrogram.set_visible(False)
     plt.tight_layout()
+    #path = plot_local_path / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     plt.savefig(path, dpi=dpi, bbox_inches="tight")
 

@@ -14,26 +14,39 @@ from torch_geometric.nn.norm import GraphNorm
 
 class GPNA(torch.nn.Module):
 
-    def pna_deg_from_train_nodes(self, data, undirected=True, device=None):
+    def __find_deg_train_nodes(self, data, undirected=True, device=None):
         # take only training nodes
         if device is None:
             device = data.edge_index.device
 
-        # Induce subgraph containing only training nodes
-        train_n = data.train_mask.nonzero(as_tuple=False).view(-1)
-        # obtain subgraph edges
-        e_sub, _ = subgraph(train_n, data.edge_index,
-                            relabel_nodes=True,
-                            num_nodes=data.num_nodes)
+        # indices of training nodes
+        train_nodes = data.train_mask.nonzero(as_tuple=False).view(-1)
 
-        # If undirected (and edges are stored as one direction), count both ends:
-        dst = torch.cat([e_sub[0], e_sub[1]], dim=0)
+        # induce subgraph on training nodes; relabel to 0..n-1
+        e_sub, _ = subgraph(
+            train_nodes,
+            data.edge_index,
+            relabel_nodes=True,
+            num_nodes=data.num_nodes
+        )
 
-        d = degree(dst, num_nodes=train_n.size(0), dtype=torch.long)
-        d = d.to(device)
+        n = int(train_nodes.numel())
+
+        # choose which edge endpoints to count
+        if undirected:
+            dst = torch.cat([e_sub[0], e_sub[1]], dim=0)
+        else:
+            dst = e_sub[1]
+
+        # per-node degrees (length = n)
+        d = degree(dst, num_nodes=n, dtype=torch.long)
+
+        # histogram over degree values (length = max(d)+1)
         max_deg = int(d.max().item()) if d.numel() > 0 else 0
-        deg_hist = torch.zeros(max_deg + 1, dtype=torch.long, device=device)
-        deg_hist[:d.numel()] += torch.bincount(d, minlength=deg_hist.numel())
+        deg_hist = torch.bincount(d, minlength=max_deg + 1)
+
+        # move to model device
+        deg_hist = deg_hist.to(device)
 
         return deg_hist
 
@@ -59,16 +72,15 @@ class GPNA(torch.nn.Module):
         deg += torch.bincount(d, minlength=deg.numel())
         return deg
 
-    def __init__(self, config, train_dataset):
+    def __init__(self, config, dataset):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
         hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
-        scalers = ["identity", "amplification", "attenuation"]
+        scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
         p_drop = config.dropout
-        #deg = self.__find_deg(train_dataset)
-        deg = self.pna_deg_from_train_nodes(train_dataset)
+        deg = self.__find_deg_train_nodes(dataset)
         torch.manual_seed(config.SEED)
         self.conv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
         self.conv2 = PNAConv(hidden_dim, 2 * hidden_dim, aggregators, scalers, deg)

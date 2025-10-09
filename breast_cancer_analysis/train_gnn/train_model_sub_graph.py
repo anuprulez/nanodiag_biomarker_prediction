@@ -261,7 +261,7 @@ def train_gnn_model(config, chosen_model):
         test_y,
         chosen_model,
         config,
-        f"UMAP of raw features (NedBit + DNA Methylation): {chosen_model}",
+        f"UMAP of raw features (NeDBIT + DNA Methylation): {chosen_model}",
         "test_before_GNN",
     )
 

@@ -80,7 +80,8 @@ class GPNA(torch.nn.Module):
         aggregators = ["mean", "min", "max", "std"]
         scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
         p_drop = config.dropout
-        deg = self.__find_deg_train_nodes(dataset)
+        deg = self.__find_deg(dataset)
+
         torch.manual_seed(config.SEED)
         self.conv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
         self.conv2 = PNAConv(hidden_dim, 2 * hidden_dim, aggregators, scalers, deg)

@@ -338,30 +338,14 @@ def get_node_names_links(n_nodes, xai_node, config):
     print(df_xai_node_links_plotted_node)
 
 
-def create_masks(mapped_node_ids: pd.Series, mask_list):
-    # True where the SERIES VALUE (node id/name) is in the mask list
-    mask = mapped_node_ids.isin(mask_list).to_numpy()
-    return torch.tensor(mask, dtype=torch.bool)
-
-
-
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
     chosen_model = config.best_trained_model
-    p_train_ids = config.p_base + f"train_probe_genes_bc_{chosen_model}.csv"
-    df_train = pd.read_csv(p_train_ids, sep=",")
-    print(df_train)
-    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
-    mapped_f_name = out_genes.loc[:, 0]
-    df_train_ids = df_train["tr_gene_ids"].tolist()
-    print(mapped_f_name[:5], df_train_ids[:5], len(mapped_f_name), len(df_train_ids))
-    data.train_mask = create_masks(mapped_f_name, df_train_ids)
-    #model = utils.choose_model(config, data, chosen_model, True)
     model = load_model(config.p_torch_model, data, chosen_model)
-    node_i = 2569 #1775 #2569 #7478 # 68 #7868
+    node_i = 1775 # 2569 #1775 #2569 #7478 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")

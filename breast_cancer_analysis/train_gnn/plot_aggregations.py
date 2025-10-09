@@ -314,15 +314,18 @@ def plot_xai_nodes_raw_values(config):
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    topk = 20
-    #path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"
-    path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
+    topk = 10
+    cmap = "viridis"  # cividis
+    path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"
+    #path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
     path_signals = config.p_base + "combined_pos_neg_signals_bc.csv"
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     print(df_pred_LP)
     df_signals = pd.read_csv(path_signals, sep="\t")
     
     xai_nodes = df_pred_LP[: topk]
+    print("XAI nodes")
+    print(xai_nodes)
     list_nodes = xai_nodes["test_gene_names"].tolist()
     print(list_nodes)
     print("Top signals")
@@ -335,13 +338,8 @@ def plot_xai_nodes_raw_values(config):
 
     print(df_top_signals)
 
-    df = df_top_signals.copy()
-    df["Group"] = np.where(df.index < 50, "Breast Cancer", "Normal")
-    group_palette = {"Breast Cancer": "crimson", "Normal": "steelblue"}  # you can change if you like
-    row_colors = df["Group"].map(group_palette)
-
     # Drop the group column before plotting
-    data = df.drop(columns=["Group"])
+    data = df_top_signals.drop(columns=["Group"])
 
     # ----------------------------
     # Plot heatmap
@@ -351,11 +349,11 @@ def plot_xai_nodes_raw_values(config):
     g = sns.clustermap(
         data,
         row_colors=row_colors,
-        cmap="RdBu_r",
+        cmap=cmap, #RdBu_r Blues
         col_cluster=False,
         row_cluster=False,
         linewidths=0.3,
-        figsize=(8, 10),
+        figsize=(8, 8),
         cbar_pos=None,  # we'll add our own colorbar outside
     )
 
@@ -363,11 +361,8 @@ def plot_xai_nodes_raw_values(config):
     g.ax_heatmap.set_yticklabels([])
     g.ax_heatmap.tick_params(left=False)
 
-    # --- make x-ticks vertical and at the top ---
-    g.ax_heatmap.tick_params(axis="x", bottom=False, top=True, labelbottom=False, labeltop=True)
     # force labels to exist and set rotation
     labels = list(data.columns)
-    g.ax_heatmap.set_xticklabels(labels, rotation=90, ha="center", va="bottom")
 
     # --- widen right margin to host legends ---
     g.fig.subplots_adjust(right=0.80, top=0.95, bottom=0.05)
@@ -376,10 +371,10 @@ def plot_xai_nodes_raw_values(config):
     mappable = g.ax_heatmap.collections[0]  # QuadMesh of the heatmap
     cax = g.fig.add_axes([1.1, 0.25, 0.02, 0.50])  # [left, bottom, width, height] in fig coords
     cb = g.fig.colorbar(mappable, cax=cax)
-    #cb.set_label("β-value", rotation=90, labelpad=10)
+    cb.set_label("β-value", rotation=90, labelpad=10)
 
     # --- add group legend (row_colors) outside under the colorbar ---
-    handles = [Patch(facecolor=group_palette[k], label=k) for k in ["Breast Cancer", "Normal"]]
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Breast Cancer", "Normal"]]
     g.fig.legend(
         handles=handles,
         title="Group",
@@ -389,9 +384,7 @@ def plot_xai_nodes_raw_values(config):
 )
 
     # Titles and formatting
-    plt.suptitle(f"DNA methylation of predicted top {topk} likely positive probes/gens\n(Breast Cancer vs Normal Patients)", fontsize=14, y=1.03)
-    #plt.xlabel("Top predicted 'likely positive' genes")
-    #plt.ylabel("DNA methylation levels")
+    plt.suptitle(f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Breast Cancer vs Normal Patients)", fontsize=14, y=1.03)
     plt.tight_layout()
     path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     plt.savefig(path, dpi=dpi, bbox_inches="tight")

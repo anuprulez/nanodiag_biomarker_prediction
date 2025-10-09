@@ -309,7 +309,7 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
         1  # Group of breast cancer patients
     )
     group_ids[n_nedbit_features + n_bc_features :] = 2  # Group of normal patients
-    group_names = ["Nedbit", "Breast cancer", "Normal"]
+    group_names = ["NeDBIT", "Breast cancer", "Normal"]
     # Collect distributions per group
     distributions = []
     labels = []
@@ -327,7 +327,7 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
     sns.violinplot(data=distributions)
     plt.xticks(range(3), labels)
     plt.ylabel("Feature importance")
-    plt.title("Feature importance distributions per group (Nedbit, BC, Normal)")
+    plt.title("Feature importance distributions per group (NeDBIT, BC, Normal)")
 
     # Overlay means
     for i, m in enumerate(means):

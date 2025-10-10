@@ -30,7 +30,6 @@ class LogitsOnly(nn.Module):
 def load_model(model_path, data, chosen_model):
     device = "cpu"
     model = utils.choose_model(config, data, chosen_model)
-    model = gnn_network.GPNA(config, data)
     model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
@@ -348,8 +347,8 @@ if __name__ == "__main__":
     node_i = 1775 # 2569 #1775 #2569 #7478 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     collect_pred_labels(config)
-    print(f"Creating graph with all nodes ...")
-    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    #print(f"Creating graph with all nodes ...")
+    #G = to_networkx(data, node_attrs=["x"], to_undirected=True)
     # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
-    get_node_names_links(p_nodes, node_i, config)
+    #p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
+    #get_node_names_links(p_nodes, node_i, config)

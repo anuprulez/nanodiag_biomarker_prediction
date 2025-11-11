@@ -666,8 +666,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 def _find_run_file(base, run_id, chosen_model):
     """Try a few plausible filenames/locations for each run; return first that exists."""
     candidates = [
-        os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"),
-        #os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
+        #os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"),
+        os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -675,7 +675,83 @@ def _find_run_file(base, run_id, chosen_model):
     raise FileNotFoundError(f"No pred file found for run {run_id}. Tried: {candidates}")
 
 
-def plot_xai_nodes_raw_values_averaged_runs(config):
+def plot_top_nodes_correlation(config, df_signals, df_lp):
+    
+    df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
+    df_out_genes.iloc[:, 2] = df_out_genes.iloc[:, 2].astype(float)
+    df_seed_nodes = df_out_genes[df_out_genes.iloc[:, 2] > 0.0]
+    print("Seed nodes df")
+    print(df_seed_nodes)
+    seed_nodes = df_seed_nodes.iloc[:, 1].tolist()
+    print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
+    print("df_signals")
+    print(df_signals)
+    seed_nodes = ["cg09242307_SOX5", 
+                  "cg10990959_SOX5",
+                  "cg02147465_ZBTB20",
+                  "cg13697223_GALNTL6", 
+                  "cg06126815_PON2",
+                  "cg09962458_SIPA1L1",
+                  "cg16036046_RIT2"
+                  ]
+    df_seed = df_signals[seed_nodes]
+    print("Seed signals")
+    print(df_seed)
+    print("Top LP signals")
+    top_lp = "cg13985132_LOC390595"
+    df_lp = df_signals[[top_lp]]
+    print(df_lp)
+
+    df_seed = df_seed.apply(pd.to_numeric, errors='coerce')
+    df_lp = df_lp.apply(pd.to_numeric, errors='coerce')
+
+    # --- Create output directory ---
+    p_corr = f"{config.p_plot}correlation_plots"
+    os.makedirs(p_corr, exist_ok=True)
+
+    # --- Compute correlations ---
+    correlation_results = {}
+
+    for lp_col in df_lp.columns:
+        correlations = []
+        for seed_col in df_seed.columns:
+            corr = df_lp[lp_col].corr(df_seed[seed_col])
+            correlations.append(corr)
+        correlation_results[lp_col] = correlations
+
+    # --- Convert to DataFrame for easier analysis ---
+    df_corr = pd.DataFrame(correlation_results, index=df_seed.columns)
+    sns.set_theme(style="whitegrid", context="talk")
+    palette = sns.color_palette("crest", as_cmap=True)
+    print("Plotting correlation plots between seeds and top LP genes")
+    # --- Plot correlations for each LP signal ---
+    for lp_col in df_lp.columns:
+        corr_series = df_corr[lp_col].sort_values(ascending=False)
+        plt.figure(figsize=(12, 6))
+        bar_colors = sns.color_palette("viridis", len(corr_series))
+        sns.barplot(
+            x=corr_series.index,
+            y=corr_series.values,
+            palette=bar_colors
+        )
+
+        plt.xticks(rotation=90, fontsize=9)
+        plt.yticks(fontsize=10)
+        plt.ylabel("Pearson correlation", fontsize=12)
+        plt.xlabel("Seed signals", fontsize=12)
+        plt.title(f"Correlation of {lp_col} with XAI subgraph seed signals", fontsize=14, weight="bold")
+        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.tight_layout()
+
+        # Save high-quality PNG and PDF
+        plt.savefig(f"{p_corr}/{lp_col}_correlation.png", dpi=300, bbox_inches='tight')
+        plt.savefig(f"{p_corr}/{lp_col}_correlation.pdf", bbox_inches='tight')
+        plt.close()
+
+    print(f"✅ Correlation plots saved to {p_corr} folder.")
+
+
+'''def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
     n_runs = 5
@@ -783,12 +859,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         g.fig.subplots_adjust(top=0.85, right=0.80, left=0.06, bottom=0.06)
 
         # Colorbar
-        '''mappable = g.ax_heatmap.collections[0]
-        cax = g.fig.add_axes([1.1, 0.25, 0.02, 0.50])  # [left, bottom, width, height]
-        cb = g.fig.colorbar(mappable, cax=cax)
-        cb.set_label("β-value", rotation=90, labelpad=10)'''
         mappable = g.ax_heatmap.collections[0]
-        # Move colorbar closer by decreasing the 'left' value from 1.10 → ~0.88–0.92
         cax = g.fig.add_axes([0.88, 0.1, 0.02, 0.50])  # [left, bottom, width, height]
         cb = g.fig.colorbar(mappable, cax=cax)
         cb.set_label("β-value", rotation=90, labelpad=14)  # small extra pad for readability
@@ -891,14 +962,390 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
         plt.close(ax.figure)
 
+    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")'''
+
+def plot_xai_nodes_raw_values_averaged_runs(config):
+    # ---- Fixed model & runs ----
+    chosen_model = "PNA"  # enforce PNA as requested
+    n_runs = 5
+
+    plot_local_path = _as_path(config.p_plot)
+    n_edges = config.n_edges
+    n_epo = config.n_epo
+    dpi = getattr(config, "dpi", 200)
+    topk = 20
+    cmap = "cividis"  # cividis / viridis / inferno
+
+    # Signals matrix (patients x features), shared across runs
+    path_signals = os.path.join(config.p_base, "combined_pos_neg_signals_bc.csv")
+    df_signals = pd.read_csv(path_signals, sep="\t")
+
+    # ------------------------------
+    # 1) Collect top lists per run
+    # ------------------------------
+    per_run_lists = []
+    for run_id in range(1, n_runs + 1):
+        path_pred = _find_run_file(config.p_base, run_id, chosen_model)
+        df_pred = pd.read_csv(path_pred, sep="\t")
+        print("All: ", df_pred)
+        N = [5]
+        LP = [2]
+        P = [1]
+        df_pred = df_pred[df_pred["pred_labels"].isin(N)]
+        print(df_pred)
+        if "test_gene_names" not in df_pred.columns:
+            raise KeyError(f"'test_gene_names' column not found in {path_pred}")
+        per_run_lists.append(df_pred["test_gene_names"].tolist())
+
+    # ------------------------------
+    # 2) Build consensus: by frequency, then average rank
+    # ------------------------------
+    counts = defaultdict(int)
+    rank_sums = defaultdict(float)
+
+    for run_list in per_run_lists:
+        # limit to topk per run before counting/ranking
+        sub = run_list[:topk]
+        for rank, feat in enumerate(sub):
+            counts[feat] += 1
+            rank_sums[feat] += rank
+
+    all_feats = list(counts.keys())
+    # average rank where present; (lower avg rank is better)
+    avg_rank = {f: (rank_sums[f] / counts[f]) for f in all_feats}
+
+    # Sort: primary = frequency desc, secondary = avg rank asc
+    consensus_sorted = sorted(
+        all_feats,
+        key=lambda f: (-counts[f], avg_rank[f])
+    )
+    consensus_features = consensus_sorted[:topk]
+
+    # ------------------------------
+    # 3) Slice signals for consensus features
+    # ------------------------------
+    missing = [f for f in consensus_features if f not in df_signals.columns]
+    if missing:
+        # Keep only those available; warn in console
+        print(f"[WARN] {len(missing)} consensus features not in signals; ignoring a few like: {missing[:5]} ...")
+    consensus_features = [f for f in consensus_features if f in df_signals.columns]
+    df_top_signals = df_signals[consensus_features].copy()
+
+
+    #plot_top_nodes_correlation(config, df_signals, df_top_signals)
+
+    # ------------------------------
+    # 4) Groups & cosmetics
+    # ------------------------------
+    # Adjust these counts if your cohort sizes differ
+    group_labels = ["Breast Cancer"] * 50 + ["Normal"] * 30
+    if len(group_labels) != len(df_top_signals):
+        raise ValueError(
+            f"Group label length ({len(group_labels)}) doesn't match data rows ({len(df_top_signals)}). "
+            "Update the group_labels to your actual cohort sizes."
+        )
+
+    df_top_signals["Group"] = group_labels
+    group_colors = {"Breast Cancer": "#dd8452", "Normal": "#4c72b0"}
+    hue_order = ['Breast Cancer', 'Normal']
+    row_colors = df_top_signals["Group"].map(group_colors)
+
+    data = df_top_signals.drop(columns=["Group"])
+    sns.set(style="white", font_scale=1.0)
+    pred_type = "negative" #"negative" # likely_positive
+    out_path_heatmap = plot_local_path / f"heatmap_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
+    out_path_voilin = plot_local_path / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
+
+    # ------------------------------
+    # 5) Output: multi-page PDF
+    # ------------------------------
+    #out_path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
+    with PdfPages(out_path_heatmap) as pdf:
+        # ===== Page 1: Heatmap (consensus features) =====
+        g = sns.clustermap(
+            data,
+            row_colors=row_colors,
+            cmap=cmap,
+            col_cluster=False,
+            row_cluster=False,
+            linewidths=0.3,
+            figsize=(8, 8),
+            cbar_pos=None,
+        )
+        g.ax_heatmap.set_yticklabels([])
+        g.ax_heatmap.tick_params(left=False)
+        g.fig.subplots_adjust(top=0.85, right=0.80, left=0.06, bottom=0.06)
+
+        # Colorbar
+        mappable = g.ax_heatmap.collections[0]
+        # Move colorbar closer by decreasing the 'left' value from 1.10 → ~0.88–0.92
+        cax = g.fig.add_axes([0.88, 0.1, 0.02, 0.50])  # [left, bottom, width, height]
+        cb = g.fig.colorbar(mappable, cax=cax)
+        cb.set_label("β-value", rotation=90, labelpad=14)  # small extra pad for readability
+
+        # Legend
+        handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Breast Cancer", "Normal"]]
+        g.fig.legend(handles=handles, title="Group", loc="center left", frameon=False)
+
+        # Title
+        g.ax_heatmap.set_title(
+            f"DNA methylation of consensus top {len(consensus_features)} likely positive features (PNA, 5 runs)",
+            pad=4, fontsize=14
+        )
+        g.ax_col_dendrogram.set_visible(False)
+
+        pdf.savefig(g.fig, dpi=dpi, bbox_inches="tight")
+        plt.close(g.fig)
+
+    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_heatmap}")
+
+
+    with PdfPages(out_path_voilin) as pdf:
+
+        title_font = 24
+        x_y_font = 16
+        mean_annot_font = 14
+        long_df = (
+            df_top_signals
+            .melt(id_vars="Group", var_name="Feature", value_name="Beta")
+            .dropna()
+        )
+
+        # limit to first N for readability
+        max_features_for_violin = 30
+        features_for_violin = consensus_features #[:max_features_for_violin]
+        vdf = long_df[long_df["Feature"].isin(features_for_violin)].copy()
+
+        vdf["Group"] = pd.Categorical(vdf["Group"], categories=["Breast Cancer", "Normal"], ordered=True)
+        vdf["Feature"] = pd.Categorical(vdf["Feature"], categories=features_for_violin, ordered=True)
+
+        plt.figure(figsize=(max(12, 0.4 * len(features_for_violin)), 8))
+        ax = sns.violinplot(
+            data=vdf,
+            x="Feature",
+            y="Beta",
+            hue="Group",
+            hue_order=hue_order,
+            cut=0,
+            inner='quartile',
+            split=True,
+            palette=group_colors
+        )
+
+        # Overlay mean markers + lines to emphasize mean differences
+        sns.pointplot(
+            data=vdf,
+            x="Feature",
+            y="Beta",
+            hue="Group",
+            dodge=0.4,
+            join=True,
+            markers="o",
+            linestyles="-",
+            errorbar=None,
+            ax=ax
+        )
+
+        # Clean up duplicate legends
+        _, labels = ax.get_legend_handles_labels()
+        handles = [Patch(facecolor=group_colors[k], label=k) for k in ['Breast Cancer', 'Normal']]
+        ax.legend(handles[:2], labels[:2], title="Conditions", frameon=False, loc="upper left", bbox_to_anchor=(1.02, 1.02))
+
+        # Axis labels and title
+        ax.set_ylim(0, 1.3)
+        ax.set_yticks(np.arange(0, 1.3, 0.2))
+        ax.yaxis.grid(True, linestyle='--', linewidth=0.7, alpha=0.6)
+        ax.set_xlabel("Feature (probe_gene)", fontsize=x_y_font)
+        ax.set_ylabel("β-value", fontsize=x_y_font)
+        ax.set_title(
+            f"Distribution and mean differences per feature (β-values): BC vs Normal",
+            pad=10,
+            fontsize=title_font
+        )
+        ax.tick_params(axis="y", labelsize=x_y_font)
+        ax.tick_params(axis="x", labelsize=x_y_font)
+        plt.xticks(rotation=90)
+        plt.tight_layout()
+
+        # Annotate per-feature mean difference (Breast Cancer − Normal)
+        group_means = (
+            vdf.groupby(["Feature", "Group"])["Beta"]
+            .mean()
+            .unstack("Group")
+        )
+        # Safely compute ymax per feature for text placement
+        ymax_per_feature = vdf.groupby("Feature")["Beta"].max()
+        for i, feat in enumerate(features_for_violin):
+            if feat not in group_means.index:
+                continue
+            mu_bc = group_means.loc[feat].get("Breast Cancer", np.nan)
+            mu_n = group_means.loc[feat].get("Normal", np.nan)
+            if np.isnan(mu_bc) or np.isnan(mu_n):
+                continue
+            diff = mu_n - mu_bc
+            ytxt = ymax_per_feature.get(feat, vdf["Beta"].max()) + 0.02
+            ax.text(i, ytxt, f"Δμ={diff:.3f}", ha="center", va="bottom", fontsize=mean_annot_font, rotation=90)
+
+        pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
+        plt.close(ax.figure)
+
     print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
+
+
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import random
+
+def plot_positive_xai_nodes_raw_values(config):
+    """
+    Violin plot of top 20 positive CpG features comparing Breast Cancer vs Normal.
+    Each half of violin uses group color; means and Δμ are annotated.
+    """
+    base_path = Path(config.p_plot)
+
+    title_font = 24
+    x_y_font = 16
+    mean_annot_font = 14
+
+    # --- Load data ---
+    df_nebit_features = pd.read_csv(base_path / "df_nebit_dnam_features_bc_PNA.csv", sep=",")
+    df_signals = pd.read_csv(base_path / "combined_pos_neg_signals_bc.csv", sep="\t")
+    df_seed_genes = pd.read_csv(base_path / "out_gene_rankings_bc.csv", sep=" ")
+
+    df_seed_genes.columns = ["names", "associations", "labels"]
+    df_seed_genes = df_seed_genes[df_seed_genes["labels"] == 1]
+    seed_names = df_seed_genes["names"].tolist()
+
+    random.shuffle(seed_names)
+
+    seed_signals = df_signals[seed_names]
+
+    # --- Select top 20 features and split into groups ---
+    topk_features = 20
+    df = seed_signals.iloc[:, :topk_features].copy()
+    group1 = df.iloc[:50].assign(Group="Breast Cancer")
+    group2 = df.iloc[50:].assign(Group="Normal")
+
+    df_melted = pd.concat([group1, group2], axis=0).melt(
+        id_vars="Group", var_name="CpG", value_name="Value"
+    )
+
+    # --- Colors and ordering ---
+    hue_order = ['Breast Cancer', 'Normal']  # legend order: blue, orange
+    group_colors = {"Breast Cancer": "#dd8452", "Normal": "#4c72b0"}
+
+    df_melted["Group"] = pd.Categorical(df_melted["Group"], categories=hue_order, ordered=True)
+    df_melted["CpG"] = pd.Categorical(df_melted["CpG"], categories=list(df.columns), ordered=True)
+
+    # --- Plot ---
+    sns.set(style="white", font_scale=1.0)
+    plt.figure(figsize=(max(12, 0.4 * topk_features), 8))
+    ax = plt.gca()
+
+    # split violins colored by group
+    ax = sns.violinplot(
+        data=df_melted,
+        x="CpG",
+        y="Value",
+        hue="Group",
+        hue_order=hue_order,
+        split=True,
+        inner="quartile",
+        cut=0,
+        linewidth=1,
+        palette=[group_colors[g] for g in hue_order]
+    )
+
+    # overlay mean lines and markers
+    sns.pointplot(
+        data=df_melted,
+        x="CpG",
+        y="Value",
+        hue="Group",
+        hue_order=hue_order,
+        dodge=0.4,
+        join=True,
+        markers="o",
+        linestyles="-",
+        errorbar=None,
+        palette=[group_colors[g] for g in hue_order],
+        ax=ax
+    )
+
+    # clean duplicate legend
+    _, labels = ax.get_legend_handles_labels()
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ['Breast Cancer', 'Normal']]
+    ax.legend(handles[-2:], labels[-2:], title="Conditions", frameon=False,
+              loc="upper left", bbox_to_anchor=(1.02, 1.02))
+
+    # --- Compute per-feature means ---
+    group_means = (
+        df_melted.groupby(["CpG", "Group"])["Value"]
+        .mean()
+        .unstack("Group")
+    )
+
+    # annotate per-group means at markers
+    point_lines = [ln for ln in ax.lines if ln.get_marker() == "o"]
+    point_lines = point_lines[-len(hue_order):]
+    for line, grp in zip(point_lines, hue_order):
+        xdata = line.get_xdata()
+        ydata = line.get_ydata()
+        for xi, yi in zip(xdata, ydata):
+            ax.annotate(
+                f"{yi:.3f}",
+                (xi, yi),
+                xytext=(0, 6),
+                textcoords="offset points",
+                ha="center",
+                va="bottom",
+                fontsize=x_y_font,
+                color=group_colors[grp],
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6)
+            )
+
+    # Δμ (Breast Cancer − Normal) above each CpG
+    ymax_per_cpg = df_melted.groupby("CpG")["Value"].max()
+    for i, cpg in enumerate(df.columns):
+        if cpg not in group_means.index:
+            continue
+        mu_bc = group_means.loc[cpg].get("Breast Cancer", np.nan)
+        mu_n = group_means.loc[cpg].get("Normal", np.nan)
+        if np.isnan(mu_bc) or np.isnan(mu_n):
+            continue
+        dmu = mu_n - mu_bc
+        ytxt = ymax_per_cpg.get(cpg, df_melted["Value"].max()) + 0.02
+        ax.text(i, ytxt, f"Δμ={dmu:.3f}", ha="center", va="bottom", fontsize=mean_annot_font, rotation=90)
+
+    # --- Cosmetics ---
+    ax.set_ylim(0, 1.3)
+    ax.set_yticks(np.arange(0, 1.3, 0.2))
+    ax.yaxis.grid(True, linestyle='--', linewidth=0.7, alpha=0.6)
+    ax.set_ylabel("β-value", fontsize=x_y_font)
+    ax.set_xlabel("Feature (probe_gene)", fontsize=x_y_font)
+    plt.xticks(rotation=90, ha="center", fontsize=x_y_font)
+    ax.tick_params(axis="y", labelsize=x_y_font)
+
+    title_main = "Distribution and mean differences per feature (β-values): BC vs Normal"
+    ax.set_title(f"{title_main}", fontsize=title_font, pad=10)
+
+    plt.tight_layout()
+    out_path = base_path / "violin_positive_seeds_BC_normal.pdf"
+    plt.savefig(out_path, dpi=300, bbox_inches="tight")
+    plt.close()
+    print(f"[+] Saved: {out_path}")
 
 
 
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
-    #plot_xai_nodes_raw_values_averaged_runs(config)
-    plot_radar_runs_multiple(config)
+    plot_xai_nodes_raw_values_averaged_runs(config)
+    plot_positive_xai_nodes_raw_values(config)
+    #plot_radar_runs_multiple(config)
     #plot_radar_runs(config)
     #plot_mean_std_loss_acc(config)
     #plot_xai_nodes_raw_values(config)

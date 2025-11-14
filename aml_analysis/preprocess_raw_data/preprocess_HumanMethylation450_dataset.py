@@ -438,7 +438,7 @@ def extract_positives_negatives(clean_signals, df_f_names, config):
 
     #edges = build_correlation_edges(combined_pos_neg_signals, threshold=config.corr_threshold)
 
-    edges, edges_corr = build_knn_correlation_edges(combined_pos_neg_signals, k=3000, \
+    edges, edges_corr = build_knn_correlation_edges(combined_pos_neg_signals, k=config.knn_neighbours, \
                                                     corr_threshold=config.corr_threshold, mutual=True)
 
     print("Correlation edges found: %d", len(edges))

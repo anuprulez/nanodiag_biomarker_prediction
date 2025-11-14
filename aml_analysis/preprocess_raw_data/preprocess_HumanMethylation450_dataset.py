@@ -246,7 +246,7 @@ def merge_patients(clean_probes, config):
     # PatientIDS for RNA expression
     # https://www.nature.com/articles/s41375-023-01876-2/figures/5
 
-    patiendIds_rna_expr = [
+    '''patiendIds_rna_expr = [
         "S26004",
         "S14001",
         "S03005",
@@ -270,31 +270,33 @@ def merge_patients(clean_probes, config):
         "S01777",
         "S01030",
         "S01039",
-    ]
+    ]'''
 
-    patiendIds_rna_expr_full_names = list()
+    #patiendIds_rna_expr_full_names = list()
 
-    for item in df_row_names["PatientIDs"].tolist():
+    '''for item in df_row_names["PatientIDs"].tolist():
         if item.split(".")[0] in patiendIds_rna_expr:
-            patiendIds_rna_expr_full_names.append(item)
+            patiendIds_rna_expr_full_names.append(item)'''
 
-    df_patiendIds_rna_expr_full_names = pd.DataFrame(
+    '''df_patiendIds_rna_expr_full_names = pd.DataFrame(
         patiendIds_rna_expr_full_names, columns=["PatientIDs_RNA_Expr"]
-    )
-    df_patiendIds_rna_expr_full_names.to_csv(
+    )'''
+    '''df_patiendIds_rna_expr_full_names.to_csv(
         config.p_base + "patiendIds_rna_expr.csv", sep="\t", index=None
-    )
-    print(df_patiendIds_rna_expr_full_names)
+    )'''
+    #print(df_patiendIds_rna_expr_full_names)
+
+    '''rna_expr_patients = df_patiendIds_rna_expr_full_names[
+        "PatientIDs_RNA_Expr"
+    ].tolist()'''
+
+    #commmon_patients = list(set(rna_expr_patients).intersection(set(dnam_patients)))
 
     dnam_patients = df_patiendIds_demethylation_full_names[
         "PatientIDs_Demethylation"
     ].tolist()
-    rna_expr_patients = df_patiendIds_rna_expr_full_names[
-        "PatientIDs_RNA_Expr"
-    ].tolist()
 
-    commmon_patients = list(set(rna_expr_patients).intersection(set(dnam_patients)))
-    commmon_patients = sorted(commmon_patients, reverse=False)
+    commmon_patients = dnam_patients #sorted(commmon_patients, reverse=False)
     sorted_tuples = sorted([(s, s[-1]) for s in commmon_patients], key=lambda x: x[1])
     commmon_patients = list(map(lambda x: x[0], sorted_tuples))
 
@@ -324,12 +326,25 @@ def load_clean_arrays(config):
     features = df_merged_signals
     feature_names = features.columns
 
+    print(df_merged_signals)
+
+    print(f"Number of features: {len(feature_names)}")
+
+    feature_names = [item for item in feature_names if "duplicated" not in item]
+
+    print(f"Number of deduplicated features: {len(feature_names)}")
+
     df_feature_names = pd.DataFrame(feature_names, columns=["feature_names"])
     df_feature_names.to_csv(
         config.p_base + "final_feature_names.tsv", index=None, sep="\t"
     )
+
     df_merged_signals = df_merged_signals.to_pandas()
-    return df_merged_signals
+    df_merged_signals = df_merged_signals[feature_names]
+
+    print(df_merged_signals)
+
+    return df_merged_signals, df_feature_names
 
 
 def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
@@ -345,7 +360,31 @@ def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
     return negative_df[hv_names]
 
 
-def extract_positives_negatives(clean_signals, config):
+def create_seeds_associations(df_feature_names, df_non_rand_cpgs, config):
+    df_non_rand_cpgs.columns = [item.strip() for item in df_non_rand_cpgs.columns]
+
+    cpgs_associaton_scores = df_non_rand_cpgs[["CpG", "delta beta"]]
+
+    cpgs_associaton_scores.columns = ["feature_name", "association_score"]
+    cpgs_associaton_scores["association_score"] = np.abs(cpgs_associaton_scores["association_score"])
+
+    seed_feature_names = list()
+    seed_feature_association_scores = list()
+    f_names = cpgs_associaton_scores["feature_name"].tolist()
+
+    for i, row in enumerate(df_feature_names.iterrows()):
+        name = row[1]["feature_names"].split("_")
+        cpg, _ = name[0], name[1]
+        if cpg in f_names:
+            seed_feature_names.append(row[1]["feature_names"])
+            score = cpgs_associaton_scores[cpgs_associaton_scores["feature_name"] == name[0]]
+            seed_feature_association_scores.append(score["association_score"].iloc[0])
+    df_seed_features = pd.DataFrame(zip(seed_feature_names, seed_feature_association_scores), columns=["feature_name", "score"])
+    df_seed_features.to_csv(config.p_seed_features, sep="\t", index=None, header=None)
+    print(df_seed_features)
+
+
+def extract_positives_negatives(clean_signals, df_f_names, config):
     rng = random.Random(config.SEED)
     np.random.seed(config.SEED)
     non_rand_cpgs = pd.read_csv(config.p_seeds_methylated_cpgs, sep="\t")
@@ -355,18 +394,21 @@ def extract_positives_negatives(clean_signals, config):
     all_cols = [item.strip() for item in all_cols]
     non_rand_cpgs.columns = all_cols
 
-    genes_symbols_diff_exp_meth = pd.read_csv(
-        config.p_seeds_gene_methylation_expr, sep="\t"
-    )
-    print("Differentially expressed genes (n=%d):", len(genes_symbols_diff_exp_meth))
-    print(genes_symbols_diff_exp_meth.head())
+    print("Creating seed associations ...")
+    create_seeds_associations(df_f_names, non_rand_cpgs, config)
+
+    #genes_symbols_diff_exp_meth = pd.read_csv(
+    #    config.p_seeds_gene_methylation_expr, sep="\t"
+    #)
+    #print("Differentially expressed genes (n=%d):", len(genes_symbols_diff_exp_meth))
+    #print(genes_symbols_diff_exp_meth.head())
 
     positive_probes_genes = list()
     for index, col in enumerate(clean_signals.columns):
         cpg, gene = col.split("_")[0], col.split("_")[1]
         if (
-            gene in genes_symbols_diff_exp_meth["Gene symbol"].tolist()
-            or cpg in non_rand_cpgs["CpG"].tolist()
+            #gene in genes_symbols_diff_exp_meth["Gene symbol"].tolist()
+            cpg in non_rand_cpgs["CpG"].tolist()
         ):
             positive_probes_genes.append(col)
     print(f"Number of positive genes: {len(positive_probes_genes)}")
@@ -394,14 +436,154 @@ def extract_positives_negatives(clean_signals, config):
     )
     print(combined_pos_neg_signals.head())
 
-    edges = build_correlation_edges(
-        combined_pos_neg_signals, threshold=config.corr_threshold
-    )
+    #edges = build_correlation_edges(combined_pos_neg_signals, threshold=config.corr_threshold)
+
+    edges, edges_corr = build_knn_correlation_edges(combined_pos_neg_signals, k=3000, \
+                                                    corr_threshold=config.corr_threshold, mutual=True)
 
     print("Correlation edges found: %d", len(edges))
 
     # The original code wrote no header; keep that behavior:
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
+    edges_corr.to_csv(config.p_significant_edges_with_corr, sep="\t", header=False, index=False)
+
+
+def build_knn_correlation_edges(
+    features_df: pd.DataFrame,
+    k: int,
+    corr_threshold: float = 0.5,
+    mutual: bool = False,
+) -> pd.DataFrame:
+    """
+    Build a kNN correlation graph between features and return edges (In, Out, Corr)
+    where corr > corr_threshold.
+
+    Parameters
+    ----------
+    features_df : pd.DataFrame
+        Input matrix (samples x features)
+    k : int
+        Number of neighbors per feature (excluding self)
+    corr_threshold : float
+        Minimum correlation required to keep an edge
+    mutual : bool
+        If True, keep only edges that are mutual in both directions
+
+    Returns
+    -------
+    edges : pd.DataFrame
+        Columns: ["In", "Out", "Corr"]
+    """
+    if k < 1:
+        raise ValueError("k must be >= 1")
+
+    feature_names = features_df.columns.to_list()
+    n_feat = len(feature_names)
+    if n_feat < 2:
+        return pd.DataFrame(columns=["In", "Out", "Corr"])
+
+    # Compute feature-feature correlation matrix
+    corr = np.corrcoef(features_df.T)
+    np.fill_diagonal(corr, -np.inf)  # exclude self-correlation
+    corr = np.nan_to_num(corr, nan=-np.inf)
+
+    k_eff = min(k, n_feat - 1)
+    in_nodes, out_nodes, corrs = [], [], []
+    neighbors_of = [None] * n_feat
+
+    # Build kNN edges for each feature
+    for j in range(n_feat):
+        # Get top-k most correlated features
+        idx = np.argpartition(corr[:, j], -k_eff)[-k_eff:]
+        idx = idx[np.argsort(corr[idx, j])[::-1]]  # sort descending
+        neighbors_of[j] = set(idx)
+
+        # Keep only those with correlation above threshold
+        for i in idx:
+            cval = corr[i, j]
+            if cval > corr_threshold:
+                in_nodes.append(feature_names[j])
+                out_nodes.append(feature_names[i])
+                corrs.append(cval)
+
+    if mutual:
+        # Keep only mutual edges
+        name_to_idx = {name: i for i, name in enumerate(feature_names)}
+        keep_in, keep_out, keep_corr = [], [], []
+        for u, v, c in zip(in_nodes, out_nodes, corrs):
+            iu, iv = name_to_idx[u], name_to_idx[v]
+            if iu in neighbors_of[iv] and iv in neighbors_of[iu]:
+                keep_in.append(u)
+                keep_out.append(v)
+                keep_corr.append(c)
+        in_nodes, out_nodes, corrs = keep_in, keep_out, keep_corr
+
+    edges = pd.DataFrame({"In": in_nodes, "Out": out_nodes})
+    edges_corr = pd.DataFrame({"In": in_nodes, "Out": out_nodes, "Corr": corrs})
+    return edges, edges_corr
+
+
+'''def build_knn_correlation_edges(
+    features_df: pd.DataFrame,
+    k: int,
+    mutual: bool = False,
+) -> pd.DataFrame:
+    """
+    Build a kNN graph over features using Pearson correlation as similarity.
+    Returns a DataFrame of directed edges with columns ["In", "Out"].
+
+    features_df: samples x features
+    k: number of neighbors per feature (excluding self)
+    mutual: if True, keep only edges where both endpoints are in each other's kNN
+
+    Notes:
+    - Uses np.corrcoef on features (transpose first).
+    - Self-correlations are excluded.
+    - If k >= n_features, it connects to all other features.
+    """
+    if k < 1:
+        raise ValueError("k must be >= 1")
+
+    feature_names = features_df.columns.to_list()
+    n_feat = len(feature_names)
+    if n_feat < 2:
+        return pd.DataFrame(columns=["In", "Out"])
+
+    # corrcoef expects rows as variables -> transpose
+    corr = np.corrcoef(features_df.T)
+
+    # Handle NaNs and exclude self by setting to -inf
+    corr = np.asarray(corr, dtype=float)
+    np.fill_diagonal(corr, -np.inf)
+    corr = np.nan_to_num(corr, nan=-np.inf)
+
+    # For each feature j, get indices of top-k correlations (largest values)
+    k_eff = min(k, n_feat - 1)
+    in_nodes, out_nodes = [], []
+
+    # Collect directed edges j -> i for i in top-k of j
+    neighbors_of = [None] * n_feat
+    for j in range(n_feat):
+        # argpartition for top-k, then sort those k by actual score (desc)
+        idx = np.argpartition(corr[:, j], -k_eff)[-k_eff:]
+        idx = idx[np.argsort(corr[idx, j])[::-1]]
+        neighbors_of[j] = set(idx)
+        for i in idx:
+            in_nodes.append(feature_names[j])
+            out_nodes.append(feature_names[i])
+
+    if mutual:
+        # Keep only edges that are mutual kNN
+        keep_in, keep_out = [], []
+        name_to_idx = {name: i for i, name in enumerate(feature_names)}
+        for u, v in zip(in_nodes, out_nodes):
+            iu, iv = name_to_idx[u], name_to_idx[v]
+            if iu in neighbors_of[iv] and iv in neighbors_of[iu]:
+                keep_in.append(u)
+                keep_out.append(v)
+        in_nodes, out_nodes = keep_in, keep_out
+
+    return pd.DataFrame({"In": in_nodes, "Out": out_nodes})'''
 
 
 def build_correlation_edges(
@@ -464,6 +646,7 @@ def mark_seed_genes(seed_genes_path, genes_path, gene):
 
     with open(seed_genes_path, "r") as fin:
         for line in fin:
+            print(line)
             name_gene, score = line.strip().split()
             score = float(score)
             if name_gene in gene:
@@ -532,18 +715,18 @@ if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
 
     ## Step 1
-    print("======== Step 1: loading datasets =============")
+    '''print("======== Step 1: loading datasets =============")
     extract_preprocessed_data(config) if config.download_raw_data else None
     processed_arrays, probe_mapper_full = load_illumina_arrays(config)
     clean_probes = filter_probes(
         config.p_snp_probes, processed_arrays, probe_mapper_full
     )
-    merge_patients(clean_probes, config)
+    merge_patients(clean_probes, config)'''
 
     ## Step 2
     print("======== Step 2: cleaning datasets and computing correlation =============")
-    clean_arrays = load_clean_arrays(config)
-    features = extract_positives_negatives(clean_arrays, config)
+    clean_arrays, df_f_names = load_clean_arrays(config)
+    features = extract_positives_negatives(clean_arrays, df_f_names, config)
 
     ## Step 3
     print("======== Step 3: Label propagation =============")

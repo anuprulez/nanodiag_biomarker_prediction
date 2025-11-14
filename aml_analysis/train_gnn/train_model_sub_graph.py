@@ -1,10 +1,15 @@
 import copy
 import torch
+import math
 import torch.nn.functional as F
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+from torch.nn.utils import clip_grad_norm_
 from torch_geometric.loader import NeighborLoader
 from sklearn.model_selection import train_test_split
-from torch_geometric.utils import coalesce
+from torch_geometric.utils import coalesce, degree
 from sklearn.metrics import f1_score, precision_recall_fscore_support
+
 import joblib
 
 import numpy as np
@@ -13,6 +18,7 @@ import pandas as pd
 import gnn_network
 import plot_gnn
 import utils
+
 
 detach = utils.detach_from_gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,7 +42,7 @@ def make_neighbor_loaders(data, config):
 
     train_loader = NeighborLoader(
         data,
-        input_nodes=ensure_bool(data.train_mask),  # seed nodes = train
+        input_nodes=ensure_bool(data.train_mask), # seed nodes = train
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
@@ -68,25 +74,23 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, device, model_type):
+def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
     for tr_idx, batch in enumerate(train_loader):
         batch = batch.to(device, non_blocking=True)
-        # print(f"Batch tr: {tr_idx}, {batch.x.shape}, {batch.edge_index.shape}")
         optimizer.zero_grad(set_to_none=True)
-        if model_type in ["pna"]:
-            out, *_ = model(batch.x, batch.edge_index)
-        else:
-            out = model(batch.x, batch.edge_index)
-        print(f"out: {out.shape}")
+        out, *_ = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # first seed_n nodes = seeds
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
         loss.backward()
+        clip_grad_norm_(model.parameters(), max_norm=1.5)
         optimizer.step()
+        scheduler.step()
+
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
@@ -97,17 +101,14 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device, model_typ
 
 
 @torch.no_grad()
-def val_evaluate(loader, model, criterion, device, model_type):
+def val_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
         used_val_ids.extend(batch.n_id.cpu().tolist()[: batch.batch_size])
-        if model_type in ["pna"]:
-            out, *_ = model(batch.x, batch.edge_index)
-        else: 
-            out = model(batch.x, batch.edge_index)
+        out, *_ = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         logits = out[:seed_n]
         targets = batch.y[:seed_n].long()
@@ -123,7 +124,7 @@ def val_evaluate(loader, model, criterion, device, model_type):
 
 
 @torch.no_grad()
-def test_evaluate(loader, model, criterion, device, model_type):
+def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     (
@@ -137,10 +138,7 @@ def test_evaluate(loader, model, criterion, device, model_type):
     ) = ([], [], [], [], [], [], [])
     for batch in loader:
         batch = batch.to(device, non_blocking=True)
-        if model_type in ["pna"]:
-            out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
-        else:
-            out = model(batch.x, batch.edge_index)
+        out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
         seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
         test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
         logits = out[:seed_n]
@@ -175,33 +173,10 @@ def test_evaluate(loader, model, criterion, device, model_type):
     )
 
 
-def choose_model(config, data):
-    if config.model_type == "pna":
-        model = gnn_network.GPNA(config, data)
-    elif config.model_type == "gcn":
-        model = gnn_network.GCN(config)
-    elif config.model_type == "gsage":
-        model = gnn_network.GraphSAGE(config)
-    elif config.model_type == "gin":
-        model = gnn_network.GraphSAGE(config)
-    elif config.model_type == "gatv2":
-        model = gnn_network.GATv2(config)
-    elif config.model_type == "gcn2":
-        model = gnn_network.GCNII(config)
-    elif config.model_type == "appnet":
-        model = gnn_network.APPNPNet(config)
-    elif config.model_type == "gtran":
-        model = gnn_network.GraphTransformer(config)
-    else:
-        model = gnn_network.GPNA(config, data)
-    return model
-
-
-def train_gnn_model(config):
+def train_gnn_model(config, chosen_model):
     """
     Create network architecture and assign loss, optimizers ...
     """
-    learning_rate = config.learning_rate
     n_epo = config.n_epo
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     mapped_f_name = out_genes.loc[:, 0]
@@ -209,21 +184,22 @@ def train_gnn_model(config):
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
+    deg = degree(data.edge_index[0], num_nodes=data.num_nodes)  # in-degree or out-degree
+    print(f"Mean degree: {deg.mean().item()}")
+    print(f"Max degree: {deg.max().item()}")
+    print(f"Std dev: {deg.std().item()}")
+    print(f"Median degree: {deg.median().item()}")
+    ratio = deg.max().item() / (deg.mean().item() + 1e-9)
+    print(f"Max / Mean ratio: {ratio}")
     tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
     te_nodes = pd.read_csv(config.p_test_probe_genes, sep=",")
     te_node_ids = te_nodes["test_gene_ids"].tolist()
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
 
-    print(f"Initialize model: {config.model_type}")
-    model = choose_model(config, data)
-    model = model.cuda()
-
-    # loss fn
-    criterion = torch.nn.CrossEntropyLoss()
-
     # optimizer
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    #optimizer = torch.optim.Adam(model.parameters(), \
+    #                             lr=config.learning_rate, weight_decay=config.weight_decay)
     tr_loss_epo = list()
     tr_acc_epo = list()
     te_loss_epo = list()
@@ -231,6 +207,7 @@ def train_gnn_model(config):
     val_loss_epo = list()
     val_acc_epo = list()
     best_te_acc = -float("inf")
+    best_val_acc = -float("inf")
     best_state = None
     best_epoch = -1
 
@@ -254,6 +231,25 @@ def train_gnn_model(config):
     data.train_mask = create_masks(mapped_f_name, split_tr_node_ids)
     data.val_mask = create_masks(mapped_f_name, val_node_ids)
     data.test_mask = create_masks(mapped_f_name, te_node_ids)
+
+    print(f"Initialize model: {chosen_model}")
+    model = utils.choose_model(config, data, chosen_model)
+    for name, module in model.named_modules():
+        print(f"{name}: {module}")
+    model = model.cuda()
+
+    # loss fn
+    criterion = torch.nn.CrossEntropyLoss()
+
+    base_lr = config.learning_rate
+    weight_decay = config.weight_decay #1e-3
+    optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay)
+
+    steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
+    total_steps = steps_per_epoch * config.n_epo
+    scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps,
+                       pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
+
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
     )
@@ -263,27 +259,29 @@ def train_gnn_model(config):
     plot_gnn.plot_features(
         test_x,
         test_y,
+        chosen_model,
         config,
-        f"UMAP of raw features (NedBit + DNA Methylation): {config.model_type}",
+        f"UMAP of raw features (NeDBIT + DNA Methylation): {chosen_model}",
         "test_before_GNN",
     )
 
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
     val_ids_epo = list()
+    print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, device, config.model_type
+            train_loader, model, optimizer, criterion, scheduler, device
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
-            val_loader, model, criterion, device, config.model_type
+            val_loader, model, criterion, device
         )
         val_ids_epo.extend(used_val_ids)
         print(
-            f"[Epoch {epoch:03d} / {n_epo:03d}] "
+            f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device, config.model_type)
+        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
         print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -293,26 +291,27 @@ def train_gnn_model(config):
         te_acc_epo.append(te_acc)
         te_loss_epo.append(te_loss)
 
-        if te_acc > best_te_acc:
-            best_te_acc = te_acc
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_test_acc = te_acc
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
-                f"Saving the model state, best epoch was {best_epoch} with test acc {te_acc:.2f}."
+                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}, test accuracy {te_acc:.2f}"
             )
             torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
 
     print("Plot and report all training epochs")
 
     plot_gnn.plot_loss_acc(
-        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, config
+        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, chosen_model, config
     )
     print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
 
     ## Restore the best trained model for downstream usages
     print(
-        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_te_acc:.2f})."
+        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_val_acc:.2f})."
     )
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -327,7 +326,7 @@ def train_gnn_model(config):
         test_ids,
         embs_pna4,
         embs_bn4,
-    ) = test_evaluate(test_loader, model, criterion, device, config.model_type)
+    ) = test_evaluate(test_loader, model, criterion, device)
 
     # Save predictions, true labels, model
     torch.save(test_ids, config.p_test_loader_ids)
@@ -355,17 +354,21 @@ def train_gnn_model(config):
         "te_recall": te_recall,
         "tr_loss": tr_loss_epo,
         "te_loss": te_loss_epo,
-        "val_acc": val_acc_epo,
+        "val_loss": val_loss_epo,
+        "tr_acc": tr_acc_epo,
         "te_acc": te_acc_epo,
+        "val_acc": val_acc_epo,
     }
 
     print(f"All metrics: {metrics}")
     utils.save_accuracy_scores(
-        metrics, f"{config.p_plot}all_metrics_{config.model_type}.json"
+        metrics, f"{config.p_plot}all_metrics_{chosen_model}.json"
     )
     print("Plotting metrics and UMAP plots for final embeddings")
-    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, config, "PNAConv4")
-    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, config, "BatchNorm1d")
-    plot_gnn.plot_confusion_matrix(true_labels, pred_labels, config)
-    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, config)
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
+    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d")
+    plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
+    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
     print("Finished.")

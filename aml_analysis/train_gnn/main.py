@@ -1,6 +1,8 @@
 import requests
 import zipfile
 import os
+import os
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 import datetime
 import uuid
 
@@ -9,6 +11,8 @@ import train_model
 import train_model_sub_graph
 
 from omegaconf.omegaconf import OmegaConf
+from absl import logging
+logging.set_verbosity(logging.ERROR)
 
 
 def extract_preprocessed_data(config):
@@ -50,7 +54,8 @@ def run_training():
     extract_preprocessed_data(config) if config.download_preprocessed_data else None
     preprocess_data.read_files(config)
     # train_model.train_gnn_model(config)
-    train_model_sub_graph.train_gnn_model(config)
+    model_type = config.model_type
+    train_model_sub_graph.train_gnn_model(config, model_type)
 
 
 if __name__ == "__main__":

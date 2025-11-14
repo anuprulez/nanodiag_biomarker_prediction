@@ -1,30 +1,62 @@
 import torch
-from torch_geometric.data import Data
-from torch.nn import Sequential, Linear, BatchNorm1d, ReLU
+from torch.nn import Linear, BatchNorm1d, LayerNorm
 from torch_geometric.nn import (
-    GCNConv,
     PNAConv,
-    TransformerConv,
-    APPNP,
-    GCN2Conv,
-    GINConv,
-    GATv2Conv,
+    GCNConv,
     SAGEConv,
+    GATv2Conv,
+    TransformerConv
 )
 import torch.nn.functional as F
-from torch_geometric.utils import degree
-
-import pandas as pd
-import numpy as np
+from torch_geometric.utils import degree, subgraph
+from torch_geometric.nn.norm import GraphNorm
 
 
 class GPNA(torch.nn.Module):
-    def __find_deg(self, train_dataset):
+
+    def __find_deg_train_nodes(self, data, undirected=True, device=None):
+        # take only training nodes
+        if device is None:
+            device = data.edge_index.device
+
+        # indices of training nodes
+        train_nodes = data.train_mask.nonzero(as_tuple=False).view(-1)
+
+        # induce subgraph on training nodes; relabel to 0..n-1
+        e_sub, _ = subgraph(
+            train_nodes,
+            data.edge_index,
+            relabel_nodes=True,
+            num_nodes=data.num_nodes
+        )
+
+        n = int(train_nodes.numel())
+
+        # choose which edge endpoints to count
+        if undirected:
+            dst = torch.cat([e_sub[0], e_sub[1]], dim=0)
+        else:
+            dst = e_sub[1]
+
+        # per-node degrees (length = n)
+        d = degree(dst, num_nodes=n, dtype=torch.long)
+
+        # histogram over degree values (length = max(d)+1)
+        max_deg = int(d.max().item()) if d.numel() > 0 else 0
+        deg_hist = torch.bincount(d, minlength=max_deg + 1)
+
+        # move to model device
+        deg_hist = deg_hist.to(device)
+
+        return deg_hist
+
+    def __find_deg(self, dataset):
+        # take entire dataset
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         max_degree = -1
         d = degree(
-            train_dataset.edge_index[1],
-            num_nodes=train_dataset.num_nodes,
+            dataset.edge_index[1],
+            num_nodes=dataset.num_nodes,
             dtype=torch.long,
         )
         max_degree = max(max_degree, int(d.max()))
@@ -32,304 +64,230 @@ class GPNA(torch.nn.Module):
         deg = torch.zeros(max_degree + 1, dtype=torch.long)
         deg = deg.to(device)
         d = degree(
-            train_dataset.edge_index[1],
-            num_nodes=train_dataset.num_nodes,
+            dataset.edge_index[1],
+            num_nodes=dataset.num_nodes,
             dtype=torch.long,
         )
         d = d.to(device)
         deg += torch.bincount(d, minlength=deg.numel())
         return deg
 
-    def __init__(self, config, train_dataset):
+    def __init__(self, config, dataset):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
-        scalers = ["identity", "amplification", "attenuation"]
-        deg = self.__find_deg(train_dataset)
-        SEED = config["SEED"]
-        torch.manual_seed(SEED)
-        self.pnaconv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
-        self.pnaconv2 = PNAConv(hidden_dim, 2 * hidden_dim, aggregators, scalers, deg)
-        self.pnaconv3 = PNAConv(2 * hidden_dim, hidden_dim, aggregators, scalers, deg)
-        self.pnaconv4 = PNAConv(hidden_dim, hidden_dim // 2, aggregators, scalers, deg)
+        scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
+        p_drop = config.dropout
+        deg = self.__find_deg(dataset)
+
+        torch.manual_seed(config.SEED)
+        self.conv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
+        self.conv2 = PNAConv(hidden_dim, 2 * hidden_dim, aggregators, scalers, deg)
+        self.conv3 = PNAConv(2 * hidden_dim, hidden_dim, aggregators, scalers, deg)
+        self.conv4 = PNAConv(hidden_dim, hidden_dim // 2, aggregators, scalers, deg)
         self.classifier = Linear(hidden_dim // 2, num_classes)
-        self.batch_norm1 = BatchNorm1d(hidden_dim)
-        self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
-        self.batch_norm3 = BatchNorm1d(hidden_dim)
-        self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
-        self.model_activation = dict()
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
+        self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = self.pnaconv1(x, edge_index)
-        h = self.batch_norm1(F.relu(h))
-        h = self.pnaconv2(h, edge_index)
-        h = self.batch_norm2(F.relu(h))
-        h = self.pnaconv3(h, edge_index)
-        h = self.batch_norm3(F.relu(h))
-        out_pnaconv4 = self.pnaconv4(h, edge_index)
-        out_batch_norm4 = self.batch_norm4(F.relu(out_pnaconv4))
-        out = self.classifier(out_batch_norm4)
-        return out, out_pnaconv4, out_batch_norm4
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GCN(torch.nn.Module):
     """
     Neural network with graph convolution network (GCN)
     """
-
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        SEED = config["SEED"]
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
         torch.manual_seed(SEED)
         self.conv1 = GCNConv(gene_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, 2 * hidden_dim)
         self.conv3 = GCNConv(2 * hidden_dim, hidden_dim)
         self.conv4 = GCNConv(hidden_dim, hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
-        self.batch_norm1 = BatchNorm1d(hidden_dim)
-        self.batch_norm2 = BatchNorm1d(2 * hidden_dim)
-        self.batch_norm3 = BatchNorm1d(hidden_dim)
-        self.batch_norm4 = BatchNorm1d(hidden_dim // 2)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
+        self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = self.conv1(x, edge_index)
-        h = self.batch_norm1(F.relu(h))
-        h = self.conv2(h, edge_index)
-        h = self.batch_norm2(F.relu(h))
-        h = self.conv3(h, edge_index)
-        h = self.batch_norm3(F.relu(h))
-        h = self.conv4(h, edge_index)
-        h = self.batch_norm4(F.relu(h))
-        out = self.classifier(h)
-        return out
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GraphSAGE(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        p_drop = config.get("dropout", 0.2)
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        torch.manual_seed(SEED)
         self.conv1 = SAGEConv(gene_dim, hidden_dim)
         self.conv2 = SAGEConv(hidden_dim, 2 * hidden_dim)
         self.conv3 = SAGEConv(2 * hidden_dim, hidden_dim)
         self.conv4 = SAGEConv(hidden_dim, hidden_dim // 2)
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(2 * hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
+        self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.bn1(self.conv1(x, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn2(self.conv2(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn3(self.conv3(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn4(self.conv4(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
 
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
 
-def _mlp(in_dim, out_dim):
-    return Sequential(Linear(in_dim, out_dim), ReLU(), Linear(out_dim, out_dim))
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
 
+        h4_in = h3 + h1
 
-class GIN(torch.nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        p_drop = config.get("dropout", 0.2)
-        torch.manual_seed(config["SEED"])
-
-        self.conv1 = GINConv(_mlp(gene_dim, hidden_dim))
-        self.conv2 = GINConv(_mlp(hidden_dim, 2 * hidden_dim))
-        self.conv3 = GINConv(_mlp(2 * hidden_dim, hidden_dim))
-        self.conv4 = GINConv(_mlp(hidden_dim, hidden_dim // 2))
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(2 * hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
-        self.p_drop = p_drop
-
-    def forward(self, x, edge_index):
-        h = F.relu(self.bn1(self.conv1(x, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn2(self.conv2(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn3(self.conv3(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.bn4(self.conv4(h, edge_index)))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
 
 
 class GATv2(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.3)
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        heads = config.heads
+        torch.manual_seed(SEED)
         self.conv1 = GATv2Conv(
             gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv2 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            hidden_dim, (2 * hidden_dim) // heads, heads=heads, dropout=p_drop
         )
         self.conv3 = GATv2Conv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            (2 * hidden_dim), hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv4 = GATv2Conv(
             hidden_dim,
             (hidden_dim // 2) // heads,
             heads=heads,
-            dropout=p_drop,
-            concat=True,
+            dropout=p_drop
         )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
+        self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.elu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.elu(self.conv4(h, edge_index))
-        h = self.bn4(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
 
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
 
-class GCNII(torch.nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        num_layers = config.get("num_layers", 8)
-        alpha = config.get("alpha", 0.1)  # initial residual weight
-        theta = config.get("theta", 0.5)  # identity mapping strength
-        p_drop = config.get("dropout", 0.5)
-        torch.manual_seed(config["SEED"])
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
 
-        self.lin_in = Linear(gene_dim, hidden_dim)
-        self.convs = torch.nn.ModuleList(
-            [
-                GCN2Conv(hidden_dim, alpha=alpha, theta=theta, layer=i + 1)
-                for i in range(num_layers)
-            ]
-        )
-        self.bn = torch.nn.ModuleList(
-            [BatchNorm1d(hidden_dim) for _ in range(num_layers)]
-        )
-        self.lin_out = Linear(hidden_dim, num_classes)
-        self.p_drop = p_drop
+        h4_in = h3 + h1
 
-    def forward(self, x, edge_index):
-        x0 = F.dropout(F.relu(self.lin_in(x)), p=self.p_drop, training=self.training)
-        h = x0
-        for i, conv in enumerate(self.convs):
-            h = F.dropout(h, p=self.p_drop, training=self.training)
-            h = conv(h, x0, edge_index)  # uses initial features x0
-            h = self.bn[i](F.relu(h))
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.lin_out(h)
-
-
-class APPNPNet(torch.nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        K = config.get("K", 10)  # propagation steps
-        alpha = config.get("alpha", 0.1)  # teleport proba
-        p_drop = config.get("dropout", 0.5)
-        torch.manual_seed(config["SEED"])
-
-        self.lin1 = Linear(gene_dim, hidden_dim)
-        self.lin2 = Linear(hidden_dim, hidden_dim // 2)
-        self.lin3 = Linear(hidden_dim // 2, num_classes)
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim // 2)
-        self.prop = APPNP(K=K, alpha=alpha, dropout=p_drop)
-        self.p_drop = p_drop
-
-    def forward(self, x, edge_index):
-        h0 = F.relu(self.bn1(self.lin1(x)))
-        h0 = F.dropout(h0, p=self.p_drop, training=self.training)
-        h0 = F.relu(self.bn2(self.lin2(h0)))
-        h0 = F.dropout(h0, p=self.p_drop, training=self.training)
-        logits = self.lin3(h0)
-        return self.prop(logits, edge_index)
-
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+    
 
 class GraphTransformer(torch.nn.Module):
     def __init__(self, config):
         super().__init__()
-        num_classes = config["num_classes"]
-        gene_dim = config["gene_dim"]
-        hidden_dim = config["hidden_dim"]
-        heads = config.get("heads", 4)
-        p_drop = config.get("dropout", 0.2)
-        torch.manual_seed(config["SEED"])
-
+        num_classes = config.num_classes
+        gene_dim = config.gene_dim
+        hidden_dim = config.hidden_dim
+        SEED = config.SEED
+        p_drop = config.dropout
+        heads = config.heads
+        torch.manual_seed(SEED)
         self.conv1 = TransformerConv(
-            gene_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            gene_dim, hidden_dim // heads, heads=heads
         )
         self.conv2 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            hidden_dim, (2 * hidden_dim) // heads, heads=heads
         )
         self.conv3 = TransformerConv(
-            hidden_dim, hidden_dim // heads, heads=heads, dropout=p_drop
+            2 * hidden_dim, hidden_dim // heads, heads=heads
         )
         self.conv4 = TransformerConv(
-            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
+            hidden_dim, (hidden_dim // 2) // heads, heads=heads
         )
-        self.bn1 = BatchNorm1d(hidden_dim)
-        self.bn2 = BatchNorm1d(hidden_dim)
-        self.bn3 = BatchNorm1d(hidden_dim)
-        self.bn4 = BatchNorm1d(hidden_dim // 2)
-        self.cls = Linear(hidden_dim // 2, num_classes)
+        self.bn1 = LayerNorm(hidden_dim)
+        self.bn2 = LayerNorm(2 * hidden_dim)
+        self.bn3 = LayerNorm(hidden_dim)
+        self.bn4 = LayerNorm(hidden_dim // 2)
+        self.classifier = Linear(hidden_dim // 2, num_classes)
         self.p_drop = p_drop
 
     def forward(self, x, edge_index):
-        h = F.relu(self.conv1(x, edge_index))
-        h = self.bn1(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv2(h, edge_index))
-        h = self.bn2(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv3(h, edge_index))
-        h = self.bn3(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        h = F.relu(self.conv4(h, edge_index))
-        h = self.bn4(h)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
-        return self.cls(h)
+        h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
+        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+
+        h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
+        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+
+        h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
+        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+
+        h4_in = h3 + h1
+
+        out_pnaconv4 = self.conv4(h4_in, edge_index)
+        out_batch_norm4 = self.bn4(out_pnaconv4)
+        h4 = F.elu(out_batch_norm4)
+        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
+        return self.classifier(h4), out_pnaconv4, out_batch_norm4

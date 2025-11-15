@@ -71,6 +71,7 @@ def filter_tr_genes(test_probe_ids, out_genes):
 
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating data ojbect for GNN...")
+    print(f"Number of test nodes before probes check: {len(te_nodes)}")
     p_data = config.p_data
     sfeatures_names = config.keep_feature_names.split(",")
     sfeatures_ids = [int(i) for i in range(len(sfeatures_names))]

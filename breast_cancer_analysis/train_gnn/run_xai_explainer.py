@@ -344,11 +344,11 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     chosen_model = config.best_trained_model
     model = load_model(config.p_torch_model, data, chosen_model)
-    node_i = 1775 # 2569 #1775 #2569 #7478 # 68 #7868
+    node_i = 2168 # 2569 #1775 #2569 #7478 # 68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     collect_pred_labels(config)
-    #print(f"Creating graph with all nodes ...")
-    #G = to_networkx(data, node_attrs=["x"], to_undirected=True)
-    # Collect dataframes for different axes
-    #p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
-    #get_node_names_links(p_nodes, node_i, config)
+    print(f"Creating graph with all nodes ...")
+    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    #Collect dataframes for different axes
+    p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
+    get_node_names_links(p_nodes, node_i, config)

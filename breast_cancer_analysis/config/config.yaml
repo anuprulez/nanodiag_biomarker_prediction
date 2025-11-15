@@ -1,7 +1,7 @@
 SEED: 32
-n_edges: 14251734 #14251734
+n_edges: 9913451 #14251734 #14251734 # 9913451 knn_3000
 # BC: all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 20
+n_epo: 12
 batch_size: 32
 num_classes: 5
 gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
@@ -19,18 +19,21 @@ dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
 heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 dpi: 300
-model_type: "GraphTransformer" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+model_type: "PNA" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
 best_trained_model: ${model_type} # Find the best trained model via training and then set it
-neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
-explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+neighbors_spread: [-1, 100, 50] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
+explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
 masks_for_seed: 3
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
-show_num_neighbours: 11
-p_base: ../data_corr_0.33_negative_10000/
+show_num_neighbours: 20
+knn_neighbours: 3000
+p_base: ../data_corr_0.33_negative_10000_knn/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
+p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
+p_merged_signals: ${p_base}merged_signals_bc.csv
 p_seed_features: ${p_base}seed_features.csv
 p_out_links: ${p_base}out_links_bc.csv
 p_out_genes: ${p_base}out_genes_bc.csv

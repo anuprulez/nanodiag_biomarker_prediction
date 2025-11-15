@@ -118,6 +118,80 @@ def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
     hv_names = adata.var.index[hv_idx].tolist()
     return negative_df[hv_names]
 
+def build_knn_correlation_edges(
+    features_df: pd.DataFrame,
+    k: int,
+    corr_threshold: float = 0.5,
+    mutual: bool = False,
+) -> pd.DataFrame:
+    """
+    Build a kNN correlation graph between features and return edges (In, Out, Corr)
+    where corr > corr_threshold.
+
+    Parameters
+    ----------
+    features_df : pd.DataFrame
+        Input matrix (samples x features)
+    k : int
+        Number of neighbors per feature (excluding self)
+    corr_threshold : float
+        Minimum correlation required to keep an edge
+    mutual : bool
+        If True, keep only edges that are mutual in both directions
+
+    Returns
+    -------
+    edges : pd.DataFrame
+        Columns: ["In", "Out", "Corr"]
+    """
+    if k < 1:
+        raise ValueError("k must be >= 1")
+
+    feature_names = features_df.columns.to_list()
+    n_feat = len(feature_names)
+    if n_feat < 2:
+        return pd.DataFrame(columns=["In", "Out", "Corr"])
+
+    # Compute feature-feature correlation matrix
+    corr = np.corrcoef(features_df.T)
+    np.fill_diagonal(corr, -np.inf)  # exclude self-correlation
+    corr = np.nan_to_num(corr, nan=-np.inf)
+
+    k_eff = min(k, n_feat - 1)
+    in_nodes, out_nodes, corrs = [], [], []
+    neighbors_of = [None] * n_feat
+
+    # Build kNN edges for each feature
+    for j in range(n_feat):
+        # Get top-k most correlated features
+        idx = np.argpartition(corr[:, j], -k_eff)[-k_eff:]
+        idx = idx[np.argsort(corr[idx, j])[::-1]]  # sort descending
+        neighbors_of[j] = set(idx)
+
+        # Keep only those with correlation above threshold
+        for i in idx:
+            cval = corr[i, j]
+            if cval > corr_threshold:
+                in_nodes.append(feature_names[j])
+                out_nodes.append(feature_names[i])
+                corrs.append(cval)
+
+    if mutual:
+        # Keep only mutual edges
+        name_to_idx = {name: i for i, name in enumerate(feature_names)}
+        keep_in, keep_out, keep_corr = [], [], []
+        for u, v, c in zip(in_nodes, out_nodes, corrs):
+            iu, iv = name_to_idx[u], name_to_idx[v]
+            if iu in neighbors_of[iv] and iv in neighbors_of[iu]:
+                keep_in.append(u)
+                keep_out.append(v)
+                keep_corr.append(c)
+        in_nodes, out_nodes, corrs = keep_in, keep_out, keep_corr
+
+    edges = pd.DataFrame({"In": in_nodes, "Out": out_nodes})
+    edges_corr = pd.DataFrame({"In": in_nodes, "Out": out_nodes, "Corr": corrs})
+    return edges, edges_corr
+
 
 def build_correlation_edges(
     features_df: pd.DataFrame,
@@ -278,12 +352,14 @@ def process_arrays(
         "Computing feature–feature correlations (threshold=%.2f)...",
         config.corr_threshold,
     )
-    edges, corr_df = build_correlation_edges(combined, threshold=config.corr_threshold)
-    print(corr_df.head())
+    #edges, corr_df = build_correlation_edges(combined, threshold=config.corr_threshold)
+    edges, edges_corr = build_knn_correlation_edges(combined, k=config.knn_neighbours, \
+                                                    corr_threshold=config.corr_threshold, mutual=True)
 
     print("Correlation edges found: %d", len(edges))
 
     edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
+    edges_corr.to_csv(config.p_significant_edges_with_corr, sep="\t", header=False, index=False)
 
     # --------------------------- Seed feature importances -----------------------
     print("Extracting seed feature importances...")

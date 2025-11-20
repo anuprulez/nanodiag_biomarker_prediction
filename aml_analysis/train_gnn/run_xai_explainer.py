@@ -136,7 +136,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     }
 
     print("Computing edge rankings ...")
-    ranking = compute_rankings(
+    sorted_ranking = compute_rankings(
         xai_node,
         values,
         edge_sel_idx,
@@ -145,10 +145,17 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         predictions_sub,
         neighbour_predictions,
         num_nodes_target,
+        config
     )
-    sorted_ranking = sorted(
-        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    positive_one_hop = collect_positive_one_hop_nodes(
+        idx_local, ei_sub, predictions_sub, local_to_name, config
     )
+    sorted_ranking = prioritise_center_and_positive_nodes(
+        idx_global, sorted_ranking, positive_one_hop
+    )
+    #sorted_ranking = sorted(
+    #    ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    #)
 
     # Plot neighbours and feature importances
     print("Drawing neighbourhood with local G")
@@ -168,6 +175,7 @@ def compute_rankings(
     predictions_sub,
     neighbour_predictions,
     num_nodes_target,
+    config
 ):
     """
     Compute rankings of links over iterations of explanations
@@ -194,12 +202,12 @@ def compute_rankings(
             seen_genes.add(trg_name)
 
         # Your original logic considered [0,1] as P/LP
-        if src_pred in neighbour_predictions:
+        if src_pred in config.src_neighbour_predictions:
             candidates[explained_name][src_name] = candidates[explained_name].get(
                 src_name, 0.0
             ) + float(values[k_i].item())
             candidate_predictions[src_name] = src_pred
-        if trg_pred in neighbour_predictions:
+        if trg_pred in config.tgt_neighbour_predictions:
             candidates[explained_name][trg_name] = candidates[explained_name].get(
                 trg_name, 0.0
             ) + float(values[k_i].item())
@@ -207,10 +215,7 @@ def compute_rankings(
 
         if len(seen_genes) >= num_nodes_target:
             break
-    candiates_xai = candidates[xai_node]
-    print(
-        f"sorted candiates_xai: {dict(sorted(candiates_xai.items(), key=lambda item: float(item[1]), reverse=True))}"
-    )
+
     ranking = {}
     for cand_name, score in candidates[explained_name].items():
         if cand_name not in ranking:
@@ -218,8 +223,69 @@ def compute_rankings(
         else:
             ranking[cand_name][0] += 1
             ranking[cand_name][1] += float(score)
-    print(f"Rankings: {ranking}")
-    return ranking
+
+    sorted_ranking = sorted(
+        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    )
+    print(f"Sorted rankings: {sorted_ranking}")
+    return sorted_ranking
+
+
+def collect_positive_one_hop_nodes(
+    idx_local, ei_sub, predictions_sub, local_to_name, config
+):
+    """Return 1-hop neighbours of the XAI node that are predicted positives."""
+    if isinstance(ei_sub, torch.Tensor):
+        ei_np = ei_sub.detach().cpu().numpy()
+    else:
+        ei_np = np.asarray(ei_sub)
+
+    assert ei_np.shape[0] == 2, "edge_index must be shape [2, E]"
+
+    src_nodes, dst_nodes = ei_np[0], ei_np[1]
+    one_hop_local = []
+    for src_idx, dst_idx in zip(src_nodes, dst_nodes):
+        if src_idx == idx_local:
+            one_hop_local.append(int(dst_idx))
+        elif dst_idx == idx_local:
+            one_hop_local.append(int(src_idx))
+
+    positive_labels = getattr(config, "positive_prediction_labels", None)
+    if positive_labels is None:
+        positive_labels = getattr(config, "tgt_neighbour_predictions", [0])
+    positive_labels = {int(label) for label in positive_labels}
+
+    ordered_positive_nodes = []
+    seen = set()
+    for loc_idx in one_hop_local:
+        pred = int(predictions_sub[loc_idx].item())
+        if pred not in positive_labels:
+            continue
+        node_name = local_to_name[loc_idx]
+        if node_name in seen:
+            continue
+        ordered_positive_nodes.append(node_name)
+        seen.add(node_name)
+    return ordered_positive_nodes
+
+
+def prioritise_center_and_positive_nodes(center_node, ranking, positive_nodes):
+    """Ensure the XAI node and 1-hop positive nodes are plotted first."""
+
+    def _append_unique(acc, node, seen):
+        if node in seen:
+            return
+        acc.append(node)
+        seen.add(node)
+
+    merged = []
+    seen = set()
+    _append_unique(merged, center_node, seen)
+    for node in positive_nodes:
+        _append_unique(merged, node, seen)
+    for node in ranking:
+        _append_unique(merged, node, seen)
+    return merged
 
 
 def collect_pred_labels(config):
@@ -344,7 +410,7 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     chosen_model = config.best_trained_model
     model = load_model(config.p_torch_model, data, chosen_model)
-    node_i = 591 #2569 #1775 #2569 #7478 #68 #7868
+    node_i = 6051 #2569 #1775 #2569 #7478 #68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")

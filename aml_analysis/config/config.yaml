@@ -1,32 +1,42 @@
 SEED: 32
-n_edges: 14124836 #14124836
+n_edges: 6095982 #14124836 #14124836 # 6095982 knn values
 # all edges 14124836 with 0.5 correlation and 10000 negatives
-n_epo: 10
-k_folds: 5
+n_epo: 20
 batch_size: 32 #128
 num_classes: 5
-gene_dim: 46 # Number of NedBit features + 20 day0 + 20 day8
+gene_dim: 62 #46 # Number of NedBit features + 20 day0 + 20 day8
 hidden_dim: 128
-learning_rate: 0.0001
+learning_rate: 5e-4
+weight_decay: 1e-3
 test_size: 0.33
 keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
 n_neighbors: 20
 min_dist: 0.8
-cutoff_pval: 5e-2
 metric: "correlation"
-model_type: "gcn" # pna, gcn, gsage, gatv2, gcn2, appnet, gtran
-neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
-explain_neighbors_spread: [-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+cutoff_pval: 5e-2
+dropout: 0.3 # set dropout as "0.4" for GATV2, for others 0.2
+heads: 4
+class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
+dpi: 300
+model_type: "PNA" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+best_trained_model: ${model_type} # Find the best trained model via training and then set it
+neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
+explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
-neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 3
+neighbour_predictions: [0, 1, 2, 3, 4]
+src_neighbour_predictions: [0, 1] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+tgt_neighbour_predictions: [0] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+masks_for_seed: 1
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
-show_num_neighbours: 11
-p_base: ../data_corr_0.5_negative_10000/
+show_num_neighbours: 20
+knn_neighbours: 3000
+p_base: ../data_corr_0.5_negative_10000_no_gene_expr/ #../data_corr_0.5_negative_10000_updated/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
-p_seed_features: ${p_base}seed_features.csv
+p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
+p_merged_signals: ${p_base}merged_signals_aml.csv
+p_seed_features: ${p_base}seed_features.tsv
 p_out_links: ${p_base}out_links_aml.csv
 p_out_genes: ${p_base}out_genes_aml.csv
 p_out_gene_rankings: ${p_base}out_gene_rankings_aml.csv
@@ -73,7 +83,7 @@ quantile_2: 0.2 # quantile threshold 2
 download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17202627/files/aml_raw_datasets.zip?download=1
 
-download_preprocessed_data: true # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
 p_processed_data: https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1
 
 # https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1

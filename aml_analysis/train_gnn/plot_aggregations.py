@@ -23,6 +23,10 @@ from omegaconf.omegaconf import OmegaConf
 # Global styling (adjust as you like; calls remain the same)
 sns.set_theme(style="whitegrid", context="talk")
 
+topk = 259 # 200 for best results so far
+group_partition1 = 28
+group_partition2 = 28
+
 
 def _as_path(p) -> Path:
     p = Path(p)
@@ -593,7 +597,7 @@ def plot_xai_nodes_raw_values(config):
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    topk = 300
+    #topk = 50
     cmap = "cividis"  # cividis viridis  inferno
     path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
     #path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
@@ -605,7 +609,7 @@ def plot_xai_nodes_raw_values(config):
     list_nodes = xai_nodes["test_gene_names"].tolist()
     df_top_signals = df_signals[list_nodes]
 
-    group_labels = ["Day0"] * 20 + ["Day8"] * 20
+    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
     df_top_signals["Group"] = group_labels
     group_colors = {"Day0": "darkred", "Day8": "steelblue"}
     row_colors = df_top_signals["Group"].map(group_colors)
@@ -755,12 +759,13 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
     n_runs = 5
+    #topk = 50
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    topk = 20
+    
     cmap = "cividis"  # cividis / viridis / inferno
 
     # Signals matrix (patients x features), shared across runs
@@ -775,7 +780,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         path_pred = _find_run_file(config.p_base, run_id, chosen_model)
         df_pred = pd.read_csv(path_pred, sep="\t")
         print("All: ", df_pred)
-        N = [5]
+        N = [4, 5]
         LP = [2]
         P = [1]
         df_pred = df_pred[df_pred["pred_labels"].isin(LP)]
@@ -819,13 +824,13 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     df_top_signals = df_signals[consensus_features].copy()
 
 
-    plot_top_nodes_correlation(config, df_signals, df_top_signals)
+    #plot_top_nodes_correlation(config, df_signals, df_top_signals)
 
     # ------------------------------
     # 4) Groups & cosmetics
     # ------------------------------
     # Adjust these counts if your cohort sizes differ
-    group_labels = ["Day0"] * 20 + ["Day8"] * 20
+    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
     if len(group_labels) != len(df_top_signals):
         raise ValueError(
             f"Group label length ({len(group_labels)}) doesn't match data rows ({len(df_top_signals)}). "
@@ -842,7 +847,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     pred_type = "likely_positive" #"negative" # likely_positive
     out_path_heatmap = plot_local_path / f"heatmap_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
     out_path_voilin = plot_local_path / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
-
+    df_top_signals.to_csv(plot_local_path / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv")
     # ------------------------------
     # 5) Output: multi-page PDF
     # ------------------------------
@@ -890,7 +895,180 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
     with PdfPages(out_path_voilin) as pdf:
 
+        if group_colors is None:
+            # fallback colors if not provided
+            group_colors = {
+                "Day0": "#1f77b4",
+                "Day8": "#ff7f0e",
+            }
+
         title_font = 24
+        x_y_font = 16
+        mean_annot_font = 14
+
+        # -------------------------------------------------------------------------
+        # Long format: one row = (Group, Feature, Beta)
+        # -------------------------------------------------------------------------
+        long_df = (
+            df_top_signals
+            .melt(id_vars="Group", var_name="Feature", value_name="Beta")
+            .dropna(subset=["Beta"])
+        )
+
+        # -------------------------------------------------------------------------
+        # Compute group means and Δμ per feature
+        # -------------------------------------------------------------------------
+        group_means_all = (
+            long_df
+            .groupby(["Feature", "Group"])["Beta"]
+            .mean()
+            .unstack("Group")
+        )
+
+        # Keep only the features we care about
+        candidate_features = pd.Index(consensus_features)
+        group_means_all = group_means_all.loc[
+            group_means_all.index.intersection(candidate_features)
+        ]
+
+        # Ensure both Day0 and Day8 exist, then drop incomplete features
+        for g in hue_order:
+            if g not in group_means_all.columns:
+                raise ValueError(f"Group '{g}' not found in the data columns.")
+        group_means_all = group_means_all.dropna(subset=list(hue_order))
+
+        # Δμ = Day0 − Day8 (order given by hue_order)
+        day0, day8 = hue_order
+        group_means_all["DeltaMu"] = group_means_all[day0] - group_means_all[day8]
+
+        # Sort features by Δμ descending
+        features_sorted = (
+            group_means_all["DeltaMu"]
+            .sort_values(ascending=False)
+            .index
+            .tolist()
+        )
+
+        # Optionally restrict to top-k
+        if topk is not None:
+            features_for_violin = features_sorted[:topk]
+        else:
+            features_for_violin = features_sorted
+
+        # -------------------------------------------------------------------------
+        # Prepare plotting dataframe filtered to selected features
+        # -------------------------------------------------------------------------
+        vdf = long_df[long_df["Feature"].isin(features_for_violin)].copy()
+
+        # Order Group & Feature as categoricals to enforce axis order
+        vdf["Group"] = pd.Categorical(vdf["Group"], categories=hue_order, ordered=True)
+        vdf["Feature"] = pd.Categorical(
+            vdf["Feature"],
+            categories=features_for_violin,
+            ordered=True
+        )
+
+        # -------------------------------------------------------------------------
+        # Create figure
+        # -------------------------------------------------------------------------
+        fig_width = max(12, 0.4 * len(features_for_violin))
+        plt.figure(figsize=(fig_width, 8))
+        ax = sns.violinplot(
+            data=vdf,
+            x="Feature",
+            y="Beta",
+            hue="Group",
+            hue_order=hue_order,
+            cut=0,
+            inner="quartile",
+            split=True,
+            palette=group_colors,
+        )
+
+        # Overlay group means (pointplot)
+        sns.pointplot(
+            data=vdf,
+            x="Feature",
+            y="Beta",
+            hue="Group",
+            hue_order=hue_order,
+            dodge=0.4,
+            join=True,
+            markers="o",
+            linestyles="-",
+            errorbar=None,
+            ax=ax,
+            palette=group_colors,
+            legend=False,  # we'll handle legend manually
+        )
+
+        # -------------------------------------------------------------------------
+        # Legend (clean, non-duplicated)
+        # -------------------------------------------------------------------------
+        legend_handles = [
+            Patch(facecolor=group_colors[g], label=g) for g in hue_order
+        ]
+        ax.legend(
+            handles=legend_handles,
+            labels=list(hue_order),
+            title="Conditions",
+            frameon=False,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1.02),
+        )
+
+        # -------------------------------------------------------------------------
+        # Axis labels and title
+        # -------------------------------------------------------------------------
+        ax.set_ylim(0, 1.3)
+        ax.set_yticks(np.arange(0, 1.3, 0.2))
+        ax.yaxis.grid(True, linestyle="--", linewidth=0.7, alpha=0.6)
+        ax.set_xlabel("Feature (probe_gene)", fontsize=x_y_font)
+        ax.set_ylabel("β-value", fontsize=x_y_font)
+        ax.set_title(
+            "Distribution and mean differences per feature (β-values): "
+            f"{day0} vs {day8}",
+            pad=10,
+            fontsize=title_font,
+        )
+        ax.tick_params(axis="y", labelsize=x_y_font)
+        ax.tick_params(axis="x", labelsize=x_y_font)
+        plt.xticks(rotation=90)
+
+        # -------------------------------------------------------------------------
+        # Annotate Δμ above each feature in the *sorted* order
+        # -------------------------------------------------------------------------
+        # Max Y per feature for placing text
+        ymax_per_feature = vdf.groupby("Feature")["Beta"].max()
+
+        for i, feat in enumerate(features_for_violin):
+            if feat not in group_means_all.index:
+                continue
+
+            delta_mu = group_means_all.loc[feat, "DeltaMu"]
+            # Fallback if missing, though it shouldn't be
+            ytxt = ymax_per_feature.get(feat, vdf["Beta"].max()) + 0.02
+            ax.text(
+                i,
+                ytxt,
+                f"Δμ={delta_mu:.3f}",
+                ha="center",
+                va="bottom",
+                fontsize=mean_annot_font,
+                rotation=90,
+            )
+
+        plt.tight_layout()
+
+        # -------------------------------------------------------------------------
+        # Save to PDF
+        # -------------------------------------------------------------------------
+        #with PdfPages(out_path_voilin) as pdf:
+        pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
+
+        plt.close(ax.figure)
+
+        '''title_font = 24
         x_y_font = 16
         mean_annot_font = 14
         # ===== Page 2: Violin plot (day0 vs day8 per feature) =====
@@ -901,7 +1079,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         )
 
         # limit to first N for readability
-        max_features_for_violin = 30
+        max_features_for_violin = topk
         features_for_violin = consensus_features #[:max_features_for_violin]
         vdf = long_df[long_df["Feature"].isin(features_for_violin)].copy()
 
@@ -977,7 +1155,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
             ax.text(i, ytxt, f"Δμ={diff:.3f}", ha="center", va="bottom", fontsize=mean_annot_font, rotation=90)
 
         pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
-        plt.close(ax.figure)
+        plt.close(ax.figure)'''
 
     print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
 
@@ -1015,10 +1193,10 @@ def plot_positive_xai_nodes_raw_values(config):
     seed_signals = df_signals[seed_names]
 
     # --- Select top 20 features and split into groups ---
-    topk_features = 20
+    topk_features = topk
     df = seed_signals.iloc[:, :topk_features].copy()
-    group1 = df.iloc[:20].assign(Group="Day0")
-    group2 = df.iloc[20:].assign(Group="Day8")
+    group1 = df.iloc[:group_partition1].assign(Group="Day0")
+    group2 = df.iloc[group_partition2:].assign(Group="Day8")
 
     df_melted = pd.concat([group1, group2], axis=0).melt(
         id_vars="Group", var_name="CpG", value_name="Value"

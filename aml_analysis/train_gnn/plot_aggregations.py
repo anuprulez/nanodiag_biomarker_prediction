@@ -23,7 +23,9 @@ from omegaconf.omegaconf import OmegaConf
 # Global styling (adjust as you like; calls remain the same)
 sns.set_theme(style="whitegrid", context="talk")
 
+# for merging the results from multiple runs
 topk = 259 # 200 for best results so far
+toshow = 20
 group_partition1 = 28
 group_partition2 = 28
 
@@ -690,19 +692,31 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
     print("df_signals")
     print(df_signals)
-    seed_nodes = ["cg09242307_SOX5", 
+    '''seed_nodes = ["cg09242307_SOX5", 
                   "cg10990959_SOX5",
                   "cg02147465_ZBTB20",
                   "cg13697223_GALNTL6", 
                   "cg06126815_PON2",
                   "cg09962458_SIPA1L1",
                   "cg16036046_RIT2"
+                  ]'''
+    seed_nodes = ["cg22862734_FREM2",
+                  "cg10205585_REXO1L2P",
+                  "cg27030541_REXO1L2P", 
+                  "cg22234135_UGT2B15",
+                  "cg05592278_LRRC37A3",
+                  "cg01879273_AGAP1", 
+                  "cg27638035_BRUNOL4",
+                  "cg17189167_LPA",
+                  "cg12915585_MYT1L",
+                  "cg26626251_OPCML"
                   ]
     df_seed = df_signals[seed_nodes]
     print("Seed signals")
     print(df_seed)
     print("Top LP signals")
-    top_lp = "cg13985132_LOC390595"
+    #top_lp = "cg13985132_LOC390595"
+    top_lp = "cg08282428_RBM46"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 
@@ -759,7 +773,6 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
     n_runs = 5
-    #topk = 50
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
@@ -824,7 +837,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     df_top_signals = df_signals[consensus_features].copy()
 
 
-    #plot_top_nodes_correlation(config, df_signals, df_top_signals)
+    plot_top_nodes_correlation(config, df_signals, df_top_signals)
 
     # ------------------------------
     # 4) Groups & cosmetics
@@ -852,7 +865,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # 5) Output: multi-page PDF
     # ------------------------------
     #out_path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
-    with PdfPages(out_path_heatmap) as pdf:
+    '''with PdfPages(out_path_heatmap) as pdf:
         # ===== Page 1: Heatmap (consensus features) =====
         g = sns.clustermap(
             data,
@@ -890,7 +903,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         pdf.savefig(g.fig, dpi=dpi, bbox_inches="tight")
         plt.close(g.fig)
 
-    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_heatmap}")
+    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_heatmap}")'''
 
 
     with PdfPages(out_path_voilin) as pdf:
@@ -948,10 +961,12 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
             .index
             .tolist()
         )
+        print("Sorted features_sorted")
+        print(features_sorted)
 
         # Optionally restrict to top-k
         if topk is not None:
-            features_for_violin = features_sorted[:topk]
+            features_for_violin = features_sorted[:toshow]
         else:
             features_for_violin = features_sorted
 
@@ -1193,7 +1208,7 @@ def plot_positive_xai_nodes_raw_values(config):
     seed_signals = df_signals[seed_names]
 
     # --- Select top 20 features and split into groups ---
-    topk_features = topk
+    topk_features = toshow
     df = seed_signals.iloc[:, :topk_features].copy()
     group1 = df.iloc[:group_partition1].assign(Group="Day0")
     group2 = df.iloc[group_partition2:].assign(Group="Day8")

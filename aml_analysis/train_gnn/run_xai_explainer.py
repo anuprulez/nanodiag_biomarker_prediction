@@ -127,7 +127,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}"
     )
 
-    values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
+    '''values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
     print("Top edges selected:", len(edge_sel_idx))
 
     # name mapping: local -> global -> name
@@ -146,17 +146,36 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         neighbour_predictions,
         num_nodes_target,
         config
+    )'''
+
+    # name mapping: local -> global -> name
+    local_to_name = {
+        loc: nodes_names[int(n_id_global[loc])] for loc in range(n_sub_nodes)
+    }
+
+    print("Computing edge rankings (forcing 10 class-2 + 10 class-1 neighbours) ...")
+    sorted_ranking = compute_rankings(
+        xai_node,
+        edge_mask,       # pass full edge mask
+        idx_local,       # local index of XAI node (0)
+        local_to_name,
+        ei_sub,
+        predictions_sub,
+        neighbour_predictions,
+        num_nodes_target,
+        config,
     )
-    positive_one_hop = collect_positive_one_hop_nodes(
+
+    '''positive_one_hop = collect_positive_one_hop_nodes(
         idx_local, ei_sub, predictions_sub, local_to_name, config
     )
+    print(f"Positive one-hop neighbours: {positive_one_hop}")
+
     sorted_ranking = prioritise_center_and_positive_nodes(
         idx_global, sorted_ranking, positive_one_hop
-    )
-    #sorted_ranking = sorted(
-    #    ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
-    #)
+    )'''
 
+    print(f"sorted_ranking: {sorted_ranking}")
     # Plot neighbours and feature importances
     print("Drawing neighbourhood with local G")
     s_rankings_draw = plot_gnn.draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, local_to_name, chosen_model, config)
@@ -166,7 +185,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     return s_rankings_draw
 
 
-def compute_rankings(
+'''def compute_rankings(
     xai_node,
     values,
     edge_sel_idx,
@@ -229,6 +248,249 @@ def compute_rankings(
     )
     print(f"Sorted rankings: {sorted_ranking}")
     return sorted_ranking
+
+
+def compute_rankings(
+    xai_node,
+    values,
+    edge_sel_idx,
+    local_to_name,
+    ei_sub,
+    predictions_sub,
+    neighbour_predictions,
+    num_nodes_target,
+    config
+):
+
+    explained_name = xai_node
+    candidates = {explained_name: {}}
+    candidate_predictions = {}
+    seen_genes = set()
+
+    # NEW: include BOTH positive + likely positive
+    allowed_preds = (
+        set(config.src_neighbour_predictions)
+        | set(config.tgt_neighbour_predictions)
+    )
+
+    for k_i in range(len(edge_sel_idx)):
+        e_idx = int(edge_sel_idx[k_i])
+        src_loc = int(ei_sub[0, e_idx].item())
+        trg_loc = int(ei_sub[1, e_idx].item())
+
+        src_name = local_to_name[src_loc]
+        trg_name = local_to_name[trg_loc]
+
+        src_pred = int(predictions_sub[src_loc].item())
+        trg_pred = int(predictions_sub[trg_loc].item())
+
+        if src_name != explained_name:
+            seen_genes.add(src_name)
+        if trg_name != explained_name:
+            seen_genes.add(trg_name)
+
+        # NEW Logic: keep edges if node is positive OR likely positive
+        if (src_pred in allowed_preds) or (src_name == explained_name):
+            candidates[explained_name][src_name] = \
+                candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[src_name] = src_pred
+
+        if (trg_pred in allowed_preds) or (trg_name == explained_name):
+            candidates[explained_name][trg_name] = \
+                candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[trg_name] = trg_pred
+
+        if len(seen_genes) >= num_nodes_target:
+            break
+
+    ranking = {k: [1, v] for k, v in candidates[explained_name].items()}
+    sorted_ranking = sorted(
+        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    )
+
+    print(f"Sorted rankings: {sorted_ranking}")
+    return sorted_ranking
+
+def compute_rankings(
+    xai_node,
+    values,
+    edge_sel_idx,
+    local_to_name,
+    ei_sub,
+    predictions_sub,
+    neighbour_predictions,
+    num_nodes_target,
+    config
+):
+    """
+    Compute rankings of links over iterations of explanations
+    and then select 10 class-2 + 10 class-1 neighbours.
+    """
+    explained_name = xai_node
+    candidates = {explained_name: {}}
+    candidate_predictions = {}
+    seen_genes = set()
+
+    # allow both positive + likely positive
+    allowed_preds = (
+        set(config.src_neighbour_predictions)
+        | set(config.tgt_neighbour_predictions)
+    )
+
+    for k_i in range(len(edge_sel_idx)):
+        e_idx = int(edge_sel_idx[k_i])
+        src_loc = int(ei_sub[0, e_idx].item())
+        trg_loc = int(ei_sub[1, e_idx].item())
+
+        src_name = local_to_name[src_loc]
+        trg_name = local_to_name[trg_loc]
+
+        src_pred = int(predictions_sub[src_loc].item())
+        trg_pred = int(predictions_sub[trg_loc].item())
+
+        if src_name != explained_name:
+            seen_genes.add(src_name)
+        if trg_name != explained_name:
+            seen_genes.add(trg_name)
+
+        # include node if prediction in allowed_preds or it's the center
+        if (src_pred in allowed_preds) or (src_name == explained_name):
+            candidates[explained_name][src_name] = \
+                candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[src_name] = src_pred
+
+        if (trg_pred in allowed_preds) or (trg_name == explained_name):
+            candidates[explained_name][trg_name] = \
+                candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
+            candidate_predictions[trg_name] = trg_pred   # <-- fix bug: trg_name
+
+        if len(seen_genes) >= num_nodes_target:
+            break
+
+    # aggregate counts + scores
+    ranking = {}
+    for cand_name, score in candidates[explained_name].items():
+        if cand_name not in ranking:
+            ranking[cand_name] = [1, float(score)]
+        else:
+            ranking[cand_name][0] += 1
+            ranking[cand_name][1] += float(score)
+
+    # sort by (#hits, score)
+    sorted_all = sorted(
+        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
+    )
+
+    # which class id is "positive" and "likely positive"?
+    pos_cls = getattr(config, "positive_class", 0)         # class = 1
+    lp_cls  = getattr(config, "likely_positive_class", 1)  # class = 2
+
+    # now keep 10 from class 2 and 10 from class 1
+    class0_nodes = []
+    class1_nodes = []
+
+    for n in sorted_all:
+        if n == explained_name:
+            continue
+        pred = int(candidate_predictions.get(n, -1))
+
+        if pred == pos_cls and len(class0_nodes) < 10:
+            class0_nodes.append(n)
+        elif pred == lp_cls and len(class1_nodes) < 10:
+            class1_nodes.append(n)
+
+        if len(class0_nodes) >= 10 and len(class1_nodes) >= 10:
+            break
+
+    print(f"Selected {pos_cls} {len(class0_nodes)} class {lp_cls} nodes: {len(class1_nodes)}")
+    print(f"Class {pos_cls} nodes: {class0_nodes}")
+
+    # final list: center + 10 class2 + 10 class1
+    final_ranking = [explained_name] + class0_nodes + class1_nodes
+
+    print(
+        f"Final ranking (center + {len(class1_nodes)} class {lp_cls} "
+        f"+ {len(class0_nodes)} class {pos_cls}): {final_ranking}"
+    )
+    return final_ranking'''
+
+def compute_rankings(
+    xai_node,
+    edge_mask,
+    idx_local,
+    local_to_name,
+    ei_sub,
+    predictions_sub,
+    neighbour_predictions,
+    num_nodes_target,
+    config,
+):
+    """
+    Compute rankings by looking only at 1-hop neighbours of the XAI node
+    and explicitly selecting up to 10 class-2 (LP) + 10 class-1 (P) nodes.
+    """
+    explained_name = xai_node
+
+    # Make sure we're on CPU / numpy
+    if isinstance(ei_sub, torch.Tensor):
+        ei_np = ei_sub.detach().cpu().numpy()
+    else:
+        ei_np = np.asarray(ei_sub)
+
+    edge_mask_np = edge_mask.detach().cpu().numpy()
+
+    # Aggregate edge importance for neighbours directly connected to idx_local
+    neighbour_scores = {}  # local_idx -> score
+    src_nodes, dst_nodes = ei_np[0], ei_np[1]
+
+    for e_idx, (src, dst) in enumerate(zip(src_nodes, dst_nodes)):
+        if src == idx_local:
+            nb = int(dst)
+        elif dst == idx_local:
+            nb = int(src)
+        else:
+            continue  # not incident to XAI node
+
+        score = float(edge_mask_np[e_idx])
+        neighbour_scores[nb] = neighbour_scores.get(nb, 0.0) + score
+
+    # Which IDs are "positive" and "likely positive"?
+    pos_cls = getattr(config, "positive_class", 0)          # class = 1
+    lp_cls  = getattr(config, "likely_positive_class", 1)   # class = 2
+
+    class2_neighbours = []  # (name, score)
+    class1_neighbours = []  # (name, score)
+
+    for loc_idx, score in neighbour_scores.items():
+        pred = int(predictions_sub[loc_idx].item())
+        name = local_to_name[loc_idx]
+
+        if name == explained_name:
+            continue  # skip self
+
+        if pred == lp_cls:
+            class2_neighbours.append((name, score))
+        elif pred == pos_cls:
+            class1_neighbours.append((name, score))
+
+    # Sort within each class by score (descending)
+    class2_neighbours.sort(key=lambda x: x[1], reverse=True)
+    class1_neighbours.sort(key=lambda x: x[1], reverse=True)
+
+    print(f"Class {lp_cls} neighbours found: {len(class2_neighbours)}")
+
+    # Take up to 10 from each class
+    class2_selected = [n for n, _ in class2_neighbours[:10]]
+    class1_selected = [n for n, _ in class1_neighbours[:10]]
+
+    final_ranking = [explained_name] + class2_selected + class1_selected
+
+    print(
+        f"Final ranking (center + {len(class2_selected)} class {lp_cls} "
+        f"+ {len(class1_selected)} class {pos_cls}): {final_ranking}"
+    )
+    return final_ranking
+
 
 
 def collect_positive_one_hop_nodes(
@@ -410,7 +672,7 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     chosen_model = config.best_trained_model
     model = load_model(config.p_torch_model, data, chosen_model)
-    node_i = 6051 #2569 #1775 #2569 #7478 #68 #7868
+    node_i = 321 #2569 #1775 #2569 #7478 #68 #7868
     # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")

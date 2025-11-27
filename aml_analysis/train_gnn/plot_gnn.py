@@ -35,7 +35,7 @@ def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     plt.close(fig)
 
 
-def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, chosen_model, config):
+def plot_loss_acc(n_epo, tr_loss, val_loss, tr_acc, val_acc, chosen_model, config, te_acc=None):
     """
     Signature unchanged. Saves two PDFs and (as before) shows the last figure.
     """
@@ -45,7 +45,7 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, chosen_model
     dpi = config.dpi
 
     tr_loss = np.asarray(tr_loss)
-    te_loss = np.asarray(te_loss)
+    val_loss = np.asarray(val_loss)
     val_acc = np.asarray(val_acc)
     tr_acc = np.asarray(tr_acc)
     te_acc = None if te_acc is None else np.asarray(te_acc)
@@ -55,11 +55,11 @@ def plot_loss_acc(n_epo, tr_loss, te_loss, tr_acc, val_acc, te_acc, chosen_model
     # --- Training loss
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(x_val, tr_loss, linewidth=2)
-    ax.plot(x_val, te_loss, linewidth=2)
+    ax.plot(x_val, val_loss, linewidth=2)
     ax.set_ylabel("Loss")
     ax.set_xlabel("Epochs")
     ax.grid(True)
-    plt.legend(["Training", "Test"])
+    plt.legend(["Training", "Validation"])
     ax.set_title(f"Model loss over epochs: {chosen_model}")
     _save(
         fig,
@@ -139,7 +139,7 @@ def plot_confusion_matrix(
 
 def plot_precision_recall(y_true, y_scores, chosen_model, config):
     """
-    Multiclass Precision-recall with per-class & micro AP.
+    Multiclass Precision-recall with per-class & macro AP.
     """
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
@@ -171,9 +171,9 @@ def plot_precision_recall(y_true, y_scores, chosen_model, config):
 
     # micro
     p_micro, r_micro, _ = precision_recall_curve(y_true_bin.ravel(), y_scores.ravel())
-    precision["micro"], recall["micro"] = p_micro, r_micro
-    avg_precision["micro"] = average_precision_score(
-        y_true_bin, y_scores, average="micro"
+    precision["macro"], recall["macro"] = p_micro, r_micro
+    avg_precision["macro"] = average_precision_score(
+        y_true_bin, y_scores, average="macro"
     )
 
     fig, ax = plt.subplots(figsize=(8, 6))
@@ -185,11 +185,11 @@ def plot_precision_recall(y_true, y_scores, chosen_model, config):
             label=f"Class {k} (AP = {avg_precision[k]:.2f})",
         )
     ax.plot(
-        recall["micro"],
-        precision["micro"],
+        recall["macro"],
+        precision["macro"],
         linestyle="--",
         linewidth=2,
-        label=f"Micro-average (AP = {avg_precision['micro']:.2f})",
+        label=f"Macro-average (AP = {avg_precision['macro']:.2f})",
     )
 
     ax.set_xlabel("Recall")
@@ -210,9 +210,9 @@ def plot_features(features, labels, chosen_model, config, title, flag):
     UMAP visualization of feature vectors.
     """
     plot_local_path = _as_path(config.p_plot)
-    n_neighbors = config.n_neighbors
-    min_dist = config.min_dist
-    metric = config.metric
+    n_neighbors = config.umap_n_neighbors
+    min_dist = config.umap_min_dist
+    metric = config.umap_metric
     umap_random_state = config.SEED
     dpi = config.dpi
 
@@ -253,9 +253,9 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
     UMAP of node embeddings
     """
     plot_local_path = _as_path(config.p_plot)
-    n_neighbors = config.n_neighbors
-    min_dist = config.min_dist
-    metric = config.metric
+    n_neighbors = config.umap_n_neighbors
+    min_dist = config.umap_min_dist
+    metric = config.umap_metric
     umap_random_state = config.SEED
     dpi = config.dpi
 

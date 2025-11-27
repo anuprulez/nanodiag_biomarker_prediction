@@ -1,21 +1,21 @@
 SEED: 32
-n_edges: 6095982 #14124836 #14124836 # 6095982 knn values
+n_edges: 1000000 #6066700 #14124836 #14124836 # 6095982 knn values # 6066700 KNN No CR
 # all edges 14124836 with 0.5 correlation and 10000 negatives
-n_epo: 20
+n_epo: 15
 batch_size: 32 #128
 num_classes: 5
-gene_dim: 62 #46 # Number of NedBit features + 20 day0 + 20 day8
+gene_dim: 62 #62 # Number of NedBit features + 28 day0 + 28 day8 ##46 # Number of NedBit features + 20 day0 + 20 day8
 hidden_dim: 128
-learning_rate: 5e-4
+learning_rate: 1e-3 #5e-4
 weight_decay: 1e-3
-test_size: 0.33
+test_size: 0.33 
 keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
-n_neighbors: 20
-min_dist: 0.8
-metric: "correlation"
+umap_n_neighbors: 20
+umap_min_dist: 0.8
+umap_metric: "correlation"
 cutoff_pval: 5e-2
-dropout: 0.3 # set dropout as "0.4" for GATV2, for others 0.2
+dropout: 0.5 # set dropout as "0.4" for GATV2, for others 0.2
 heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 dpi: 300
@@ -24,16 +24,17 @@ best_trained_model: ${model_type} # Find the best trained model via training and
 neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
-neighbour_predictions: [0, 1, 2, 3, 4]
+neighbour_predictions: [0, 1]
 src_neighbour_predictions: [0, 1] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
-tgt_neighbour_predictions: [0] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
-masks_for_seed: 1
+tgt_neighbour_predictions: [0, 1] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+masks_for_seed: 3
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
-show_num_neighbours: 20
+show_num_neighbours: 50
 knn_neighbours: 3000
-p_base: ../data_corr_0.5_negative_10000_no_gene_expr/ #../data_corr_0.5_negative_10000_updated/
+p_base: ../data_corr_0.5_negative_10000_no_gene_expr_no_CR/ #../data_corr_0.5_negative_10000_updated/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
+p_cross_reactive_probes: ${p_base}cross_reactive_probes.csv
 p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
 p_merged_signals: ${p_base}merged_signals_aml.csv
 p_seed_features: ${p_base}seed_features.tsv
@@ -51,10 +52,11 @@ p_pred_likely_pos: ${p_base}pred_likely_pos_aml_${model_type}.csv
 p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml_${model_type}.csv
 p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
 p_torch_data: ${p_base}data_aml_${model_type}.pt
+p_torch_test_data: ${p_base}test_data_aml_${model_type}.pt
 p_torch_embed: ${p_base}embed_conv_aml_${model_type}.pt
 p_torch_embed_batch_norm: ${p_base}embed_batch_norm_aml_${model_type}.pt
 p_true_labels: ${p_base}true_labels_aml_${model_type}.pt
-p_torch_model: ${p_model}best_model_aml_${model_type}.pt
+p_torch_model: ${p_base}best_model_aml_${model_type}.pt
 p_pred_labels: ${p_base}pred_labels_aml_${model_type}.pt
 p_all_class_pred_probs: ${p_base}all_class_pred_probs_aml_${model_type}.pt
 p_best_class_pred_probs: ${p_base}best_class_pred_probs_aml_${model_type}.pt

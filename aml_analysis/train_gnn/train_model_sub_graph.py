@@ -6,6 +6,7 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import OneCycleLR
 from torch.nn.utils import clip_grad_norm_
 from torch_geometric.loader import NeighborLoader
+from torch_geometric.data import Data
 from sklearn.model_selection import train_test_split
 from torch_geometric.utils import coalesce, degree
 from sklearn.metrics import f1_score, precision_recall_fscore_support
@@ -34,15 +35,54 @@ def ensure_bool(m):
     return m if m.dtype == torch.bool else m.bool()
 
 
+def filter_edges(edge_index, allowed_nodes):
+    allowed = set(allowed_nodes.tolist())
+    src, dst = edge_index
+
+    mask = [(u.item() in allowed and v.item() in allowed)
+            for u, v in zip(src, dst)]
+    mask = torch.tensor(mask, dtype=torch.bool, device=edge_index.device)
+    return edge_index[:, mask]
+
+
 def make_neighbor_loaders(data, config):
     # Keep the big graph on CPU
     data = data.cpu()
 
     data.edge_index = coalesce(data.edge_index, num_nodes=data.num_nodes)
 
+    train_idx = torch.where(data.train_mask)[0]
+    val_idx   = torch.where(data.val_mask)[0]
+    test_idx  = torch.where(data.test_mask)[0]
+
+    print(
+        f"Intersection between train and val genes: {set(train_idx).intersection(set(val_idx))}"
+    )
+    print(
+        f"Intersection between train and test genes: {set(train_idx).intersection(set(test_idx))}"
+    )
+    print(
+        f"Intersection between val and test genes: {set(val_idx).intersection(set(test_idx))}"
+    )
+    print(
+        f"Tr nodes: {len(train_idx)}, Te nodes: {len(test_idx)}, Val nodes: {len(val_idx)}"
+    )
+
+    print("Filtering edges for each split ...")
+    edge_index_train = filter_edges(data.edge_index, train_idx)
+    edge_index_val = filter_edges(data.edge_index, val_idx)
+    edge_index_test = filter_edges(data.edge_index, test_idx)
+
+    data_train = Data(x=data.x, y=data.y, edge_index=edge_index_train)
+    data_val   = Data(x=data.x, y=data.y, edge_index=edge_index_val)
+    data_test  = Data(x=data.x, y=data.y, edge_index=edge_index_test)
+
+    torch.save(data_test, config.p_torch_test_data)
+
+
     train_loader = NeighborLoader(
-        data,
-        input_nodes=ensure_bool(data.train_mask), # seed nodes = train
+        data_train,
+        input_nodes=train_idx, #ensure_bool(data.train_mask), # seed nodes = train
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
@@ -52,8 +92,8 @@ def make_neighbor_loaders(data, config):
     )
 
     val_loader = NeighborLoader(
-        data,
-        input_nodes=ensure_bool(data.val_mask),
+        data_val,
+        input_nodes=val_idx, #ensure_bool(data.val_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -62,8 +102,8 @@ def make_neighbor_loaders(data, config):
         subgraph_type=config.graph_subtype,
     )
     test_loader = NeighborLoader(
-        data,
-        input_nodes=ensure_bool(data.test_mask),
+        data_test,
+        input_nodes=test_idx, #ensure_bool(data.test_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -78,7 +118,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
-    for tr_idx, batch in enumerate(train_loader):
+    for _, batch in enumerate(train_loader):
         batch = batch.to(device, non_blocking=True)
         optimizer.zero_grad(set_to_none=True)
         out, *_ = model(batch.x, batch.edge_index)
@@ -95,8 +135,8 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device
         total_correct += (logits.argmax(-1) == targets).sum().item()
         total_count += seed_n
 
-    avg_loss = total_loss / max(1, total_count)
-    avg_acc = total_correct / max(1, total_count)
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
     return avg_loss, avg_acc
 
 
@@ -105,21 +145,23 @@ def val_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
-    for batch in loader:
-        batch = batch.to(device, non_blocking=True)
-        used_val_ids.extend(batch.n_id.cpu().tolist()[: batch.batch_size])
-        out, *_ = model(batch.x, batch.edge_index)
-        seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
-        logits = out[:seed_n]
-        targets = batch.y[:seed_n].long()
-        loss = criterion(logits, targets)
+    with torch.no_grad():
+        for batch in loader:
+            batch = batch.to(device, non_blocking=True)
+            seed_n = batch.batch_size 
+            used_val_ids.extend(batch.n_id.cpu().tolist()[: seed_n])
+            out, *_ = model(batch.x, batch.edge_index)
+             # evaluating only the seed nodes of this batch
+            logits = out[:seed_n]
+            targets = batch.y[:seed_n].long()
+            loss = criterion(logits, targets)
 
-        total_loss += float(loss) * seed_n
-        total_correct += (logits.argmax(-1) == targets).sum().item()
-        total_count += seed_n
+            total_loss += float(loss.detach()) * seed_n
+            total_correct += (logits.argmax(-1) == targets).sum().item()
+            total_count += seed_n
 
-    avg_loss = total_loss / max(1, total_count)
-    avg_acc = total_correct / max(1, total_count)
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
     return avg_loss, avg_acc, used_val_ids
 
 
@@ -127,39 +169,40 @@ def val_evaluate(loader, model, criterion, device):
 def test_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
-    (
-        pred_labels,
-        true_labels,
-        all_probs,
-        best_class_pred_probs,
-        test_ids,
-        emb_pna4,
-        emb_bn4,
-    ) = ([], [], [], [], [], [], [])
-    for batch in loader:
-        batch = batch.to(device, non_blocking=True)
-        out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
-        seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
-        test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
-        logits = out[:seed_n]
-        emb_pna4.extend(detach(out_pna4[:seed_n]))
-        emb_bn4.extend(detach(out_bn4[:seed_n]))
-        batch_prob = F.softmax(logits, dim=1)
-        batch_max_prob = batch_prob.max(dim=1).values
-        targets = batch.y[:seed_n].long()
-        loss = criterion(logits, targets)
+    with torch.no_grad():
+        (
+            pred_labels,
+            true_labels,
+            all_probs,
+            best_class_pred_probs,
+            test_ids,
+            emb_pna4,
+            emb_bn4,
+        ) = ([], [], [], [], [], [], [])
+        for batch in loader:
+            batch = batch.to(device, non_blocking=True)
+            out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
+            seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
+            test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
+            logits = out[:seed_n]
+            emb_pna4.extend(detach(out_pna4[:seed_n]))
+            emb_bn4.extend(detach(out_bn4[:seed_n]))
+            batch_prob = F.softmax(logits, dim=1)
+            batch_max_prob = batch_prob.max(dim=1).values
+            targets = batch.y[:seed_n].long()
+            loss = criterion(logits, targets)
 
-        total_loss += float(detach(loss)) * seed_n
-        batch_pred_label = logits.argmax(-1)
-        pred_labels.extend(detach(batch_pred_label))
-        true_labels.extend(detach(targets))
-        all_probs.extend(detach(batch_prob))
-        best_class_pred_probs.extend(detach(batch_max_prob))
-        total_correct += (logits.argmax(-1) == targets).sum().item()
-        total_count += seed_n
+            batch_pred_label = logits.argmax(-1)
+            total_loss += float(detach(loss)) * seed_n
+            pred_labels.extend(detach(batch_pred_label))
+            true_labels.extend(detach(targets))
+            all_probs.extend(detach(batch_prob))
+            best_class_pred_probs.extend(detach(batch_max_prob))
+            total_correct += (batch_pred_label == targets).sum().item()
+            total_count += seed_n
 
-    avg_loss = total_loss / max(1, total_count)
-    avg_acc = total_correct / max(1, total_count)
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
     return (
         avg_loss,
         avg_acc,
@@ -173,7 +216,7 @@ def test_evaluate(loader, model, criterion, device):
     )
 
 
-def train_gnn_model(config, chosen_model):
+def train_gnn_model(config, labels, chosen_model):
     """
     Create network architecture and assign loss, optimizers ...
     """
@@ -196,10 +239,12 @@ def train_gnn_model(config, chosen_model):
     te_node_ids = te_nodes["test_gene_ids"].tolist()
     tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
     tr_node_ids = np.array(tr_node_ids)
+    labels = np.array(labels)
+    tr_labels = labels[tr_node_ids]
 
-    # optimizer
-    #optimizer = torch.optim.Adam(model.parameters(), \
-    #                             lr=config.learning_rate, weight_decay=config.weight_decay)
+    print(f"tr_node_ids: {tr_node_ids[-10:]}")
+    print(f"tr_labels: {tr_labels[-10:]}")
+
     tr_loss_epo = list()
     tr_acc_epo = list()
     te_loss_epo = list()
@@ -212,7 +257,7 @@ def train_gnn_model(config, chosen_model):
     best_epoch = -1
 
     split_tr_node_ids, val_node_ids = train_test_split(
-        tr_node_ids, shuffle=True, test_size=config.test_size, random_state=42
+        tr_node_ids, shuffle=True, test_size=config.test_size, random_state=42, stratify=tr_labels
     )
 
     print(
@@ -233,7 +278,7 @@ def train_gnn_model(config, chosen_model):
     data.test_mask = create_masks(mapped_f_name, te_node_ids)
 
     print(f"Initialize model: {chosen_model}")
-    model = utils.choose_model(config, data, chosen_model)
+    model = utils.choose_model(config, data, chosen_model, True)
     for name, module in model.named_modules():
         print(f"{name}: {module}")
     model = model.cuda()
@@ -242,7 +287,7 @@ def train_gnn_model(config, chosen_model):
     criterion = torch.nn.CrossEntropyLoss()
 
     base_lr = config.learning_rate
-    weight_decay = config.weight_decay #1e-3
+    weight_decay = config.weight_decay
     optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay)
 
     steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
@@ -253,7 +298,7 @@ def train_gnn_model(config, chosen_model):
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
     )
-    print("Plotting UMAP using raw features")
+    print("Plotting UMAP using raw features ...")
     test_x = data.x[data.test_mask == 1]
     test_y = data.y[data.test_mask == 1]
     plot_gnn.plot_features(
@@ -264,9 +309,8 @@ def train_gnn_model(config, chosen_model):
         f"UMAP of raw features (NeDBIT + DNA Methylation): {chosen_model}",
         "test_before_GNN",
     )
-
+    print("Creating neighbor loaders ...")
     train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
-    val_ids_epo = list()
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
@@ -275,7 +319,6 @@ def train_gnn_model(config, chosen_model):
         val_loss, val_acc, used_val_ids = val_evaluate(
             val_loader, model, criterion, device
         )
-        val_ids_epo.extend(used_val_ids)
         print(
             f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
@@ -293,7 +336,7 @@ def train_gnn_model(config, chosen_model):
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            best_test_acc = te_acc
+            best_te_acc = te_acc
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
@@ -304,7 +347,7 @@ def train_gnn_model(config, chosen_model):
     print("Plot and report all training epochs")
 
     plot_gnn.plot_loss_acc(
-        n_epo, tr_loss_epo, te_loss_epo, tr_acc_epo, val_acc_epo, te_acc_epo, chosen_model, config
+        n_epo, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
     )
     print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")

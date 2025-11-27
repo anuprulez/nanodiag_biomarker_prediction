@@ -145,8 +145,8 @@ def filter_probes(snp_probes_path, processed_arrays, probe_mapper_full):
     ### Filter probes based on X,Y CHR and SNP probes
     # list of probes for SNP
     snp_probes = pd.read_csv(snp_probes_path, sep=",", header=None)
-    len(snp_probes[0].tolist())
     probes_snp = snp_probes[0].tolist()
+    print(f"Number of SNP probes: {len(probes_snp)}")
 
     # list of probes for CHR X and Y
     probe_mapper_x_y = probe_mapper_full[
@@ -155,8 +155,15 @@ def filter_probes(snp_probes_path, processed_arrays, probe_mapper_full):
     probe_x_y = probe_mapper_x_y["ID"].tolist()
     len(probe_x_y)
 
+    # filter cross-reactive probes
+    cr_probes = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
+    print(cr_probes)
+    cross_reactive_probes = cr_probes[0].tolist()
+    print(f"Number of cross-reactive probes: {len(cross_reactive_probes)}")
+
     excluded_probes = probes_snp
     excluded_probes.extend(probe_x_y)
+    excluded_probes.extend(cross_reactive_probes)
     print(len(excluded_probes))
 
     df_probe_signals_merged_no_snp_x_y = processed_arrays[
@@ -715,13 +722,13 @@ if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
 
     ## Step 1
-    '''print("======== Step 1: loading datasets =============")
+    print("======== Step 1: loading datasets =============")
     extract_preprocessed_data(config) if config.download_raw_data else None
     processed_arrays, probe_mapper_full = load_illumina_arrays(config)
     clean_probes = filter_probes(
         config.p_snp_probes, processed_arrays, probe_mapper_full
     )
-    merge_patients(clean_probes, config)'''
+    merge_patients(clean_probes, config)
 
     ## Step 2
     print("======== Step 2: cleaning datasets and computing correlation =============")

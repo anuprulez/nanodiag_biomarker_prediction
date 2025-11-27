@@ -28,6 +28,7 @@ topk = 259 # 200 for best results so far
 toshow = 20
 group_partition1 = 28
 group_partition2 = 28
+n_runs = 1
 
 
 def _as_path(p) -> Path:
@@ -163,7 +164,7 @@ def plot_radar_runs_multiple(config):
     p_base = getattr(config, "p_base", "./")
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
-    n_runs = getattr(config, "n_runs", 5)
+    #n_runs = getattr(config, "n_runs", 5)
     dpi = getattr(config, "dpi", 200)
 
     plot_local_path.mkdir(parents=True, exist_ok=True)
@@ -430,7 +431,7 @@ def plot_radar_runs(config):
     p_base = getattr(config, "p_base", "./")
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
-    n_runs = getattr(config, "n_runs", 2)
+    #n_runs = getattr(config, "n_runs", 2)
     dpi = getattr(config, "dpi", 200)
     
     # ---- 1) Load & aggregate across runs per model ----
@@ -522,7 +523,7 @@ def plot_mean_std_loss_acc(config):
     n_epo = config.n_epo
     dpi = config.dpi
 
-    n_runs = 5
+    #n_runs = 5
     chosen_model = "PNA"
     metrics_list = []
 
@@ -772,7 +773,7 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
 def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
-    n_runs = 5
+    #n_runs = 5
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
@@ -837,7 +838,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     df_top_signals = df_signals[consensus_features].copy()
 
 
-    plot_top_nodes_correlation(config, df_signals, df_top_signals)
+    #plot_top_nodes_correlation(config, df_signals, df_top_signals)
 
     # ------------------------------
     # 4) Groups & cosmetics

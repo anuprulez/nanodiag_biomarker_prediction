@@ -72,14 +72,13 @@ class GPNA(torch.nn.Module):
         deg += torch.bincount(d, minlength=deg.numel())
         return deg
 
-    def __init__(self, config, dataset):
+    def __init__(self, config, dataset, training=False):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
         hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
         scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
-        p_drop = config.dropout
         deg = self.__find_deg(dataset)
 
         torch.manual_seed(config.SEED)
@@ -92,7 +91,8 @@ class GPNA(torch.nn.Module):
         self.bn2 = LayerNorm(2 * hidden_dim)
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
-        self.p_drop = p_drop
+        self.p_drop = config.dropout
+        self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
@@ -106,11 +106,11 @@ class GPNA(torch.nn.Module):
 
         h4_in = h3 + h1
 
-        out_pnaconv4 = self.conv4(h4_in, edge_index)
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        h4 = F.elu(out_batch_norm4)
-        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
-        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+        out_pnaconv = self.conv4(h4_in, edge_index)
+        out_batch_norm = self.bn4(out_pnaconv)
+        h = F.elu(out_batch_norm)
+        h = F.dropout(h, p=self.p_drop, training=self.training)
+        return self.classifier(h), out_pnaconv, out_batch_norm
 
 
 class GCN(torch.nn.Module):

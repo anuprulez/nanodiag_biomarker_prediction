@@ -29,7 +29,7 @@ class LogitsOnly(nn.Module):
 
 def load_model(model_path, data, chosen_model):
     device = "cpu"
-    model = utils.choose_model(config, data, chosen_model)
+    model = utils.choose_model(config, data, chosen_model, False)
     model.load_state_dict(torch.load(model_path, map_location=device))
     return model
 
@@ -670,13 +670,12 @@ if __name__ == "__main__":
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    chosen_model = config.best_trained_model
-    model = load_model(config.p_torch_model, data, chosen_model)
-    node_i = 321 #2569 #1775 #2569 #7478 #68 #7868
-    # Plot examples: 7868 (LP); 7149 (RN); 68 (LN)
+    test_data = torch.load(config.p_torch_test_data, weights_only=False)
+    model = load_model(config.p_torch_model, data, config.best_trained_model)
+    node_i = 41
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
-    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    G = to_networkx(test_data, node_attrs=["x"], to_undirected=True)
     # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(model, data, node_i, G, chosen_model, config)
+    p_nodes = explain_candiate_gene(model, test_data, node_i, G, config.best_trained_model, config)
     get_node_names_links(p_nodes, node_i, config)

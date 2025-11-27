@@ -51,10 +51,6 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
 
     data.edge_index = coalesce(data.edge_index, num_nodes=data.num_nodes)
 
-    #train_nodes = torch.where(data.train_mask)[0]
-    #val_idx   = torch.where(data.val_mask)[0]
-    #test_idx  = torch.where(data.test_mask)[0]
-
     print(
         f"Intersection between train and val genes: {set(train_nodes).intersection(set(val_nodes))}"
     )
@@ -68,36 +64,21 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
         f"Tr nodes: {len(train_nodes)}, Te nodes: {len(te_nodes)}, Val nodes: {len(val_nodes)}"
     )
 
-    print(f"Train indices: {train_nodes[-10:]}")
-    print(f"Test indices: {te_nodes[-10:]}")
-    print(f"Val indices: {val_nodes[-10:]}")
-
-
-    print("Filtering edges for each split ...")
-    edge_index_train = filter_edges(data.edge_index, train_nodes)
-    edge_index_val = filter_edges(data.edge_index, val_nodes)
-    edge_index_test = filter_edges(data.edge_index, te_nodes)
-
-    data_train = Data(x=data.x, y=data.y, edge_index=edge_index_train)
-    data_val   = Data(x=data.x, y=data.y, edge_index=edge_index_val)
-    data_test  = Data(x=data.x, y=data.y, edge_index=edge_index_test)
-
-    torch.save(data_test, config.p_torch_test_data)
 
     train_loader = NeighborLoader(
-        data_train,
-        input_nodes=train_nodes, #ensure_bool(data.train_mask), # seed nodes = train
+        data,
+        input_nodes=ensure_bool(data.train_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
-        shuffle=False,
+        shuffle=True,
         num_workers=8,
         pin_memory=True,
         subgraph_type=config.graph_subtype,
     )
 
     val_loader = NeighborLoader(
-        data_val,
-        input_nodes=val_nodes, #ensure_bool(data.val_mask),
+        data,
+        input_nodes=ensure_bool(data.val_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -106,8 +87,8 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
         subgraph_type=config.graph_subtype,
     )
     test_loader = NeighborLoader(
-        data_test,
-        input_nodes=te_nodes, #ensure_bool(data.test_mask),
+        data,
+        input_nodes=ensure_bool(data.test_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -118,7 +99,7 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, device):
+def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
@@ -131,7 +112,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, device):
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
         loss.backward()
-        clip_grad_norm_(model.parameters(), max_norm=1.5)
+        #clip_grad_norm_(model.parameters(), max_norm=1.5)
         optimizer.step()
         #scheduler.step()
 
@@ -155,7 +136,7 @@ def val_evaluate(loader, model, criterion, device):
             seed_n = batch.batch_size 
             used_val_ids.extend(batch.n_id.cpu().tolist()[: seed_n])
             out, *_ = model(batch.x, batch.edge_index)
-             # evaluating only the seed nodes of this batch
+            # evaluating only the seed nodes of this batch
             logits = out[:seed_n]
             targets = batch.y[:seed_n].long()
             loss = criterion(logits, targets)
@@ -296,11 +277,11 @@ def train_gnn_model(config, labels, chosen_model):
 
     base_lr = config.learning_rate
     weight_decay = config.weight_decay
-    optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay)
+    optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay) #lr=base_lr, weight_decay=weight_decay
 
     steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
     total_steps = steps_per_epoch * config.n_epo
-    #scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps, pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
+    scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps, pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
 
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
@@ -321,7 +302,7 @@ def train_gnn_model(config, labels, chosen_model):
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, device
+            train_loader, model, optimizer, criterion, scheduler, device
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
             val_loader, model, criterion, device

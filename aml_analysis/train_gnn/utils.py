@@ -55,8 +55,9 @@ def create_test_masks(mapped_node_ids, mask_list, out_genes):
             updated_mask_list.append(m_item)
             probe_genes.append(m_name.values[0][1])
             probe_genes_ids.append(m_name.values[0][0])
-    mask = mapped_node_ids.index.isin(updated_mask_list)
-    return torch.tensor(mask, dtype=torch.bool), probe_genes, probe_genes_ids
+    update_set = set(updated_mask_list)
+    mask = torch.tensor([x in update_set for x in mapped_node_ids], dtype=torch.bool)
+    return mask, probe_genes, probe_genes_ids
 
 
 def filter_tr_genes(test_probe_ids, out_genes):
@@ -107,6 +108,12 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(
         mapped_feature_ids, te_nodes, out_genes
     )
+
+    last_test_id = test_probe_ids[-5:]
+    print(f"last_test_row: {last_test_id}")
+
+    print(data.x[last_test_id[-1]])
+    print(data.y[last_test_id[-1]])
 
     print("Post creating test masks")
     df_test_probe_genes = pd.DataFrame(

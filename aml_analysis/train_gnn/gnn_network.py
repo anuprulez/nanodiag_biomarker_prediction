@@ -1,11 +1,11 @@
 import torch
-from torch.nn import Linear, BatchNorm1d, LayerNorm
+from torch.nn import Linear, BatchNorm1d, LayerNorm, Dropout
 from torch_geometric.nn import (
     PNAConv,
     GCNConv,
     SAGEConv,
     GATv2Conv,
-    TransformerConv
+    TransformerConv,
 )
 import torch.nn.functional as F
 from torch_geometric.utils import degree, subgraph
@@ -15,12 +15,18 @@ from torch_geometric.nn.norm import GraphNorm
 class GPNA(torch.nn.Module):
 
     def __find_deg_train_nodes(self, data, undirected=True, device=None):
-        # take only training nodes
+        # take only training nodes when mask is provided, otherwise fall back to full graph
+        train_mask = getattr(data, "train_mask", None)
+        if train_mask is None:
+            return None
+        if train_mask.dtype != torch.bool:
+            train_mask = train_mask.bool()
+        train_nodes = train_mask.nonzero(as_tuple=False).view(-1)
+        if train_nodes.numel() == 0:
+            return None
+
         if device is None:
             device = data.edge_index.device
-
-        # indices of training nodes
-        train_nodes = data.train_mask.nonzero(as_tuple=False).view(-1)
 
         # induce subgraph on training nodes; relabel to 0..n-1
         e_sub, _ = subgraph(
@@ -79,7 +85,9 @@ class GPNA(torch.nn.Module):
         hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
         scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
-        deg = self.__find_deg(dataset)
+        deg = self.__find_deg_train_nodes(dataset)
+        if deg is None:
+            deg = self.__find_deg(dataset)
 
         torch.manual_seed(config.SEED)
         self.conv1 = PNAConv(gene_dim, hidden_dim, aggregators, scalers, deg)
@@ -91,25 +99,28 @@ class GPNA(torch.nn.Module):
         self.bn2 = LayerNorm(2 * hidden_dim)
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
-        self.p_drop = config.dropout
+        self.dropout1 = Dropout(p=config.dropout)
+        self.dropout2 = Dropout(p=config.dropout)
+        self.dropout3 = Dropout(p=config.dropout)
+        self.dropout4 = Dropout(p=config.dropout)
         self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
-        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+        h1 = self.dropout1(h1)
 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
-        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+        h2 = self.dropout2(h2)
 
         h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
-        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+        h3 = self.dropout3(h3)
 
         h4_in = h3 + h1
 
         out_pnaconv = self.conv4(h4_in, edge_index)
         out_batch_norm = self.bn4(out_pnaconv)
         h = F.elu(out_batch_norm)
-        h = F.dropout(h, p=self.p_drop, training=self.training)
+        h = self.dropout4(h)
         return self.classifier(h), out_pnaconv, out_batch_norm
 
 

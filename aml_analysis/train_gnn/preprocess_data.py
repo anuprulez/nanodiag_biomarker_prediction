@@ -64,30 +64,32 @@ def read_files(config):
     naipu_dnam_features, labels = merge_features(config)
     print("Reading out links and genes...")
     relations_probe_ids = utils.read_csv(config.p_out_links, sep=" ", header=None)
-    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
-    feature_names = out_genes.iloc[:, 1]
-    mapped_feature_ids = out_genes.loc[:, 0]
-    print(f"mapped_feature_ids: {mapped_feature_ids[:5]}")
     print(f"Number of links: {len(relations_probe_ids)}")
     links_relation_probes = relations_probe_ids.sample(config.n_edges)
     links_relation_probes.reset_index(drop=True, inplace=True)
     links_relation_probes = links_relation_probes.drop_duplicates()
-    lst_mapped_f_name = np.array(feature_names.index)
-    print(f"lst_mapped_f_name: {lst_mapped_f_name[:5]}")
-    complete_rand_index = [item for item in range(len(feature_names.index))]
-    print(f"complete_rand_index: {complete_rand_index[:5]}")
-    print(f"labels: {labels[:5]}")
-    print(f"feature_names: {feature_names[:5]}")
+
+    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
+    l_node_ids = out_genes.loc[:, 0]
+    node_ids = l_node_ids.tolist()
+    node_names = out_genes.iloc[:, 1].tolist()
+    print(f"feature_ids: {node_ids[:5]}")
+    print(f"last feature_ids: {node_ids[-10:]}")
+    print(f"feature_names: {node_names[-10:]}")
+    print(f"labels: {labels[-10:]}")
+    #complete_rand_index = [item for item in range(len(feature_names.index))]
+    print(f" Num features and labels {len(node_ids), len(node_names), len(labels), naipu_dnam_features.shape}")
+    
     print("Splitting test and train nodes...")
-    _, te_index = train_test_split(
-        complete_rand_index, shuffle=True, test_size=config.test_size, random_state=42, stratify=labels
+    _, te_nodes = train_test_split(
+        node_ids, shuffle=True, test_size=config.test_size, random_state=42, stratify=labels
     )
-    te_nodes = lst_mapped_f_name[te_index]
+    print(f"Last test nodes: {te_nodes[-10:]}")
     utils.create_gnn_data(
         naipu_dnam_features,
         labels,
         links_relation_probes,
-        mapped_feature_ids,
+        node_ids,
         te_nodes,
         config,
     )

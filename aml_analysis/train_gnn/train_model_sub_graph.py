@@ -25,10 +25,10 @@ detach = utils.detach_from_gpu
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def create_masks(mapped_node_ids: pd.Series, mask_list):
+def create_masks(mapped_node_ids, mask_list):
     # True where the SERIES VALUE (node id/name) is in the mask list
-    mask = mapped_node_ids.isin(mask_list).to_numpy()
-    return torch.tensor(mask, dtype=torch.bool)
+    mask = torch.tensor([x in mask_list for x in mapped_node_ids], dtype=torch.bool)
+    return mask
 
 
 def ensure_bool(m):
@@ -36,7 +36,7 @@ def ensure_bool(m):
 
 
 def filter_edges(edge_index, allowed_nodes):
-    allowed = set(allowed_nodes.tolist())
+    allowed = allowed_nodes #set(allowed_nodes.tolist())
     src, dst = edge_index
 
     mask = [(u.item() in allowed and v.item() in allowed)
@@ -45,33 +45,38 @@ def filter_edges(edge_index, allowed_nodes):
     return edge_index[:, mask]
 
 
-def make_neighbor_loaders(data, config):
+def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
     # Keep the big graph on CPU
     data = data.cpu()
 
     data.edge_index = coalesce(data.edge_index, num_nodes=data.num_nodes)
 
-    train_idx = torch.where(data.train_mask)[0]
-    val_idx   = torch.where(data.val_mask)[0]
-    test_idx  = torch.where(data.test_mask)[0]
+    #train_nodes = torch.where(data.train_mask)[0]
+    #val_idx   = torch.where(data.val_mask)[0]
+    #test_idx  = torch.where(data.test_mask)[0]
 
     print(
-        f"Intersection between train and val genes: {set(train_idx).intersection(set(val_idx))}"
+        f"Intersection between train and val genes: {set(train_nodes).intersection(set(val_nodes))}"
     )
     print(
-        f"Intersection between train and test genes: {set(train_idx).intersection(set(test_idx))}"
+        f"Intersection between train and test genes: {set(train_nodes).intersection(set(te_nodes))}"
     )
     print(
-        f"Intersection between val and test genes: {set(val_idx).intersection(set(test_idx))}"
+        f"Intersection between val and test genes: {set(val_nodes).intersection(set(te_nodes))}"
     )
     print(
-        f"Tr nodes: {len(train_idx)}, Te nodes: {len(test_idx)}, Val nodes: {len(val_idx)}"
+        f"Tr nodes: {len(train_nodes)}, Te nodes: {len(te_nodes)}, Val nodes: {len(val_nodes)}"
     )
+
+    print(f"Train indices: {train_nodes[-10:]}")
+    print(f"Test indices: {te_nodes[-10:]}")
+    print(f"Val indices: {val_nodes[-10:]}")
+
 
     print("Filtering edges for each split ...")
-    edge_index_train = filter_edges(data.edge_index, train_idx)
-    edge_index_val = filter_edges(data.edge_index, val_idx)
-    edge_index_test = filter_edges(data.edge_index, test_idx)
+    edge_index_train = filter_edges(data.edge_index, train_nodes)
+    edge_index_val = filter_edges(data.edge_index, val_nodes)
+    edge_index_test = filter_edges(data.edge_index, te_nodes)
 
     data_train = Data(x=data.x, y=data.y, edge_index=edge_index_train)
     data_val   = Data(x=data.x, y=data.y, edge_index=edge_index_val)
@@ -79,13 +84,12 @@ def make_neighbor_loaders(data, config):
 
     torch.save(data_test, config.p_torch_test_data)
 
-
     train_loader = NeighborLoader(
         data_train,
-        input_nodes=train_idx, #ensure_bool(data.train_mask), # seed nodes = train
+        input_nodes=train_nodes, #ensure_bool(data.train_mask), # seed nodes = train
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
-        shuffle=True,
+        shuffle=False,
         num_workers=8,
         pin_memory=True,
         subgraph_type=config.graph_subtype,
@@ -93,7 +97,7 @@ def make_neighbor_loaders(data, config):
 
     val_loader = NeighborLoader(
         data_val,
-        input_nodes=val_idx, #ensure_bool(data.val_mask),
+        input_nodes=val_nodes, #ensure_bool(data.val_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -103,7 +107,7 @@ def make_neighbor_loaders(data, config):
     )
     test_loader = NeighborLoader(
         data_test,
-        input_nodes=test_idx, #ensure_bool(data.test_mask),
+        input_nodes=te_nodes, #ensure_bool(data.test_mask),
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
@@ -114,7 +118,7 @@ def make_neighbor_loaders(data, config):
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
+def train_one_epoch(train_loader, model, optimizer, criterion, device):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
@@ -129,7 +133,7 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device
         loss.backward()
         clip_grad_norm_(model.parameters(), max_norm=1.5)
         optimizer.step()
-        scheduler.step()
+        #scheduler.step()
 
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
@@ -222,11 +226,13 @@ def train_gnn_model(config, labels, chosen_model):
     """
     n_epo = config.n_epo
     out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
-    mapped_f_name = out_genes.loc[:, 0]
+    node_ids = out_genes.loc[:, 0].tolist()
 
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
+    if hasattr(data, "x"):
+        data.x = data.x.to(torch.float32)
     deg = degree(data.edge_index[0], num_nodes=data.num_nodes)  # in-degree or out-degree
     print(f"Mean degree: {deg.mean().item()}")
     print(f"Max degree: {deg.max().item()}")
@@ -244,6 +250,8 @@ def train_gnn_model(config, labels, chosen_model):
 
     print(f"tr_node_ids: {tr_node_ids[-10:]}")
     print(f"tr_labels: {tr_labels[-10:]}")
+    print(f"tr_labels: {data.y[tr_node_ids[-10:][1]]}")
+    print(f"data.x: {data.x[tr_node_ids[-10:][1]]}")
 
     tr_loss_epo = list()
     tr_acc_epo = list()
@@ -273,9 +281,9 @@ def train_gnn_model(config, labels, chosen_model):
         f"Tr nodes: {len(split_tr_node_ids)}, Te nodes: {len(te_node_ids)}, Val nodes: {len(val_node_ids)}"
     )
 
-    data.train_mask = create_masks(mapped_f_name, split_tr_node_ids)
-    data.val_mask = create_masks(mapped_f_name, val_node_ids)
-    data.test_mask = create_masks(mapped_f_name, te_node_ids)
+    data.train_mask = create_masks(node_ids, split_tr_node_ids)
+    data.val_mask = create_masks(node_ids, val_node_ids)
+    data.test_mask = create_masks(node_ids, te_node_ids)
 
     print(f"Initialize model: {chosen_model}")
     model = utils.choose_model(config, data, chosen_model, True)
@@ -292,8 +300,7 @@ def train_gnn_model(config, labels, chosen_model):
 
     steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
     total_steps = steps_per_epoch * config.n_epo
-    scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps,
-                       pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
+    #scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps, pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
 
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
@@ -310,11 +317,11 @@ def train_gnn_model(config, labels, chosen_model):
         "test_before_GNN",
     )
     print("Creating neighbor loaders ...")
-    train_loader, val_loader, test_loader = make_neighbor_loaders(data, config)
+    train_loader, val_loader, test_loader = make_neighbor_loaders(data, split_tr_node_ids, val_node_ids, te_node_ids, config)
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, scheduler, device
+            train_loader, model, optimizer, criterion, device
         )
         val_loss, val_acc, used_val_ids = val_evaluate(
             val_loader, model, criterion, device

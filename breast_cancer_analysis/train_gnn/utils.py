@@ -26,14 +26,14 @@ def detach_from_gpu(tensor):
     return tensor.cpu().detach().numpy()
 
 
-def choose_model(config, data, chosen_model):
+def choose_model(config, data, chosen_model, training=False):
     name = chosen_model.lower()
     if name == "pna": return gnn_network.GPNA(config, data)
     elif name == "gcn": return gnn_network.GCN(config)
     elif name == "graphsage": return gnn_network.GraphSAGE(config)
     elif name == "gatv2": return gnn_network.GATv2(config)
     elif name == "graphtransformer": return gnn_network.GraphTransformer(config)
-    else: return gnn_network.GPNA(config, data)
+    else: return gnn_network.GPNA(config, data, training)
 
 
 def create_test_masks(mapped_node_ids, mask_list, out_genes):
@@ -55,8 +55,9 @@ def create_test_masks(mapped_node_ids, mask_list, out_genes):
             updated_mask_list.append(m_item)
             probe_genes.append(m_name.values[0][1])
             probe_genes_ids.append(m_name.values[0][0])
-    mask = mapped_node_ids.index.isin(updated_mask_list)
-    return torch.tensor(mask, dtype=torch.bool), probe_genes, probe_genes_ids
+    update_set = set(updated_mask_list)
+    mask = torch.tensor([x in update_set for x in mapped_node_ids], dtype=torch.bool)
+    return mask, probe_genes, probe_genes_ids
 
 
 def filter_tr_genes(test_probe_ids, out_genes):
@@ -71,7 +72,6 @@ def filter_tr_genes(test_probe_ids, out_genes):
 
 def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, config):
     print("Creating data ojbect for GNN...")
-    print(f"Number of test nodes before probes check: {len(te_nodes)}")
     p_data = config.p_data
     sfeatures_names = config.keep_feature_names.split(",")
     sfeatures_ids = [int(i) for i in range(len(sfeatures_names))]
@@ -108,6 +108,12 @@ def create_gnn_data(features, labels, l_probes, mapped_feature_ids, te_nodes, co
     data.test_mask, test_probe_genes, test_probe_ids = create_test_masks(
         mapped_feature_ids, te_nodes, out_genes
     )
+
+    last_test_id = test_probe_ids[-5:]
+    print(f"last_test_row: {last_test_id}")
+
+    print(data.x[last_test_id[-1]])
+    print(data.y[last_test_id[-1]])
 
     print("Post creating test masks")
     df_test_probe_genes = pd.DataFrame(

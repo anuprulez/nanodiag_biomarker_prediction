@@ -401,5 +401,5 @@ def train_gnn_model(config, labels, chosen_model):
     plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
     plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d")
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
-    plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
+    #plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
     print("Finished.")

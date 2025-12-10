@@ -88,12 +88,13 @@ def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
 def filter_snps_xy(
     merged: pd.DataFrame,
     snp_probes: List[str],
+    cr_probes: List[str],
     xy_probe_ids: List[str],
 ) -> pd.DataFrame:
     """
     Remove rows where ID_REF is in SNP probe list or X/Y chromosome probe IDs.
     """
-    excluded = set(snp_probes) | set(xy_probe_ids)
+    excluded = set(snp_probes) | set(xy_probe_ids) | set(cr_probes)
     keep_mask = ~merged["ID_REF"].isin(excluded)
     return merged.loc[keep_mask].copy()
 
@@ -296,7 +297,12 @@ def process_arrays(
     )
     print("Loaded %d SNP probes", len(snp_probes))
 
-    df_no_snp_xy = filter_snps_xy(df_probe_signals, snp_probes, xy_ids)
+    cr_probes = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
+    print("Loaded %d Cross-reactive probes", len(cr_probes))
+    cross_reactive_probes = cr_probes[0].tolist()
+    print(f"Number of cross-reactive probes: {len(cross_reactive_probes)}")
+
+    df_no_snp_xy = filter_snps_xy(df_probe_signals, snp_probes, cross_reactive_probes, xy_ids)
 
     # ----------------------------- Feature building ----------------------------
     info_cols = df_no_snp_xy[["ID_REF", "Genes"]].copy()

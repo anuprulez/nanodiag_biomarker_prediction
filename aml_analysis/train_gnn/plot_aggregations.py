@@ -24,11 +24,11 @@ from omegaconf.omegaconf import OmegaConf
 sns.set_theme(style="whitegrid", context="talk")
 
 # for merging the results from multiple runs
-topk = 259 # 200 for best results so far
+topk = 250 # 200 for best results so far
 toshow = 20
 group_partition1 = 28
 group_partition2 = 28
-n_runs = 1
+n_runs = 5
 
 
 def _as_path(p) -> Path:
@@ -1329,7 +1329,7 @@ if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_xai_nodes_raw_values_averaged_runs(config)
     plot_positive_xai_nodes_raw_values(config)
-    #plot_radar_runs_multiple(config)
-    #plot_radar_runs(config)
-    #plot_mean_std_loss_acc(config)
-    #plot_xai_nodes_raw_values(config)
+    plot_radar_runs_multiple(config)
+    plot_radar_runs(config)
+    plot_mean_std_loss_acc(config)
+    plot_xai_nodes_raw_values(config)

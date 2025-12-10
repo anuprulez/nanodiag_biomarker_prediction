@@ -156,14 +156,14 @@ def filter_probes(snp_probes_path, processed_arrays, probe_mapper_full):
     len(probe_x_y)
 
     # filter cross-reactive probes
-    cr_probes = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
-    print(cr_probes)
-    cross_reactive_probes = cr_probes[0].tolist()
-    print(f"Number of cross-reactive probes: {len(cross_reactive_probes)}")
+    #cr_probes = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
+    #print(cr_probes)
+    #cross_reactive_probes = cr_probes[0].tolist()
+    #print(f"Number of cross-reactive probes: {len(cross_reactive_probes)}")
 
     excluded_probes = probes_snp
     excluded_probes.extend(probe_x_y)
-    excluded_probes.extend(cross_reactive_probes)
+    #excluded_probes.extend(cross_reactive_probes)
     print(len(excluded_probes))
 
     df_probe_signals_merged_no_snp_x_y = processed_arrays[

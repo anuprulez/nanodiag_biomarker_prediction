@@ -128,7 +128,7 @@ class GCN(torch.nn.Module):
     """
     Neural network with graph convolution network (GCN)
     """
-    def __init__(self, config):
+    def __init__(self, config, training=False):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
@@ -145,29 +145,34 @@ class GCN(torch.nn.Module):
         self.bn2 = LayerNorm(2 * hidden_dim)
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
+        self.dropout1 = Dropout(p=config.dropout)
+        self.dropout2 = Dropout(p=config.dropout)
+        self.dropout3 = Dropout(p=config.dropout)
+        self.dropout4 = Dropout(p=config.dropout)
         self.p_drop = p_drop
+        self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
-        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+        h1 = self.dropout1(h1)
 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
-        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+        h2 = self.dropout2(h2)
 
         h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
-        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+        h3 = self.dropout3(h3)
 
         h4_in = h3 + h1
 
-        out_pnaconv4 = self.conv4(h4_in, edge_index)
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        h4 = F.elu(out_batch_norm4)
-        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
-        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+        out_pnaconv = self.conv4(h4_in, edge_index)
+        out_batch_norm = self.bn4(out_pnaconv)
+        h = F.elu(out_batch_norm)
+        h = self.dropout4(h)
+        return self.classifier(h), out_pnaconv, out_batch_norm
 
 
 class GraphSAGE(torch.nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, training=False):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
@@ -184,29 +189,34 @@ class GraphSAGE(torch.nn.Module):
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
+        self.dropout1 = Dropout(p=config.dropout)
+        self.dropout2 = Dropout(p=config.dropout)
+        self.dropout3 = Dropout(p=config.dropout)
+        self.dropout4 = Dropout(p=config.dropout)
         self.p_drop = p_drop
+        self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
-        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+        h1 = self.dropout1(h1)
 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
-        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+        h2 = self.dropout2(h2)
 
         h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
-        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+        h3 = self.dropout3(h3)
 
         h4_in = h3 + h1
 
-        out_pnaconv4 = self.conv4(h4_in, edge_index)
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        h4 = F.elu(out_batch_norm4)
-        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
-        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+        out_pnaconv = self.conv4(h4_in, edge_index)
+        out_batch_norm = self.bn4(out_pnaconv)
+        h = F.elu(out_batch_norm)
+        h = self.dropout4(h)
+        return self.classifier(h), out_pnaconv, out_batch_norm
 
 
 class GATv2(torch.nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, training=False):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
@@ -235,29 +245,34 @@ class GATv2(torch.nn.Module):
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
+        self.dropout1 = Dropout(p=config.dropout)
+        self.dropout2 = Dropout(p=config.dropout)
+        self.dropout3 = Dropout(p=config.dropout)
+        self.dropout4 = Dropout(p=config.dropout)
         self.p_drop = p_drop
+        self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
-        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+        h1 = self.dropout1(h1)
 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
-        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+        h2 = self.dropout2(h2)
 
         h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
-        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+        h3 = self.dropout3(h3)
 
         h4_in = h3 + h1
 
-        out_pnaconv4 = self.conv4(h4_in, edge_index)
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        h4 = F.elu(out_batch_norm4)
-        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
-        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+        out_pnaconv = self.conv4(h4_in, edge_index)
+        out_batch_norm = self.bn4(out_pnaconv)
+        h = F.elu(out_batch_norm)
+        h = self.dropout4(h)
+        return self.classifier(h), out_pnaconv, out_batch_norm
     
 
 class GraphTransformer(torch.nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, training=False):
         super().__init__()
         num_classes = config.num_classes
         gene_dim = config.gene_dim
@@ -283,22 +298,27 @@ class GraphTransformer(torch.nn.Module):
         self.bn3 = LayerNorm(hidden_dim)
         self.bn4 = LayerNorm(hidden_dim // 2)
         self.classifier = Linear(hidden_dim // 2, num_classes)
+        self.dropout1 = Dropout(p=config.dropout)
+        self.dropout2 = Dropout(p=config.dropout)
+        self.dropout3 = Dropout(p=config.dropout)
+        self.dropout4 = Dropout(p=config.dropout)
         self.p_drop = p_drop
+        self.training = training
 
     def forward(self, x, edge_index):
         h1 = F.elu(self.bn1(self.conv1(x, edge_index)))
-        h1 = F.dropout(h1, p=self.p_drop, training=self.training)
+        h1 = self.dropout1(h1)
 
         h2 = F.elu(self.bn2(self.conv2(h1, edge_index)))
-        h2 = F.dropout(h2, p=self.p_drop, training=self.training)
+        h2 = self.dropout2(h2)
 
         h3 = F.elu(self.bn3(self.conv3(h2, edge_index)))
-        h3 = F.dropout(h3, p=self.p_drop, training=self.training)
+        h3 = self.dropout3(h3)
 
         h4_in = h3 + h1
 
-        out_pnaconv4 = self.conv4(h4_in, edge_index)
-        out_batch_norm4 = self.bn4(out_pnaconv4)
-        h4 = F.elu(out_batch_norm4)
-        h4 = F.dropout(h4, p=self.p_drop, training=self.training)
-        return self.classifier(h4), out_pnaconv4, out_batch_norm4
+        out_pnaconv = self.conv4(h4_in, edge_index)
+        out_batch_norm = self.bn4(out_pnaconv)
+        h = F.elu(out_batch_norm)
+        h = self.dropout4(h)
+        return self.classifier(h), out_pnaconv, out_batch_norm

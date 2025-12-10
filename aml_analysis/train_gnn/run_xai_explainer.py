@@ -631,6 +631,21 @@ def collect_pred_labels(config):
 
     print("Pred likely pos with no training genes/probes")
     pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
+
+    print("Before filtering cross-reactive probes")
+    print(pred_likely_pos)
+
+    # filter cross-reactive probes
+    df_cross_reactive = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
+    cross_reactive_probes = df_cross_reactive[0].tolist()
+    print(f"Cross-reactive probes: {len(cross_reactive_probes)}")
+    pred_likely_pos = pred_likely_pos[
+        ~pred_likely_pos["probes"].isin(cross_reactive_probes)
+    ]
+
+    print("After filtering cross-reactive probes")
+    print(pred_likely_pos)
+
     pred_likely_pos.to_csv(
         config.p_pred_likely_pos_no_training_genes_probes, sep="\t", index=None
     )
@@ -670,12 +685,12 @@ if __name__ == "__main__":
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    test_data = torch.load(config.p_torch_test_data, weights_only=False)
+    #test_data = torch.load(config.p_torch_test_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 41
+    node_i = 361
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
-    G = to_networkx(test_data, node_attrs=["x"], to_undirected=True)
+    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
     # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(model, test_data, node_i, G, config.best_trained_model, config)
+    p_nodes = explain_candiate_gene(model, data, node_i, G, config.best_trained_model, config)
     get_node_names_links(p_nodes, node_i, config)

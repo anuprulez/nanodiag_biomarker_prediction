@@ -1,7 +1,7 @@
 SEED: 32
 n_edges: 9913451 #14251734 #14251734 # 9913451 knn_3000
 # BC: all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 12
+n_epo: 20
 batch_size: 32
 num_classes: 5
 gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
@@ -11,9 +11,9 @@ weight_decay: 1e-3
 test_size: 0.33
 keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
-n_neighbors: 20
-min_dist: 0.8
-metric: "correlation"
+umap_n_neighbors: 20
+umap_min_dist: 0.8
+umap_metric: "correlation"
 cutoff_pval: 5e-2
 dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
 heads: 4
@@ -28,10 +28,11 @@ neighbour_predictions: [0, 1] # positive, likely positive
 masks_for_seed: 3
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
-show_num_neighbours: 20
+show_num_neighbours: 50
 knn_neighbours: 3000
 p_base: ../data_corr_0.33_negative_10000_knn/
 p_significant_edges: ${p_base}significant_gene_relations.tsv
+p_cross_reactive_probes: ${p_base}cross_reactive_probes.csv
 p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
 p_merged_signals: ${p_base}merged_signals_bc.csv
 p_seed_features: ${p_base}seed_features.csv

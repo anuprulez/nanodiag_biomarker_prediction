@@ -1,0 +1,3 @@
+Chromosome	Start	End	Score	gene_id	gene_name	Strand	Methylation_Difference	p_value	q_value
+chr2	242119999	242120010	.	ENSG00000220804.9	LINC01881	+	0.320238	0.029	0.00094
+chr3	49368953	49368987	.	ENSG00000067560.14	RHOA	-	-0.213889	0.015	0.047

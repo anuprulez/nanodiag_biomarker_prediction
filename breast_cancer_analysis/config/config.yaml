@@ -19,13 +19,13 @@ dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
 heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 dpi: 300
-model_type: "PNA" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+model_type: "GraphTransformer" # PNA, GCN, GraphSage, GATV2, GraphTransformer  ### gcn2, appnet
 best_trained_model: ${model_type} # Find the best trained model via training and then set it
 neighbors_spread: [-1, 100, 50] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
 explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1] # positive, likely positive
-masks_for_seed: 3
+masks_for_seed: 1
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 50

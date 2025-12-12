@@ -269,7 +269,7 @@ def plot_radar_runs_multiple(config):
         # Title (reduced pad to cut extra gap)
         ax.set_title(
             f"Model Comparison (Averaged over {n_runs} runs)\nModels on Axes, Metrics in Legend",
-            fontsize=13, pad=10
+            fontsize=20, pad=10
         )
 
         # Legend outside
@@ -321,11 +321,11 @@ def plot_radar_runs_multiple(config):
             # Grid, ticks, labels
             ax.set_ylim(0.0, 1.0)
             ax.set_yticks([0.2, 0.4,  0.6, 0.8]) # [0.25, 0.5, 0.75]
-            ax.set_yticklabels(["0.2", "0.4",  "0.6", "0.8"], fontsize=8) # []".25", ".5", ".75"
+            ax.set_yticklabels(["0.2", "0.4",  "0.6", "0.8"], fontsize=10) # []".25", ".5", ".75"
             ax.grid(True, linewidth=0.5, alpha=0.5)
-            ax.set_thetagrids(angles[:-1] * 180/np.pi, spoke_labels, fontsize=8)
+            ax.set_thetagrids(angles[:-1] * 180/np.pi, spoke_labels, fontsize=12)
 
-            ax.set_title(m, fontsize=11, pad=8)
+            ax.set_title(m, fontsize=12, pad=8)
 
         # Hide any empty subplots
         total_axes = n_rows*n_cols
@@ -333,7 +333,7 @@ def plot_radar_runs_multiple(config):
             r, c = divmod(j, n_cols)
             axs[r, c].axis("off")
 
-        fig.suptitle(f"Per-Model Performance (averaged over {n_runs} runs)", fontsize=13, y=1.02)
+        fig.suptitle(f"Per-Model Performance (averaged over {n_runs} runs)", fontsize=20, y=1.02)
         plt.tight_layout(pad=0.8)
         plt.subplots_adjust(top=0.88, bottom=0.05, left=0.05, right=0.95)
 
@@ -673,8 +673,8 @@ from matplotlib.backends.backend_pdf import PdfPages
 def _find_run_file(base, run_id, chosen_model):
     """Try a few plausible filenames/locations for each run; return first that exists."""
     candidates = [
-        os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"),
-        #os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
+        #os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"),
+        os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
     ]
     for p in candidates:
         if os.path.exists(p):
@@ -794,10 +794,10 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         path_pred = _find_run_file(config.p_base, run_id, chosen_model)
         df_pred = pd.read_csv(path_pred, sep="\t")
         print("All: ", df_pred)
-        N = [4, 5]
+        N = [5]
         LP = [2]
         P = [1]
-        df_pred = df_pred[df_pred["pred_labels"].isin(LP)]
+        df_pred = df_pred[df_pred["pred_labels"].isin(N)]
         print(df_pred)
         if "test_gene_names" not in df_pred.columns:
             raise KeyError(f"'test_gene_names' column not found in {path_pred}")
@@ -858,53 +858,9 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
     data = df_top_signals.drop(columns=["Group"])
     sns.set(style="white", font_scale=1.0)
-    pred_type = "likely_positive" #"negative" # likely_positive
-    out_path_heatmap = plot_local_path / f"heatmap_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
+    pred_type = "negative" #"negative" # likely_positive
     out_path_voilin = plot_local_path / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
     df_top_signals.to_csv(plot_local_path / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv")
-    # ------------------------------
-    # 5) Output: multi-page PDF
-    # ------------------------------
-    #out_path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
-    '''with PdfPages(out_path_heatmap) as pdf:
-        # ===== Page 1: Heatmap (consensus features) =====
-        g = sns.clustermap(
-            data,
-            row_colors=row_colors,
-            cmap=cmap,
-            col_cluster=False,
-            row_cluster=False,
-            linewidths=0.3,
-            figsize=(8, 8),
-            cbar_pos=None,
-        )
-        g.ax_heatmap.set_yticklabels([])
-        g.ax_heatmap.tick_params(left=False)
-        g.fig.subplots_adjust(top=0.85, right=0.80, left=0.06, bottom=0.06)
-
-        # Colorbar
-        mappable = g.ax_heatmap.collections[0]
-        # Move colorbar closer by decreasing the 'left' value from 1.10 → ~0.88–0.92
-        cax = g.fig.add_axes([0.88, 0.1, 0.02, 0.50])  # [left, bottom, width, height]
-        cb = g.fig.colorbar(mappable, cax=cax)
-        cb.set_label("β-value", rotation=90, labelpad=14)  # small extra pad for readability
-
-        # Legend
-        handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
-        g.fig.legend(handles=handles, title="Group", loc="center left", frameon=False)
-
-        # Title
-        g.ax_heatmap.set_title(
-            f"DNA methylation of consensus top {len(consensus_features)} likely positive features (PNA, 5 runs)\n"
-            "(Day0 vs Day8 patients)",
-            pad=4, fontsize=14
-        )
-        g.ax_col_dendrogram.set_visible(False)
-
-        pdf.savefig(g.fig, dpi=dpi, bbox_inches="tight")
-        plt.close(g.fig)
-
-    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_heatmap}")'''
 
 
     with PdfPages(out_path_voilin) as pdf:
@@ -1083,95 +1039,6 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
 
         plt.close(ax.figure)
-
-        '''title_font = 24
-        x_y_font = 16
-        mean_annot_font = 14
-        # ===== Page 2: Violin plot (day0 vs day8 per feature) =====
-        long_df = (
-            df_top_signals
-            .melt(id_vars="Group", var_name="Feature", value_name="Beta")
-            .dropna()
-        )
-
-        # limit to first N for readability
-        max_features_for_violin = topk
-        features_for_violin = consensus_features #[:max_features_for_violin]
-        vdf = long_df[long_df["Feature"].isin(features_for_violin)].copy()
-
-        vdf["Group"] = pd.Categorical(vdf["Group"], categories=["Day8", "Day0"], ordered=True)
-        vdf["Feature"] = pd.Categorical(vdf["Feature"], categories=features_for_violin, ordered=True)
-
-        plt.figure(figsize=(max(12, 0.4 * len(features_for_violin)), 8))
-        ax = sns.violinplot(
-            data=vdf,
-            x="Feature",
-            y="Beta",
-            hue="Group",
-            hue_order=hue_order,
-            cut=0,
-            inner='quartile',
-            split=True,
-            palette=group_colors
-        )
-
-        # Overlay mean markers + lines to emphasize mean differences
-        sns.pointplot(
-            data=vdf,
-            x="Feature",
-            y="Beta",
-            hue="Group",
-            dodge=0.4,
-            join=True,
-            markers="o",
-            linestyles="-",
-            errorbar=None,
-            ax=ax
-        )
-
-        # Clean up duplicate legends
-        _, labels = ax.get_legend_handles_labels()
-        handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
-        ax.legend(handles[:2], labels[:2], title="Conditions", frameon=False, loc="upper left", bbox_to_anchor=(1.02, 1.02))
-
-        # Axis labels and title
-        ax.set_ylim(0, 1.3)
-        ax.set_yticks(np.arange(0, 1.3, 0.2))
-        ax.yaxis.grid(True, linestyle='--', linewidth=0.7, alpha=0.6)
-        ax.set_xlabel("Feature (probe_gene)", fontsize=x_y_font)
-        ax.set_ylabel("β-value", fontsize=x_y_font)
-        ax.set_title(
-            f"Distribution and mean differences per feature (β-values): Day0 vs Day8",
-            pad=10,
-            fontsize=title_font
-        )
-        ax.tick_params(axis="y", labelsize=x_y_font)
-        ax.tick_params(axis="x", labelsize=x_y_font)
-        plt.xticks(rotation=90)
-        plt.tight_layout()
-
-        # Annotate per-feature mean difference (Day0 − Day8)
-        group_means = (
-            vdf.groupby(["Feature", "Group"])["Beta"]
-            .mean()
-            #.reagindex(features_for_violin if hasattr(pd.core.groupby.generic.SeriesGroupBy, "__len__") else None)  # safe no-op
-            .unstack("Group")
-        )
-        # Safely compute ymax per feature for text placement
-        ymax_per_feature = vdf.groupby("Feature")["Beta"].max()
-        for i, feat in enumerate(features_for_violin):
-            if feat not in group_means.index:
-                continue
-            mu_day0 = group_means.loc[feat].get("Day0", np.nan)
-            mu_day8 = group_means.loc[feat].get("Day8", np.nan)
-            if np.isnan(mu_day0) or np.isnan(mu_day8):
-                continue
-            diff = mu_day0 - mu_day8
-            ytxt = ymax_per_feature.get(feat, vdf["Beta"].max()) + 0.02
-            ax.text(i, ytxt, f"Δμ={diff:.3f}", ha="center", va="bottom", fontsize=mean_annot_font, rotation=90)
-
-        pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
-        plt.close(ax.figure)'''
 
     print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
 

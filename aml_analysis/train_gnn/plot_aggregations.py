@@ -701,23 +701,18 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
                   "cg09962458_SIPA1L1",
                   "cg16036046_RIT2"
                   ]'''
-    seed_nodes = ["cg22862734_FREM2",
-                  "cg10205585_REXO1L2P",
-                  "cg27030541_REXO1L2P", 
-                  "cg22234135_UGT2B15",
+    seed_nodes = ["cg26246840_CD226",
+                  "cg26626251_OPCML",
+                  "cg12915585_MYT1L", 
                   "cg05592278_LRRC37A3",
-                  "cg01879273_AGAP1", 
-                  "cg27638035_BRUNOL4",
-                  "cg17189167_LPA",
-                  "cg12915585_MYT1L",
-                  "cg26626251_OPCML"
+                  "cg22862734_FREM2",
                   ]
     df_seed = df_signals[seed_nodes]
     print("Seed signals")
     print(df_seed)
     print("Top LP signals")
     #top_lp = "cg13985132_LOC390595"
-    top_lp = "cg08282428_RBM46"
+    top_lp = "cg23281527_KLHDC7A"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 
@@ -754,11 +749,11 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
             palette=bar_colors
         )
 
-        plt.xticks(rotation=90, fontsize=9)
-        plt.yticks(fontsize=10)
-        plt.ylabel("Pearson correlation", fontsize=12)
-        plt.xlabel("Seed signals", fontsize=12)
-        plt.title(f"Correlation of {lp_col} with XAI subgraph seed signals", fontsize=14, weight="bold")
+        plt.xticks(rotation=90, fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.ylabel("Pearson correlation", fontsize=18)
+        plt.xlabel("Seed signals", fontsize=18)
+        plt.title(f"Correlation of {lp_col} with XAI subgraph seed signals", fontsize=22)
         plt.grid(axis='y', linestyle='--', alpha=0.5)
         plt.tight_layout()
 
@@ -838,7 +833,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     df_top_signals = df_signals[consensus_features].copy()
 
 
-    #plot_top_nodes_correlation(config, df_signals, df_top_signals)
+    plot_top_nodes_correlation(config, df_signals, df_top_signals)
 
     # ------------------------------
     # 4) Groups & cosmetics

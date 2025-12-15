@@ -480,8 +480,8 @@ def compute_rankings(
     print(f"Class {lp_cls} neighbours found: {len(class2_neighbours)}")
 
     # Take up to 10 from each class
-    class2_selected = [n for n, _ in class2_neighbours[:10]]
-    class1_selected = [n for n, _ in class1_neighbours[:10]]
+    class2_selected = [n for n, _ in class2_neighbours[:5]]
+    class1_selected = [n for n, _ in class1_neighbours[:5]]
 
     final_ranking = [explained_name] + class2_selected + class1_selected
 
@@ -687,7 +687,7 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     #test_data = torch.load(config.p_torch_test_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 361
+    node_i = 2025 #273
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)

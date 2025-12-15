@@ -389,7 +389,7 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chose
         if not node_name.empty:
             label = f"{node_name.iloc[0, 0]}:{node_name.iloc[0, 1]}"
             legend_elements.append(
-                Line2D([0], [0], marker="o", color="w", label=label, markersize=5)
+                Line2D([0], [0], marker="o", color="w", label=label, markersize=10)
             )
 
     # Normalize ei_sub to numpy

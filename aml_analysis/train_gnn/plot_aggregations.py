@@ -712,7 +712,7 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(df_seed)
     print("Top LP signals")
     #top_lp = "cg13985132_LOC390595"
-    top_lp = "cg23281527_KLHDC7A"
+    top_lp = "cg00315391_SCNN1G" #"cg23281527_KLHDC7A"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 

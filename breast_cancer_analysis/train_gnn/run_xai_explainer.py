@@ -56,8 +56,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
             nodes_with_idxs[node] = i
     print("[+]", len(nodes_with_idxs), "likely positive nodes found in the graph")
 
-    if xai_node not in nodes_with_idxs:
-        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")
+    '''if xai_node not in nodes_with_idxs:
+        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")'''
 
     idx_global = int(nodes_with_idxs[xai_node])
 
@@ -480,8 +480,8 @@ def compute_rankings(
     print(f"Class {lp_cls} neighbours found: {len(class2_neighbours)}")
 
     # Take up to 10 from each class
-    class2_selected = [n for n, _ in class2_neighbours[:10]]
-    class1_selected = [n for n, _ in class1_neighbours[:10]]
+    class2_selected = [n for n, _ in class2_neighbours[:5]]
+    class1_selected = [n for n, _ in class1_neighbours[:5]]
 
     final_ranking = [explained_name] + class2_selected + class1_selected
 
@@ -686,7 +686,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 664
+    node_i = 5389 #8335 #5619 #1867
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)

@@ -1,0 +1,2 @@
+Chromosome	Start	End	Score	gene_id	gene_name	Strand	Methylation_Difference	Num_CpGs	p_value_MWU
+chr2	137272941	137272969	.	ENSG00000144229.12	THSD7B	+	-0.171693	2	0.029

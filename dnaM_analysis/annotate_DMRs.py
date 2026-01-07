@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 
 
 all_conditions = ["HT_smallEV", "Tspan8_smallEV", "Tspan8_largeEV", "HT1080_V_largeEV", "HT1080_V_smallEV"]
-base_path = "data/"
+coverage = 5
+pvalue_threshold = 0.05
+gene_annotation_path = "data/"
+base_path = f"data/coverage_{coverage}/"
 
 '''
 all combinations:
@@ -64,17 +67,24 @@ def assign_genes():
             comment="#",
         )
 
+        print("Initial DMR DataFrame:")
         print(dmr_df.head())
 
+        # Metilene output columns: http://legacy.bioinf.uni-leipzig.de/Software/metilene/manual.pdf
+
+        dmr_df.columns = ["Chromosome", "Start", "End", "q-value", \
+                          "Methylation_Difference", "Num_CpGs", "p_value_MWU", \
+                            "p_value_2D_KS", "Methylation_1", "Methylation_2"]
+
         # filter by p-value threshold
-        pvalue_threshold = 0.05
-        dmr_df = dmr_df[dmr_df[6] <= pvalue_threshold]
 
-        dmr_df_chr_str_end = dmr_df[[0, 1, 2, 4, 6, 7]]
-        dmr_df_chr_str_end.columns = ["Chromosome", "Start", "End", "Methylation_Difference", "p_value", "q_value"]
-
+        dmr_df = dmr_df[dmr_df["p_value_MWU"] <= pvalue_threshold]
         print("After p-value filtering:")
         print(dmr_df)
+
+        #dmr_df_chr_str_end = dmr_df[[0, 1, 2, 4, 5, 6, 7]]
+        #dmr_df_chr_str_end.columns = ["Chromosome", "Start", "End", "Methylation_Difference", "p_value", "q_value"]
+        dmr_df_chr_str_end = dmr_df[["Chromosome", "Start", "End", "Methylation_Difference", "Num_CpGs", "p_value_MWU"]]
 
         print("For PyRanges:")
         print(dmr_df_chr_str_end)
@@ -83,7 +93,10 @@ def assign_genes():
         dmrs = pr.PyRanges(dmr_df_chr_str_end)
         print(dmrs)
 
-        gtf_path = base_path + "gencode.v38.annotation.gtf"   # replace with your actual file path
+        ## Download HG38 GTF 
+        # https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_38/gencode.v38.annotation.gtf.gz
+
+        gtf_path = gene_annotation_path + "gencode.v38.annotation.gtf" 
 
         # Read GTF into PyRanges
         genes_gtf = pr.read_gtf(gtf_path)
@@ -109,7 +122,7 @@ def assign_genes():
         cols_to_keep = [
             "Chromosome", "Start", "End", "Score",   # DMR
             "gene_id", "gene_name", "Strand",         # Gene info
-            "Methylation_Difference", "p_value", "q_value"  # DMR stats
+            "Methylation_Difference", "Num_CpGs", "p_value_MWU"  # DMR stats
         ]
 
         overlap_df = overlap_df[cols_to_keep]
@@ -129,7 +142,7 @@ def plot_volcano(df, cond1, cond2):
     meth_difference = 0.1
 
     df['color'] = 'gray'
-    p_value_field = 'p_value'
+    p_value_field = 'p_value_MWU'
     df.loc[(df[p_value_field] < pval_threshold) & (df['Methylation_Difference'] > meth_difference), 'color'] = 'red'    # upregulated
     df.loc[(df[p_value_field] < pval_threshold)& (df['Methylation_Difference'] < -meth_difference), 'color'] = 'blue'   # downregulated
 

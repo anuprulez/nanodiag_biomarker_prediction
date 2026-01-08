@@ -381,7 +381,7 @@ def plot_radar_runs_multiple(config):
                 r, g, b, _ = cmap(A_norm[i, j])
                 luminance = 0.299 * r + 0.587 * g + 0.114 * b
                 txt_color = "black" if luminance > 0.55 else "white"
-                ax.text(j, i, f"{val:.3f}", ha="center", va="center", fontsize=8,
+                ax.text(j, i, f"{val:.3f}", ha="center", va="center", fontsize=12,
                         color=txt_color)
 
         # optional: add faint grid lines to separate cells
@@ -712,7 +712,7 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(df_seed)
     print("Top LP signals")
     #top_lp = "cg13985132_LOC390595"
-    top_lp = "cg00315391_SCNN1G" #"cg23281527_KLHDC7A"
+    top_lp = "cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 
@@ -741,19 +741,19 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     # --- Plot correlations for each LP signal ---
     for lp_col in df_lp.columns:
         corr_series = df_corr[lp_col].sort_values(ascending=False)
-        plt.figure(figsize=(12, 6))
+        plt.figure(figsize=(6, 6))
         bar_colors = sns.color_palette("viridis", len(corr_series))
         sns.barplot(
             x=corr_series.index,
             y=corr_series.values,
-            palette=bar_colors
+            #palette=bar_colors
         )
 
         plt.xticks(rotation=90, fontsize=16)
         plt.yticks(fontsize=16)
         plt.ylabel("Pearson correlation", fontsize=18)
         plt.xlabel("Seed signals", fontsize=18)
-        plt.title(f"Correlation of {lp_col} with XAI subgraph seed signals", fontsize=22)
+        plt.title(f"Correlation of {lp_col} with seeds", fontsize=22)
         plt.grid(axis='y', linestyle='--', alpha=0.5)
         plt.tight_layout()
 

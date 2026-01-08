@@ -686,7 +686,7 @@ if __name__ == "__main__":
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 5389 #8335 #5619 #1867
+    node_i = 5619 #5389 #8335 #5619 #1867
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)

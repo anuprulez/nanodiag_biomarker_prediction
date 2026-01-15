@@ -12,6 +12,12 @@ gene_annotation_path = "data/"
 base_path = f"data/coverage_{coverage}/"
 
 '''
+https://ngs101.com/how-to-analyze-dna-methylation-data-for-absolute-beginners-part-3-from-wgbs-and-rrbs-methylation-calls-to-biological-insights/
+
+https://www.sevenbridges.com/blog-differential-methylation-analysis/
+'''
+
+'''
 all combinations:
 
 
@@ -143,7 +149,7 @@ def annotate_points(ax, df, x_col="X", y_col="Methylation_Difference",
 def plot_chr_methylation_change(
     dmr_df,
     dmp_df=None,
-    outpath="chr_meth_change.png",
+    outpath="chr_meth_change.pdf",
     title="DMRs and DMPs by chromosome",
     p_col_dmr="p_value_MWU",
     p_col_dmp="p_value",
@@ -185,11 +191,9 @@ def plot_chr_methylation_change(
 
     # ---- Significance split (use <= and > to avoid losing p==threshold)
     dmr_sig = dmr[dmr[p_col_dmr] <= p_threshold].copy()
-    dmr_nsig = dmr[dmr[p_col_dmr] > p_threshold].copy()
 
     if dmp is not None:
         dmp_sig = dmp[dmp[p_col_dmp] <= p_threshold].copy()
-        dmp_nsig = dmp[dmp[p_col_dmp] > p_threshold].copy()
 
     # ---- Background bands: MUST match fixed chromosome positions (1..25)
     for chrnum in range(1, 26):
@@ -197,12 +201,10 @@ def plot_chr_methylation_change(
             ax.axvspan(chrnum - 0.5, chrnum + 0.5, alpha=0.06)
 
     # ---- Scatter
-    ax.scatter(dmr_nsig["X"], dmr_nsig[effect_col], s=12, alpha=0.25, edgecolors="none", label="DMR (p>thr)")
-    ax.scatter(dmr_sig["X"],  dmr_sig[effect_col],  s=28, alpha=0.90, edgecolors="none", label="DMR (p≤thr)")
+    ax.scatter(dmr_sig["X"],  dmr_sig[effect_col], alpha=0.80, edgecolors="k", label="DMR (p≤thr)")
 
-    if dmp is not None:
-        ax.scatter(dmp_nsig["X"], dmp_nsig[effect_col], s=10, alpha=0.20, marker="x", label="DMP (p>thr)")
-        ax.scatter(dmp_sig["X"],  dmp_sig[effect_col],  s=22, alpha=0.90, marker="x", label="DMP (p≤thr)")
+    #if dmp is not None:
+    #    ax.scatter(dmp_sig["X"],  dmp_sig[effect_col], alpha=0.80, marker="x", edgecolors="k", label="DMP (p≤thr)")
 
     # ---- Threshold lines
     if effect_threshold is not None:
@@ -224,7 +226,7 @@ def plot_chr_methylation_change(
     ax.spines["right"].set_visible(False)
     ax.margins(x=0.01)
 
-    ax.legend(frameon=False, ncol=2)
+    #ax.legend(frameon=False, ncol=2)
 
     # ---- Annotations
     if annotate:
@@ -328,7 +330,7 @@ def create_manhattan_plot():
         print(dmr_df_chr_str_end)
 
         # ---- Manhattan plot (NEW) ----
-        outpath = os.path.join(base_path, f"chr_effect_{cond1}_vs_{cond2}.png")
+        outpath = os.path.join(base_path, f"chr_effect_{cond1}_vs_{cond2}.pdf")
         title = f"DMRs/DMPs by chromosome: {cond1} vs {cond2}"
         effect_threshold = 0.10
 

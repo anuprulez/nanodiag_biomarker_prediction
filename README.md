@@ -42,4 +42,9 @@ conda env create -f env.yml
 - Run `aml_analysis/train_gnn/run_xai_explainer.py` for explainable AI subgraph analysis
 
 
+### Preprint
+
+[Prioritizing DNA methylation biomarkers using graph neural networks and explainable AI](https://www.biorxiv.org/content/10.64898/2026.01.26.701692v1.abstract)
+
+
 

@@ -42,21 +42,4 @@ conda env create -f env.yml
 - Run `aml_analysis/train_gnn/run_xai_explainer.py` for explainable AI subgraph analysis
 
 
-### Results
-
-UMAP for AML:
-
-![umap_aml](https://github.com/user-attachments/assets/36da952e-a631-4403-95d1-69835a442595)
-
-UMAP for Breast cancer:
-
-![umap_bc](https://github.com/user-attachments/assets/72eeab68-1a3f-4ba1-b3c3-1cb3bb3f8563)
-
-Novel gene/probe prioritisation
-
-![aml_pr](https://github.com/user-attachments/assets/ceb4acef-1d5c-4fbb-aa7d-48772c5c01de)
-
-![bc_pr](https://github.com/user-attachments/assets/f4ae60bf-f5b6-4dd0-9f3d-0386b7b219e2)
-
-
 

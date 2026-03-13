@@ -1,7 +1,0 @@
-name: nanodiag_biomarker
-channels:
-  - anaconda
-  - conda-forge
-  - bioconda
-  - defaults
-prefix: /home/ubuntu/data/miniconda3/envs/nanodiag_biomarker

@@ -46,5 +46,21 @@ conda env create -f env.yml
 
 [Prioritizing DNA methylation biomarkers using graph neural networks and explainable AI](https://www.biorxiv.org/content/10.64898/2026.01.26.701692v1.abstract)
 
+### Plots
+
+#### AML 
+
+Top-20 Likely positive predicted probes
+
+![Violin plot](https://github.com/anuprulez/nanodiag_biomarker_prediction/blob/main/plots/violin_aml.png)
+
+PNA: Confusion matrix
+
+![Confusion matrix](https://github.com/anuprulez/nanodiag_biomarker_prediction/blob/main/plots/confusion_pna_aml.png)
+
+xAI for "cg23281527_KLHDC7A"
+
+![xAI](https://github.com/anuprulez/nanodiag_biomarker_prediction/blob/main/plots/plots_xai_aml.png)
+
 
 

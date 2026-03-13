@@ -127,7 +127,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         f"Subgraph nodes={n_sub_nodes}, edges={n_sub_edges}, nodes target={num_nodes_target}"
     )
 
-    '''values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
+    """values, edge_sel_idx = torch.topk(edge_mask, k=n_sub_edges)
     print("Top edges selected:", len(edge_sel_idx))
 
     # name mapping: local -> global -> name
@@ -146,7 +146,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         neighbour_predictions,
         num_nodes_target,
         config
-    )'''
+    )"""
 
     # name mapping: local -> global -> name
     local_to_name = {
@@ -156,8 +156,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     print("Computing edge rankings (forcing 10 class-2 + 10 class-1 neighbours) ...")
     sorted_ranking = compute_rankings(
         xai_node,
-        edge_mask,       # pass full edge mask
-        idx_local,       # local index of XAI node (0)
+        edge_mask,  # pass full edge mask
+        idx_local,  # local index of XAI node (0)
         local_to_name,
         ei_sub,
         predictions_sub,
@@ -166,22 +166,26 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         config,
     )
 
-    '''positive_one_hop = collect_positive_one_hop_nodes(
+    """positive_one_hop = collect_positive_one_hop_nodes(
         idx_local, ei_sub, predictions_sub, local_to_name, config
     )
     print(f"Positive one-hop neighbours: {positive_one_hop}")
 
     sorted_ranking = prioritise_center_and_positive_nodes(
         idx_global, sorted_ranking, positive_one_hop
-    )'''
+    )"""
 
     print(f"sorted_ranking: {sorted_ranking}")
     # Plot neighbours and feature importances
     print("Drawing neighbourhood with local G")
-    s_rankings_draw = plot_gnn.draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, local_to_name, chosen_model, config)
+    s_rankings_draw = plot_gnn.draw_xai_local_graph(
+        G, sorted_ranking, idx_global, ei_sub, local_to_name, chosen_model, config
+    )
     print("Drawing neighbourhood with global G")
     plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config)
-    plot_gnn.plot_feature_importance(data, node_mask, mean_node_mask, xai_node, chosen_model, config)
+    plot_gnn.plot_feature_importance(
+        data, node_mask, mean_node_mask, xai_node, chosen_model, config
+    )
     return s_rankings_draw
 
 
@@ -414,6 +418,7 @@ def compute_rankings(
     )
     return final_ranking'''
 
+
 def compute_rankings(
     xai_node,
     edge_mask,
@@ -455,8 +460,8 @@ def compute_rankings(
         neighbour_scores[nb] = neighbour_scores.get(nb, 0.0) + score
 
     # Which IDs are "positive" and "likely positive"?
-    pos_cls = getattr(config, "positive_class", 0)          # class = 1
-    lp_cls  = getattr(config, "likely_positive_class", 1)   # class = 2
+    pos_cls = getattr(config, "positive_class", 0)  # class = 1
+    lp_cls = getattr(config, "likely_positive_class", 1)  # class = 2
 
     class2_neighbours = []  # (name, score)
     class1_neighbours = []  # (name, score)
@@ -490,7 +495,6 @@ def compute_rankings(
         f"+ {len(class1_selected)} class {pos_cls}): {final_ranking}"
     )
     return final_ranking
-
 
 
 def collect_positive_one_hop_nodes(
@@ -636,7 +640,9 @@ def collect_pred_labels(config):
     print(pred_likely_pos)
 
     # filter cross-reactive probes
-    df_cross_reactive = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
+    df_cross_reactive = pd.read_csv(
+        config.p_cross_reactive_probes, sep=",", header=None
+    )
     cross_reactive_probes = df_cross_reactive[0].tolist()
     print(f"Cross-reactive probes: {len(cross_reactive_probes)}")
     pred_likely_pos = pred_likely_pos[
@@ -685,12 +691,14 @@ if __name__ == "__main__":
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    #test_data = torch.load(config.p_torch_test_data, weights_only=False)
+    # test_data = torch.load(config.p_torch_test_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 273 #2025 #273
+    node_i = 273  # 2025 #273
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)
     # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(model, data, node_i, G, config.best_trained_model, config)
+    p_nodes = explain_candiate_gene(
+        model, data, node_i, G, config.best_trained_model, config
+    )
     get_node_names_links(p_nodes, node_i, config)

@@ -24,7 +24,7 @@ from omegaconf.omegaconf import OmegaConf
 sns.set_theme(style="whitegrid", context="talk")
 
 # for merging the results from multiple runs
-topk = 250 # 200 for best results so far
+topk = 250  # 200 for best results so far
 toshow = 20
 group_partition1 = 28
 group_partition2 = 28
@@ -156,21 +156,21 @@ def plot_radar_runs_multiple(config):
     MAKE_SMALL_MULTIPLES = True
     MAKE_HEATMAP = True
 
-    SORT_MODELS = True            # sort models for overlay/heatmap
-    SORT_BY = "mean"              # "mean" or one of metric_keys
+    SORT_MODELS = True  # sort models for overlay/heatmap
+    SORT_BY = "mean"  # "mean" or one of metric_keys
     NORMALIZE_FOR_HEATMAP = True  # per-metric min-max to [0,1]
 
     plot_local_path = Path(getattr(config, "p_plot", "./plots"))
     p_base = getattr(config, "p_base", "./")
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
-    #n_runs = getattr(config, "n_runs", 5)
+    # n_runs = getattr(config, "n_runs", 5)
     dpi = getattr(config, "dpi", 200)
 
     plot_local_path.mkdir(parents=True, exist_ok=True)
 
     # ---- 1) Load & aggregate across runs per model ----
-    agg_models_perf_avg = {}   # model -> {metric_key: mean_over_runs}
+    agg_models_perf_avg = {}  # model -> {metric_key: mean_over_runs}
 
     for model in models:
         metrics_list = []
@@ -180,13 +180,15 @@ def plot_radar_runs_multiple(config):
             file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
             with open(file_path, "r") as f:
                 values = json.load(f)
-                metrics_list.append({
-                    "te_f1_macro": float(values["te_f1_macro"]),
-                    "te_f1_weighted": float(values["te_f1_weighted"]),
-                    "te_f1_micro": float(values["te_f1_micro"]),
-                    "te_precision": float(values["te_precision"]),
-                    "te_recall": float(values["te_recall"]),
-                })
+                metrics_list.append(
+                    {
+                        "te_f1_macro": float(values["te_f1_macro"]),
+                        "te_f1_weighted": float(values["te_f1_weighted"]),
+                        "te_f1_micro": float(values["te_f1_micro"]),
+                        "te_precision": float(values["te_precision"]),
+                        "te_recall": float(values["te_recall"]),
+                    }
+                )
             print(f"Run: {run_id}, model {model}: {metrics_list[item]}")
         print(f"Aggregated model {model}")
 
@@ -195,7 +197,9 @@ def plot_radar_runs_multiple(config):
         for k in metric_keys:
             vals = [m[k] for m in metrics_list if k in m]
             print(f"Metric: {k}, model: {model}, vals: {vals}")
-            agg_models_perf_avg[model][k] = float(np.mean(vals)) if len(vals) > 0 else np.nan
+            agg_models_perf_avg[model][k] = (
+                float(np.mean(vals)) if len(vals) > 0 else np.nan
+            )
 
     print("Averaged for models")
     print(agg_models_perf_avg)
@@ -235,12 +239,12 @@ def plot_radar_runs_multiple(config):
             return np.concatenate([vals, vals[:1]])
 
         # Distinct markers per metric to cut overlap ambiguity
-        metric_markers = ['o', 's', '^', 'D', 'P']
+        metric_markers = ["o", "s", "^", "D", "P"]
 
         plt.figure(figsize=(8.8, 8.8))
         ax = plt.subplot(111, polar=True)
-        ax.set_theta_offset(np.pi / 2)   # start at top
-        ax.set_theta_direction(-1)       # clockwise
+        ax.set_theta_offset(np.pi / 2)  # start at top
+        ax.set_theta_direction(-1)  # clockwise
 
         # Model labels on axes
         ax.set_thetagrids(angles[:-1] * 180 / np.pi, models, fontsize=11)
@@ -262,14 +266,21 @@ def plot_radar_runs_multiple(config):
             vals = values_for_metric(k)
             if np.all(np.isnan(vals)):
                 continue
-            ax.plot(angles, vals, linewidth=2.2, marker=metric_markers[idx],
-                    markersize=5, label=metric_labels.get(k, k))
+            ax.plot(
+                angles,
+                vals,
+                linewidth=2.2,
+                marker=metric_markers[idx],
+                markersize=5,
+                label=metric_labels.get(k, k),
+            )
             ax.fill(angles, vals, alpha=0.10)
 
         # Title (reduced pad to cut extra gap)
         ax.set_title(
             f"Model Comparison (Averaged over {n_runs} runs)\nModels on Axes, Metrics in Legend",
-            fontsize=20, pad=10
+            fontsize=20,
+            pad=10,
         )
 
         # Legend outside
@@ -281,7 +292,9 @@ def plot_radar_runs_multiple(config):
         plt.tight_layout(pad=0.8)
         plt.subplots_adjust(top=0.90, bottom=0.03, left=0.03, right=0.82)
 
-        out_path = plot_local_path / f"Radar_overlay_avg_edges_{n_edges}_epochs_{n_epo}.pdf"
+        out_path = (
+            plot_local_path / f"Radar_overlay_avg_edges_{n_edges}_epochs_{n_epo}.pdf"
+        )
         plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
         print(f"Saved overlay radar -> {out_path}")
 
@@ -292,16 +305,17 @@ def plot_radar_runs_multiple(config):
         M = len(models)
         L = len(metric_keys)
 
-        angles = np.linspace(0, 2*np.pi, L, endpoint=False)
+        angles = np.linspace(0, 2 * np.pi, L, endpoint=False)
         angles = np.concatenate([angles, angles[:1]])
 
         n_cols = min(M, 5)  # 5 models → 5 columns
         n_rows = int(np.ceil(M / n_cols))
 
         fig, axs = plt.subplots(
-            n_rows, n_cols,
+            n_rows,
+            n_cols,
             subplot_kw=dict(polar=True),
-            figsize=(3.6*n_cols, 3.6*n_rows)
+            figsize=(3.6 * n_cols, 3.6 * n_rows),
         )
         axs = np.atleast_2d(axs)
 
@@ -312,7 +326,9 @@ def plot_radar_runs_multiple(config):
             r, c = divmod(i, n_cols)
             ax = axs[r, c]
 
-            vals = np.array([agg_models_perf_avg[m][k] for k in metric_keys], dtype=float)
+            vals = np.array(
+                [agg_models_perf_avg[m][k] for k in metric_keys], dtype=float
+            )
             vals = np.concatenate([vals, vals[:1]])
 
             ax.plot(angles, vals, linewidth=2)
@@ -320,24 +336,31 @@ def plot_radar_runs_multiple(config):
 
             # Grid, ticks, labels
             ax.set_ylim(0.0, 1.0)
-            ax.set_yticks([0.2, 0.4,  0.6, 0.8]) # [0.25, 0.5, 0.75]
-            ax.set_yticklabels(["0.2", "0.4",  "0.6", "0.8"], fontsize=10) # []".25", ".5", ".75"
+            ax.set_yticks([0.2, 0.4, 0.6, 0.8])  # [0.25, 0.5, 0.75]
+            ax.set_yticklabels(
+                ["0.2", "0.4", "0.6", "0.8"], fontsize=10
+            )  # []".25", ".5", ".75"
             ax.grid(True, linewidth=0.5, alpha=0.5)
-            ax.set_thetagrids(angles[:-1] * 180/np.pi, spoke_labels, fontsize=12)
+            ax.set_thetagrids(angles[:-1] * 180 / np.pi, spoke_labels, fontsize=12)
 
             ax.set_title(m, fontsize=12, pad=8)
 
         # Hide any empty subplots
-        total_axes = n_rows*n_cols
+        total_axes = n_rows * n_cols
         for j in range(M, total_axes):
             r, c = divmod(j, n_cols)
             axs[r, c].axis("off")
 
-        fig.suptitle(f"Per-Model Performance (averaged over {n_runs} runs)", fontsize=20, y=1.02)
+        fig.suptitle(
+            f"Per-Model Performance (averaged over {n_runs} runs)", fontsize=20, y=1.02
+        )
         plt.tight_layout(pad=0.8)
         plt.subplots_adjust(top=0.88, bottom=0.05, left=0.05, right=0.95)
 
-        out_path_sm = plot_local_path / f"Radar_small_multiples_edges_{n_edges}_epochs_{n_epo}.pdf"
+        out_path_sm = (
+            plot_local_path
+            / f"Radar_small_multiples_edges_{n_edges}_epochs_{n_epo}.pdf"
+        )
         plt.savefig(out_path_sm, dpi=dpi, bbox_inches="tight")
         print(f"Saved small-multiples radars -> {out_path_sm}")
 
@@ -361,16 +384,26 @@ def plot_radar_runs_multiple(config):
 
         # Use a colormap with light low-end so text stays visible for small values
         cmap = plt.cm.YlGnBu  # low = light yellow, high = dark blue
-        #cmap = plt.cm.magma_r
-        #cmap = plt.cm.Greys_r
-        fig, ax = plt.subplots(figsize=(1.2*len(metric_keys)+2.5, 0.6*len(models)+2.5))
-        im = ax.imshow(A_norm if NORMALIZE_FOR_HEATMAP else A_norm, aspect="auto",
-                    interpolation="nearest", cmap=cmap, vmin=0.0, vmax=1.0)
+        # cmap = plt.cm.magma_r
+        # cmap = plt.cm.Greys_r
+        fig, ax = plt.subplots(
+            figsize=(1.2 * len(metric_keys) + 2.5, 0.6 * len(models) + 2.5)
+        )
+        im = ax.imshow(
+            A_norm if NORMALIZE_FOR_HEATMAP else A_norm,
+            aspect="auto",
+            interpolation="nearest",
+            cmap=cmap,
+            vmin=0.0,
+            vmax=1.0,
+        )
 
         # axis tick labels
         ax.set_xticks(np.arange(len(metric_keys)))
         ax.set_yticks(np.arange(len(models)))
-        ax.set_xticklabels([metric_labels[k] for k in metric_keys], rotation=30, ha="right")
+        ax.set_xticklabels(
+            [metric_labels[k] for k in metric_keys], rotation=30, ha="right"
+        )
         ax.set_yticklabels(models)
 
         # annotate with values (use original agg values for numbers)
@@ -381,12 +414,19 @@ def plot_radar_runs_multiple(config):
                 r, g, b, _ = cmap(A_norm[i, j])
                 luminance = 0.299 * r + 0.587 * g + 0.114 * b
                 txt_color = "black" if luminance > 0.55 else "white"
-                ax.text(j, i, f"{val:.3f}", ha="center", va="center", fontsize=12,
-                        color=txt_color)
+                ax.text(
+                    j,
+                    i,
+                    f"{val:.3f}",
+                    ha="center",
+                    va="center",
+                    fontsize=12,
+                    color=txt_color,
+                )
 
         # optional: add faint grid lines to separate cells
-        ax.set_xticks(np.arange(-.5, len(metric_keys), 1), minor=True)
-        ax.set_yticks(np.arange(-.5, len(models), 1), minor=True)
+        ax.set_xticks(np.arange(-0.5, len(metric_keys), 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, len(models), 1), minor=True)
         ax.grid(which="minor", color="white", linestyle="-", linewidth=0.6, alpha=0.6)
         ax.tick_params(which="minor", bottom=False, left=False)
 
@@ -395,7 +435,9 @@ def plot_radar_runs_multiple(config):
         cbar.ax.set_ylabel("Metric score", rotation=90, va="center", labelpad=12)
 
         plt.tight_layout()
-        out_path_hm = plot_local_path / f"Heatmap_avg_edges_{n_edges}_epochs_{n_epo}.pdf"
+        out_path_hm = (
+            plot_local_path / f"Heatmap_avg_edges_{n_edges}_epochs_{n_epo}.pdf"
+        )
         plt.savefig(out_path_hm, dpi=dpi, bbox_inches="tight")
         print(f"Saved heatmap -> {out_path_hm}")
 
@@ -431,11 +473,11 @@ def plot_radar_runs(config):
     p_base = getattr(config, "p_base", "./")
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
-    #n_runs = getattr(config, "n_runs", 2)
+    # n_runs = getattr(config, "n_runs", 2)
     dpi = getattr(config, "dpi", 200)
-    
+
     # ---- 1) Load & aggregate across runs per model ----
-    agg_models_perf_avg = {}   # model -> {metric_key: mean_over_runs}
+    agg_models_perf_avg = {}  # model -> {metric_key: mean_over_runs}
 
     for model in models:
         metrics_list = []
@@ -445,13 +487,15 @@ def plot_radar_runs(config):
             file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
             with open(file_path, "r") as f:
                 values = json.load(f)
-                metrics_list.append({
-                    "te_f1_macro": values["te_f1_macro"],
-                    "te_f1_weighted": values["te_f1_weighted"],
-                    "te_f1_micro": values["te_f1_micro"],
-                    "te_precision": values["te_precision"],
-                    "te_recall": values["te_recall"],
-                })
+                metrics_list.append(
+                    {
+                        "te_f1_macro": values["te_f1_macro"],
+                        "te_f1_weighted": values["te_f1_weighted"],
+                        "te_f1_micro": values["te_f1_micro"],
+                        "te_precision": values["te_precision"],
+                        "te_recall": values["te_recall"],
+                    }
+                )
             print(f"Run: {item + 1}, model {model}: {metrics_list[item]}")
         print(f"Aggregated model {model}")
 
@@ -460,7 +504,9 @@ def plot_radar_runs(config):
         for k in metric_keys:
             vals = [float(m[k]) for m in metrics_list if k in m]
             print(f"Metric: {k}, model: {model}, vals: {vals}")
-            agg_models_perf_avg[model][k] = float(np.mean(vals)) if len(vals) > 0 else np.nan
+            agg_models_perf_avg[model][k] = (
+                float(np.mean(vals)) if len(vals) > 0 else np.nan
+            )
 
     print("Averaged for models")
     print(agg_models_perf_avg)
@@ -481,13 +527,13 @@ def plot_radar_runs(config):
     plt.figure(figsize=(9, 9))
     ax = plt.subplot(111, polar=True)
     ax.set_theta_offset(np.pi / 2)  # start at top
-    ax.set_theta_direction(-1)      # clockwise
+    ax.set_theta_direction(-1)  # clockwise
 
     # Put model names on axes (corners)
     ax.set_thetagrids(angles[:-1] * 180 / np.pi, models, fontsize=11)
 
     # Radial limits and ticks (scores in 0..1)
-    #ax.set_ylim(0.0, 1.0)
+    # ax.set_ylim(0.0, 1.0)
     ax.set_yticks([0.2, 0.4, 0.6, 0.8])
     ax.set_yticklabels(["0.2", "0.4", "0.6", "0.8"], fontsize=11)
     ax.set_rlabel_position(0)
@@ -503,12 +549,15 @@ def plot_radar_runs(config):
     # Title, legend, layout
     plt.title(
         f"Model Comparison (Averaged over {n_runs} runs) — Models on Axes, Metrics in Legend",
-        fontsize=14, pad=20
+        fontsize=14,
+        pad=20,
     )
     ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.05), frameon=False)
 
     plt.tight_layout()
-    out_path = plot_local_path / f"Radar_plot_averaged_edges_{n_edges}_epochs_{n_epo}.pdf"
+    out_path = (
+        plot_local_path / f"Radar_plot_averaged_edges_{n_edges}_epochs_{n_epo}.pdf"
+    )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_path, dpi=dpi, bbox_inches="tight")
 
@@ -523,7 +572,7 @@ def plot_mean_std_loss_acc(config):
     n_epo = config.n_epo
     dpi = config.dpi
 
-    #n_runs = 5
+    # n_runs = 5
     chosen_model = "PNA"
     metrics_list = []
 
@@ -558,13 +607,31 @@ def plot_mean_std_loss_acc(config):
     # --- Loss plot ---
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(x_val, tr_loss_mean, linewidth=2, label="Train loss", color="tab:orange")
-    ax.fill_between(x_val, tr_loss_mean - tr_loss_std, tr_loss_mean + tr_loss_std, alpha=0.2, color="tab:orange")
+    ax.fill_between(
+        x_val,
+        tr_loss_mean - tr_loss_std,
+        tr_loss_mean + tr_loss_std,
+        alpha=0.2,
+        color="tab:orange",
+    )
 
     ax.plot(x_val, te_loss_mean, linewidth=2, label="Test loss", color="tab:green")
-    ax.fill_between(x_val, te_loss_mean - te_loss_std, te_loss_mean + te_loss_std, alpha=0.2, color="tab:green")
+    ax.fill_between(
+        x_val,
+        te_loss_mean - te_loss_std,
+        te_loss_mean + te_loss_std,
+        alpha=0.2,
+        color="tab:green",
+    )
 
     ax.plot(x_val, val_loss_mean, linewidth=2, label="Val loss", color="tab:blue")
-    ax.fill_between(x_val, val_loss_mean - val_loss_std, val_loss_mean + val_loss_std, alpha=0.2, color="tab:blue")
+    ax.fill_between(
+        x_val,
+        val_loss_mean - val_loss_std,
+        val_loss_mean + val_loss_std,
+        alpha=0.2,
+        color="tab:blue",
+    )
 
     ax.set_ylabel("Loss")
     ax.set_xlabel("Epochs")
@@ -572,18 +639,41 @@ def plot_mean_std_loss_acc(config):
     plt.xticks(xticks)
     ax.legend(loc="best")
     ax.grid(True)
-    _save(fig, plot_local_path / f"Model_loss_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)
+    _save(
+        fig,
+        plot_local_path
+        / f"Model_loss_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf",
+        dpi,
+    )
 
     # --- Accuracy plot ---
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.plot(x_val, tr_acc_mean, linewidth=2, label="Train accuracy", color="tab:orange")
-    ax.fill_between(x_val, tr_acc_mean - tr_acc_std, tr_acc_mean + tr_acc_std, alpha=0.2, color="tab:orange")
+    ax.fill_between(
+        x_val,
+        tr_acc_mean - tr_acc_std,
+        tr_acc_mean + tr_acc_std,
+        alpha=0.2,
+        color="tab:orange",
+    )
 
     ax.plot(x_val, te_acc_mean, linewidth=2, label="Test accuracy", color="tab:green")
-    ax.fill_between(x_val, te_acc_mean - te_acc_std, te_acc_mean + te_acc_std, alpha=0.2, color="tab:green")
+    ax.fill_between(
+        x_val,
+        te_acc_mean - te_acc_std,
+        te_acc_mean + te_acc_std,
+        alpha=0.2,
+        color="tab:green",
+    )
 
     ax.plot(x_val, val_acc_mean, linewidth=2, label="Val accuracy", color="tab:blue")
-    ax.fill_between(x_val, val_acc_mean - val_acc_std, val_acc_mean + val_acc_std, alpha=0.2, color="tab:blue")
+    ax.fill_between(
+        x_val,
+        val_acc_mean - val_acc_std,
+        val_acc_mean + val_acc_std,
+        alpha=0.2,
+        color="tab:blue",
+    )
 
     ax.set_ylabel("Accuracy")
     ax.set_xlabel("Epochs")
@@ -591,7 +681,12 @@ def plot_mean_std_loss_acc(config):
     plt.xticks(xticks)
     ax.legend(loc="best")
     ax.grid(True)
-    _save(fig, plot_local_path / f"Model_accuracy_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf", dpi)
+    _save(
+        fig,
+        plot_local_path
+        / f"Model_accuracy_mean_std_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf",
+        dpi,
+    )
 
 
 def plot_xai_nodes_raw_values(config):
@@ -600,15 +695,18 @@ def plot_xai_nodes_raw_values(config):
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    #topk = 50
+    # topk = 50
     cmap = "cividis"  # cividis viridis  inferno
-    path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
-    #path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
+    path_pred_LP = (
+        config.p_base
+        + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
+    )
+    # path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
     path_signals = config.p_base + "combined_pos_neg_signals_aml.csv"
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     df_signals = pd.read_csv(path_signals, sep="\t")
-    
-    xai_nodes = df_pred_LP[: topk]
+
+    xai_nodes = df_pred_LP[:topk]
     list_nodes = xai_nodes["test_gene_names"].tolist()
     df_top_signals = df_signals[list_nodes]
 
@@ -639,7 +737,9 @@ def plot_xai_nodes_raw_values(config):
 
     # --- add colorbar (heatmap scale) outside on the right ---
     mappable = g.ax_heatmap.collections[0]  # QuadMesh of the heatmap
-    cax = g.fig.add_axes([1.1, 0.25, 0.02, 0.50])  # [left, bottom, width, height] in fig coords
+    cax = g.fig.add_axes(
+        [1.1, 0.25, 0.02, 0.50]
+    )  # [left, bottom, width, height] in fig coords
     cb = g.fig.colorbar(mappable, cax=cax)
     cb.set_label("β-value", rotation=90, labelpad=10)
 
@@ -652,11 +752,18 @@ def plot_xai_nodes_raw_values(config):
         frameon=False,
     )
     # Titles and formatting
-    g.ax_heatmap.set_title(f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Day0 vs Day8 Patients)", pad=4, fontsize=14)
+    g.ax_heatmap.set_title(
+        f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Day0 vs Day8 Patients)",
+        pad=4,
+        fontsize=14,
+    )
     g.ax_col_dendrogram.set_visible(False)
     plt.tight_layout()
-    #path = plot_local_path / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
-    path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
+    # path = plot_local_path / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
+    path = (
+        plot_local_path
+        / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
+    )
     plt.savefig(path, dpi=dpi, bbox_inches="tight")
 
 
@@ -673,7 +780,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 def _find_run_file(base, run_id, chosen_model):
     """Try a few plausible filenames/locations for each run; return first that exists."""
     candidates = [
-        #os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"),
+        # os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"),
         os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
     ]
     for p in candidates:
@@ -683,7 +790,7 @@ def _find_run_file(base, run_id, chosen_model):
 
 
 def plot_top_nodes_correlation(config, df_signals, df_lp):
-    
+
     df_out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
     df_out_genes.iloc[:, 2] = df_out_genes.iloc[:, 2].astype(float)
     df_seed_nodes = df_out_genes[df_out_genes.iloc[:, 2] > 0.0]
@@ -693,32 +800,33 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
     print("df_signals")
     print(df_signals)
-    '''seed_nodes = ["cg09242307_SOX5", 
+    """seed_nodes = ["cg09242307_SOX5", 
                   "cg10990959_SOX5",
                   "cg02147465_ZBTB20",
                   "cg13697223_GALNTL6", 
                   "cg06126815_PON2",
                   "cg09962458_SIPA1L1",
                   "cg16036046_RIT2"
-                  ]'''
-    seed_nodes = ["cg26246840_CD226",
-                  "cg26626251_OPCML",
-                  "cg12915585_MYT1L", 
-                  "cg05592278_LRRC37A3",
-                  "cg22862734_FREM2",
-                  ]
-    #seed_nodes = seed_nodes[:100]
+                  ]"""
+    seed_nodes = [
+        "cg26246840_CD226",
+        "cg26626251_OPCML",
+        "cg12915585_MYT1L",
+        "cg05592278_LRRC37A3",
+        "cg22862734_FREM2",
+    ]
+    # seed_nodes = seed_nodes[:100]
     df_seed = df_signals[seed_nodes]
     print("Seed signals")
     print(df_seed)
     print("Top LP signals")
-    #top_lp = "cg13985132_LOC390595"
-    top_lp = "cg00315391_SCNN1G" #"cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
+    # top_lp = "cg13985132_LOC390595"
+    top_lp = "cg00315391_SCNN1G"  # "cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 
-    df_seed = df_seed.apply(pd.to_numeric, errors='coerce')
-    df_lp = df_lp.apply(pd.to_numeric, errors='coerce')
+    df_seed = df_seed.apply(pd.to_numeric, errors="coerce")
+    df_lp = df_lp.apply(pd.to_numeric, errors="coerce")
 
     # --- Create output directory ---
     p_corr = f"{config.p_plot}correlation_plots"
@@ -749,24 +857,23 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
             x=corr_series.index,
             y=corr_series.values,
             ### uncommment for 2025 node prediction show
-            #x=np.arange(0, len(corr_series)),
-            #palette=bar_colors
+            # x=np.arange(0, len(corr_series)),
+            # palette=bar_colors
         )
         ### uncommment for 2025 node prediction show
-        #plt.xticks(np.arange(0, len(corr_series), 50), fontsize=16)
+        # plt.xticks(np.arange(0, len(corr_series), 50), fontsize=16)
         plt.xticks(rotation=90, fontsize=16)
         plt.yticks(fontsize=16)
         plt.ylabel("Pearson correlation", fontsize=18)
         plt.xlabel("Seed signals", fontsize=18)
         plt.title(f"Correlation of {lp_col} with seeds", fontsize=22)
-        plt.grid(axis='y', linestyle='--', alpha=0.5)
+        plt.grid(axis="y", linestyle="--", alpha=0.5)
         plt.tight_layout()
 
         # Save high-quality PNG and PDF
-        plt.savefig(f"{p_corr}/{lp_col}_correlation.png", dpi=300, bbox_inches='tight')
-        plt.savefig(f"{p_corr}/{lp_col}_correlation.pdf", bbox_inches='tight')
+        plt.savefig(f"{p_corr}/{lp_col}_correlation.png", dpi=300, bbox_inches="tight")
+        plt.savefig(f"{p_corr}/{lp_col}_correlation.pdf", bbox_inches="tight")
         plt.close()
-
 
     print(f"✅ Correlation plots saved to {p_corr} folder.")
 
@@ -774,13 +881,13 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
 def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
-    #n_runs = 5
+    # n_runs = 5
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
     n_epo = config.n_epo
     dpi = getattr(config, "dpi", 200)
-    
+
     cmap = "cividis"  # cividis / viridis / inferno
 
     # Signals matrix (patients x features), shared across runs
@@ -822,10 +929,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     avg_rank = {f: (rank_sums[f] / counts[f]) for f in all_feats}
 
     # Sort: primary = frequency desc, secondary = avg rank asc
-    consensus_sorted = sorted(
-        all_feats,
-        key=lambda f: (-counts[f], avg_rank[f])
-    )
+    consensus_sorted = sorted(all_feats, key=lambda f: (-counts[f], avg_rank[f]))
     consensus_features = consensus_sorted[:topk]
 
     # ------------------------------
@@ -834,10 +938,11 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     missing = [f for f in consensus_features if f not in df_signals.columns]
     if missing:
         # Keep only those available; warn in console
-        print(f"[WARN] {len(missing)} consensus features not in signals; ignoring a few like: {missing[:5]} ...")
+        print(
+            f"[WARN] {len(missing)} consensus features not in signals; ignoring a few like: {missing[:5]} ..."
+        )
     consensus_features = [f for f in consensus_features if f in df_signals.columns]
     df_top_signals = df_signals[consensus_features].copy()
-
 
     plot_top_nodes_correlation(config, df_signals, df_top_signals)
 
@@ -854,15 +959,20 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
     df_top_signals["Group"] = group_labels
     group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
-    hue_order = ['Day0', 'Day8']
+    hue_order = ["Day0", "Day8"]
     row_colors = df_top_signals["Group"].map(group_colors)
 
     data = df_top_signals.drop(columns=["Group"])
     sns.set(style="white", font_scale=1.0)
-    pred_type = "negative" #"negative" # likely_positive
-    out_path_voilin = plot_local_path / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
-    df_top_signals.to_csv(plot_local_path / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv")
-
+    pred_type = "negative"  # "negative" # likely_positive
+    out_path_voilin = (
+        plot_local_path
+        / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
+    )
+    df_top_signals.to_csv(
+        plot_local_path
+        / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv"
+    )
 
     with PdfPages(out_path_voilin) as pdf:
 
@@ -880,20 +990,15 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         # -------------------------------------------------------------------------
         # Long format: one row = (Group, Feature, Beta)
         # -------------------------------------------------------------------------
-        long_df = (
-            df_top_signals
-            .melt(id_vars="Group", var_name="Feature", value_name="Beta")
-            .dropna(subset=["Beta"])
-        )
+        long_df = df_top_signals.melt(
+            id_vars="Group", var_name="Feature", value_name="Beta"
+        ).dropna(subset=["Beta"])
 
         # -------------------------------------------------------------------------
         # Compute group means and Δμ per feature
         # -------------------------------------------------------------------------
         group_means_all = (
-            long_df
-            .groupby(["Feature", "Group"])["Beta"]
-            .mean()
-            .unstack("Group")
+            long_df.groupby(["Feature", "Group"])["Beta"].mean().unstack("Group")
         )
 
         # Keep only the features we care about
@@ -914,10 +1019,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
         # Sort features by Δμ descending
         features_sorted = (
-            group_means_all["DeltaMu"]
-            .sort_values(ascending=False)
-            .index
-            .tolist()
+            group_means_all["DeltaMu"].sort_values(ascending=False).index.tolist()
         )
         print("Sorted features_sorted")
         print(features_sorted)
@@ -936,9 +1038,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         # Order Group & Feature as categoricals to enforce axis order
         vdf["Group"] = pd.Categorical(vdf["Group"], categories=hue_order, ordered=True)
         vdf["Feature"] = pd.Categorical(
-            vdf["Feature"],
-            categories=features_for_violin,
-            ordered=True
+            vdf["Feature"], categories=features_for_violin, ordered=True
         )
 
         # -------------------------------------------------------------------------
@@ -978,9 +1078,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         # -------------------------------------------------------------------------
         # Legend (clean, non-duplicated)
         # -------------------------------------------------------------------------
-        legend_handles = [
-            Patch(facecolor=group_colors[g], label=g) for g in hue_order
-        ]
+        legend_handles = [Patch(facecolor=group_colors[g], label=g) for g in hue_order]
         ax.legend(
             handles=legend_handles,
             labels=list(hue_order),
@@ -1036,13 +1134,12 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         # -------------------------------------------------------------------------
         # Save to PDF
         # -------------------------------------------------------------------------
-        #with PdfPages(out_path_voilin) as pdf:
+        # with PdfPages(out_path_voilin) as pdf:
         pdf.savefig(ax.figure, dpi=dpi, bbox_inches="tight")
 
         plt.close(ax.figure)
 
     print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
-
 
 
 import pandas as pd
@@ -1051,6 +1148,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
 import random
+
 
 def plot_positive_xai_nodes_raw_values(config):
     """
@@ -1064,7 +1162,9 @@ def plot_positive_xai_nodes_raw_values(config):
     mean_annot_font = 14
 
     # --- Load data ---
-    df_nebit_features = pd.read_csv(base_path / "df_nebit_dnam_features_aml_PNA.csv", sep=",")
+    df_nebit_features = pd.read_csv(
+        base_path / "df_nebit_dnam_features_aml_PNA.csv", sep=","
+    )
     df_signals = pd.read_csv(base_path / "combined_pos_neg_signals_aml.csv", sep="\t")
     df_seed_genes = pd.read_csv(base_path / "out_gene_rankings_aml.csv", sep=" ")
 
@@ -1090,8 +1190,12 @@ def plot_positive_xai_nodes_raw_values(config):
     hue_order = ["Day0", "Day8"]  # legend order: blue, orange
     group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
 
-    df_melted["Group"] = pd.Categorical(df_melted["Group"], categories=hue_order, ordered=True)
-    df_melted["CpG"] = pd.Categorical(df_melted["CpG"], categories=list(df.columns), ordered=True)
+    df_melted["Group"] = pd.Categorical(
+        df_melted["Group"], categories=hue_order, ordered=True
+    )
+    df_melted["CpG"] = pd.Categorical(
+        df_melted["CpG"], categories=list(df.columns), ordered=True
+    )
 
     # --- Plot ---
     sns.set(style="white", font_scale=1.0)
@@ -1109,7 +1213,7 @@ def plot_positive_xai_nodes_raw_values(config):
         inner="quartile",
         cut=0,
         linewidth=1,
-        palette=[group_colors[g] for g in hue_order]
+        palette=[group_colors[g] for g in hue_order],
     )
 
     # overlay mean lines and markers
@@ -1125,25 +1229,27 @@ def plot_positive_xai_nodes_raw_values(config):
         linestyles="-",
         errorbar=None,
         palette=[group_colors[g] for g in hue_order],
-        ax=ax
+        ax=ax,
     )
 
     # clean duplicate legend
     _, labels = ax.get_legend_handles_labels()
     handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
-    ax.legend(handles[-2:], labels[-2:], title="Conditions", frameon=False,
-              loc="upper left", bbox_to_anchor=(1.02, 1.02))
+    ax.legend(
+        handles[-2:],
+        labels[-2:],
+        title="Conditions",
+        frameon=False,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1.02),
+    )
 
     # --- Compute per-feature means ---
-    group_means = (
-        df_melted.groupby(["CpG", "Group"])["Value"]
-        .mean()
-        .unstack("Group")
-    )
+    group_means = df_melted.groupby(["CpG", "Group"])["Value"].mean().unstack("Group")
 
     # annotate per-group means at markers
     point_lines = [ln for ln in ax.lines if ln.get_marker() == "o"]
-    point_lines = point_lines[-len(hue_order):]
+    point_lines = point_lines[-len(hue_order) :]
     for line, grp in zip(point_lines, hue_order):
         xdata = line.get_xdata()
         ydata = line.get_ydata()
@@ -1157,7 +1263,7 @@ def plot_positive_xai_nodes_raw_values(config):
                 va="bottom",
                 fontsize=x_y_font,
                 color=group_colors[grp],
-                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6)
+                bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6),
             )
 
     # Δμ (Day0 − Day8) above each CpG
@@ -1171,18 +1277,28 @@ def plot_positive_xai_nodes_raw_values(config):
             continue
         dmu = mu_day0 - mu_day8
         ytxt = ymax_per_cpg.get(cpg, df_melted["Value"].max()) + 0.02
-        ax.text(i, ytxt, f"Δμ={dmu:.3f}", ha="center", va="bottom", fontsize=mean_annot_font, rotation=90)
+        ax.text(
+            i,
+            ytxt,
+            f"Δμ={dmu:.3f}",
+            ha="center",
+            va="bottom",
+            fontsize=mean_annot_font,
+            rotation=90,
+        )
 
     # --- Cosmetics ---
     ax.set_ylim(0, 1.3)
     ax.set_yticks(np.arange(0, 1.3, 0.2))
-    ax.yaxis.grid(True, linestyle='--', linewidth=0.7, alpha=0.6)
+    ax.yaxis.grid(True, linestyle="--", linewidth=0.7, alpha=0.6)
     ax.set_ylabel("β-value", fontsize=x_y_font)
     ax.set_xlabel("Feature (probe_gene)", fontsize=x_y_font)
     plt.xticks(rotation=90, ha="center", fontsize=x_y_font)
     ax.tick_params(axis="y", labelsize=x_y_font)
 
-    title_main = "Distribution and mean differences per feature (β-values): Day0 vs Day8"
+    title_main = (
+        "Distribution and mean differences per feature (β-values): Day0 vs Day8"
+    )
     ax.set_title(f"{title_main}", fontsize=title_font, pad=10)
 
     plt.tight_layout()
@@ -1192,12 +1308,11 @@ def plot_positive_xai_nodes_raw_values(config):
     print(f"[+] Saved: {out_path}")
 
 
-
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_xai_nodes_raw_values_averaged_runs(config)
-    #plot_positive_xai_nodes_raw_values(config)
-    #plot_radar_runs_multiple(config)
-    #plot_radar_runs(config)
-    #plot_mean_std_loss_acc(config)
-    #plot_xai_nodes_raw_values(config)
+    # plot_positive_xai_nodes_raw_values(config)
+    # plot_radar_runs_multiple(config)
+    # plot_radar_runs(config)
+    # plot_mean_std_loss_acc(config)
+    # plot_xai_nodes_raw_values(config)

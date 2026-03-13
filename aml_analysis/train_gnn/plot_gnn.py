@@ -35,7 +35,9 @@ def _save(fig: plt.Figure, path: Path, dpi: int = 200) -> None:
     plt.close(fig)
 
 
-def plot_loss_acc(n_epo, tr_loss, val_loss, tr_acc, val_acc, chosen_model, config, te_acc=None):
+def plot_loss_acc(
+    n_epo, tr_loss, val_loss, tr_acc, val_acc, chosen_model, config, te_acc=None
+):
     """
     Signature unchanged. Saves two PDFs and (as before) shows the last figure.
     """
@@ -347,7 +349,9 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
     plt.close()
 
 
-def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chosen_model, config):
+def draw_xai_local_graph(
+    G, sorted_ranking, idx_global, ei_sub, nodes_sub, chosen_model, config
+):
     """
     Draw neighbourhood of chosen node
     """
@@ -379,9 +383,9 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chose
             continue
         new_nodes.append(n)
         if n == idx_global:
-            node_color_map[n] = "red"       # explainee node
+            node_color_map[n] = "red"  # explainee node
         elif n in lst_seed_nodes:
-            node_color_map[n] = "green"     # seed node
+            node_color_map[n] = "green"  # seed node
         else:
             node_color_map[n] = "tab:blue"  # others
         node_name = df_plotted_nodes[df_plotted_nodes.iloc[:, 0] == n]
@@ -402,6 +406,7 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chose
     # If nodes_sub is provided, map local -> global; else assume ei_sub uses global IDs already
     def to_global(i):
         return nodes_sub[i]
+
     # Build H with ONLY the edges supplied by ei_sub and ONLY among `new_nodes`
     new_nodes_set = set(new_nodes)
     H = nx.Graph()

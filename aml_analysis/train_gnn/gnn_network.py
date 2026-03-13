@@ -30,10 +30,7 @@ class GPNA(torch.nn.Module):
 
         # induce subgraph on training nodes; relabel to 0..n-1
         e_sub, _ = subgraph(
-            train_nodes,
-            data.edge_index,
-            relabel_nodes=True,
-            num_nodes=data.num_nodes
+            train_nodes, data.edge_index, relabel_nodes=True, num_nodes=data.num_nodes
         )
 
         n = int(train_nodes.numel())
@@ -84,7 +81,11 @@ class GPNA(torch.nn.Module):
         gene_dim = config.gene_dim
         hidden_dim = config.hidden_dim
         aggregators = ["mean", "min", "max", "std"]
-        scalers = ["identity", "amplification", "attenuation"] # TODO: test these "linear", "inverse_linear".
+        scalers = [
+            "identity",
+            "amplification",
+            "attenuation",
+        ]  # TODO: test these "linear", "inverse_linear".
         deg = self.__find_deg_train_nodes(dataset)
         if deg is None:
             deg = self.__find_deg(dataset)
@@ -128,6 +129,7 @@ class GCN(torch.nn.Module):
     """
     Neural network with graph convolution network (GCN)
     """
+
     def __init__(self, config, training=False):
         super().__init__()
         num_classes = config.num_classes
@@ -235,10 +237,7 @@ class GATv2(torch.nn.Module):
             (2 * hidden_dim), hidden_dim // heads, heads=heads, dropout=p_drop
         )
         self.conv4 = GATv2Conv(
-            hidden_dim,
-            (hidden_dim // 2) // heads,
-            heads=heads,
-            dropout=p_drop
+            hidden_dim, (hidden_dim // 2) // heads, heads=heads, dropout=p_drop
         )
         self.bn1 = LayerNorm(hidden_dim)
         self.bn2 = LayerNorm(2 * hidden_dim)
@@ -269,7 +268,7 @@ class GATv2(torch.nn.Module):
         h = F.elu(out_batch_norm)
         h = self.dropout4(h)
         return self.classifier(h), out_pnaconv, out_batch_norm
-    
+
 
 class GraphTransformer(torch.nn.Module):
     def __init__(self, config, training=False):
@@ -281,15 +280,9 @@ class GraphTransformer(torch.nn.Module):
         p_drop = config.dropout
         heads = config.heads
         torch.manual_seed(SEED)
-        self.conv1 = TransformerConv(
-            gene_dim, hidden_dim // heads, heads=heads
-        )
-        self.conv2 = TransformerConv(
-            hidden_dim, (2 * hidden_dim) // heads, heads=heads
-        )
-        self.conv3 = TransformerConv(
-            2 * hidden_dim, hidden_dim // heads, heads=heads
-        )
+        self.conv1 = TransformerConv(gene_dim, hidden_dim // heads, heads=heads)
+        self.conv2 = TransformerConv(hidden_dim, (2 * hidden_dim) // heads, heads=heads)
+        self.conv3 = TransformerConv(2 * hidden_dim, hidden_dim // heads, heads=heads)
         self.conv4 = TransformerConv(
             hidden_dim, (hidden_dim // 2) // heads, heads=heads
         )

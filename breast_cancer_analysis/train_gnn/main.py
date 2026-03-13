@@ -7,7 +7,6 @@ import datetime
 import uuid
 
 import preprocess_data
-import train_model
 import train_model_sub_graph
 
 from omegaconf.omegaconf import OmegaConf

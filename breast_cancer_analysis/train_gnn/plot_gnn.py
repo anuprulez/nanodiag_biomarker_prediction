@@ -437,7 +437,7 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chose
             bbox_to_anchor=(1, 0.5),
         )
 
-    plt.title(f"Explanation subgraph of seed node: {idx_global}")
+    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
     plt.grid(True)
 
     # Save

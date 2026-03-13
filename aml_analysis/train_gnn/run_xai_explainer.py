@@ -687,7 +687,7 @@ if __name__ == "__main__":
     data = torch.load(config.p_torch_data, weights_only=False)
     #test_data = torch.load(config.p_torch_test_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 2025 #273
+    node_i = 273 #2025 #273
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)

@@ -707,12 +707,13 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
                   "cg05592278_LRRC37A3",
                   "cg22862734_FREM2",
                   ]
+    #seed_nodes = seed_nodes[:100]
     df_seed = df_signals[seed_nodes]
     print("Seed signals")
     print(df_seed)
     print("Top LP signals")
     #top_lp = "cg13985132_LOC390595"
-    top_lp = "cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
+    top_lp = "cg00315391_SCNN1G" #"cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
     df_lp = df_signals[[top_lp]]
     print(df_lp)
 
@@ -741,14 +742,18 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     # --- Plot correlations for each LP signal ---
     for lp_col in df_lp.columns:
         corr_series = df_corr[lp_col].sort_values(ascending=False)
-        plt.figure(figsize=(6, 6))
+        corr_series = corr_series.astype(float)
+        plt.figure(figsize=(10, 6))
         bar_colors = sns.color_palette("viridis", len(corr_series))
         sns.barplot(
             x=corr_series.index,
             y=corr_series.values,
+            ### uncommment for 2025 node prediction show
+            #x=np.arange(0, len(corr_series)),
             #palette=bar_colors
         )
-
+        ### uncommment for 2025 node prediction show
+        #plt.xticks(np.arange(0, len(corr_series), 50), fontsize=16)
         plt.xticks(rotation=90, fontsize=16)
         plt.yticks(fontsize=16)
         plt.ylabel("Pearson correlation", fontsize=18)
@@ -761,6 +766,7 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
         plt.savefig(f"{p_corr}/{lp_col}_correlation.png", dpi=300, bbox_inches='tight')
         plt.savefig(f"{p_corr}/{lp_col}_correlation.pdf", bbox_inches='tight')
         plt.close()
+
 
     print(f"✅ Correlation plots saved to {p_corr} folder.")
 
@@ -1190,8 +1196,8 @@ def plot_positive_xai_nodes_raw_values(config):
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
     plot_xai_nodes_raw_values_averaged_runs(config)
-    plot_positive_xai_nodes_raw_values(config)
-    plot_radar_runs_multiple(config)
-    plot_radar_runs(config)
-    plot_mean_std_loss_acc(config)
-    plot_xai_nodes_raw_values(config)
+    #plot_positive_xai_nodes_raw_values(config)
+    #plot_radar_runs_multiple(config)
+    #plot_radar_runs(config)
+    #plot_mean_std_loss_acc(config)
+    #plot_xai_nodes_raw_values(config)

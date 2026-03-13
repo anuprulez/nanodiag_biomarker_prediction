@@ -436,7 +436,7 @@ def draw_xai_local_graph(G, sorted_ranking, idx_global, ei_sub, nodes_sub, chose
             bbox_to_anchor=(1, 0.5),
         )
 
-    plt.title(f"Explanation subgraph of seed node: {idx_global}")
+    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
     plt.grid(True)
 
     # Save
@@ -500,7 +500,7 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
         loc="center left",
         bbox_to_anchor=(1, 0.5),
     )
-    plt.title(f"Explanation subgraph of seed node :{idx_global}")
+    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
     plt.grid(True)
     # save subgraph plot
     _save(

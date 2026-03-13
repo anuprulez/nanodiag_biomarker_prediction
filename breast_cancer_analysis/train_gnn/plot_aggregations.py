@@ -708,12 +708,12 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
                   "cg09962458_SIPA1L1",
                   "cg16036046_RIT2"
                   ]'''
-    seed_nodes = ["cg26607031_SLC25A33",
+    '''seed_nodes = ["cg26607031_SLC25A33",
                   "cg18881723_SLAMF1",
                   "cg22832271_ARID5B", 
                   "cg04179740_C10orf54",
                   "cg03388786_LYN",
-                  ]
+                  ]'''
     '''seed_nodes = [
         "cg00394062_ELL",
         "cg24206084_SMIM2-AS1",
@@ -722,6 +722,13 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
         "cg09254210_PRKCH"
 
     ]'''
+    seed_nodes = [
+        "cg17660211_PCED1B",
+        "cg09821790_SLC7A6",
+        "cg16399365_ZNF238",
+        "cg17705041_PCGF3",
+        "cg18262079_TJP1"
+    ]
 
     df_seed = df_signals[seed_nodes]
     print("Seed signals")

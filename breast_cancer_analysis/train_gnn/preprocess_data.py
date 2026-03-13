@@ -77,12 +77,18 @@ def read_files(config):
     print(f"last feature_ids: {node_ids[-10:]}")
     print(f"feature_names: {node_names[-10:]}")
     print(f"labels: {labels[-10:]}")
-    #complete_rand_index = [item for item in range(len(feature_names.index))]
-    print(f" Num features and labels {len(node_ids), len(node_names), len(labels), naipu_dnam_features.shape}")
-    
+    # complete_rand_index = [item for item in range(len(feature_names.index))]
+    print(
+        f" Num features and labels {len(node_ids), len(node_names), len(labels), naipu_dnam_features.shape}"
+    )
+
     print("Splitting test and train nodes...")
     _, te_nodes = train_test_split(
-        node_ids, shuffle=True, test_size=config.test_size, random_state=42, stratify=labels
+        node_ids,
+        shuffle=True,
+        test_size=config.test_size,
+        random_state=42,
+        stratify=labels,
     )
     print(f"Last test nodes: {te_nodes[-10:]}")
     utils.create_gnn_data(

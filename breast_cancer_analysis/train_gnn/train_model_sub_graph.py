@@ -36,11 +36,10 @@ def ensure_bool(m):
 
 
 def filter_edges(edge_index, allowed_nodes):
-    allowed = allowed_nodes #set(allowed_nodes.tolist())
+    allowed = allowed_nodes  # set(allowed_nodes.tolist())
     src, dst = edge_index
 
-    mask = [(u.item() in allowed and v.item() in allowed)
-            for u, v in zip(src, dst)]
+    mask = [(u.item() in allowed and v.item() in allowed) for u, v in zip(src, dst)]
     mask = torch.tensor(mask, dtype=torch.bool, device=edge_index.device)
     return edge_index[:, mask]
 
@@ -63,7 +62,6 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
     print(
         f"Tr nodes: {len(train_nodes)}, Te nodes: {len(te_nodes)}, Val nodes: {len(val_nodes)}"
     )
-
 
     train_loader = NeighborLoader(
         data,
@@ -112,9 +110,9 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
         loss.backward()
-        #clip_grad_norm_(model.parameters(), max_norm=1.5)
+        # clip_grad_norm_(model.parameters(), max_norm=1.5)
         optimizer.step()
-        #scheduler.step()
+        # scheduler.step()
 
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
@@ -133,8 +131,8 @@ def val_evaluate(loader, model, criterion, device):
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(device, non_blocking=True)
-            seed_n = batch.batch_size 
-            used_val_ids.extend(batch.n_id.cpu().tolist()[: seed_n])
+            seed_n = batch.batch_size
+            used_val_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
             out, *_ = model(batch.x, batch.edge_index)
             # evaluating only the seed nodes of this batch
             logits = out[:seed_n]
@@ -214,7 +212,9 @@ def train_gnn_model(config, labels, chosen_model):
     data = torch.load(config.p_torch_data, weights_only=False)
     if hasattr(data, "x"):
         data.x = data.x.to(torch.float32)
-    deg = degree(data.edge_index[0], num_nodes=data.num_nodes)  # in-degree or out-degree
+    deg = degree(
+        data.edge_index[0], num_nodes=data.num_nodes
+    )  # in-degree or out-degree
     print(f"Mean degree: {deg.mean().item()}")
     print(f"Max degree: {deg.max().item()}")
     print(f"Std dev: {deg.std().item()}")
@@ -246,7 +246,11 @@ def train_gnn_model(config, labels, chosen_model):
     best_epoch = -1
 
     split_tr_node_ids, val_node_ids = train_test_split(
-        tr_node_ids, shuffle=True, test_size=config.test_size, random_state=42, stratify=tr_labels
+        tr_node_ids,
+        shuffle=True,
+        test_size=config.test_size,
+        random_state=42,
+        stratify=tr_labels,
     )
 
     print(
@@ -277,11 +281,20 @@ def train_gnn_model(config, labels, chosen_model):
 
     base_lr = config.learning_rate
     weight_decay = config.weight_decay
-    optimizer = AdamW(model.parameters(), lr=base_lr, weight_decay=weight_decay) #lr=base_lr, weight_decay=weight_decay
+    optimizer = AdamW(
+        model.parameters(), lr=base_lr, weight_decay=weight_decay
+    )  # lr=base_lr, weight_decay=weight_decay
 
     steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
     total_steps = steps_per_epoch * config.n_epo
-    scheduler = OneCycleLR(optimizer, max_lr=base_lr, total_steps=total_steps, pct_start=0.1, div_factor=10.0, final_div_factor=1e2)
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=base_lr,
+        total_steps=total_steps,
+        pct_start=0.1,
+        div_factor=10.0,
+        final_div_factor=1e2,
+    )
 
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
@@ -298,7 +311,9 @@ def train_gnn_model(config, labels, chosen_model):
         "test_before_GNN",
     )
     print("Creating neighbor loaders ...")
-    train_loader, val_loader, test_loader = make_neighbor_loaders(data, split_tr_node_ids, val_node_ids, te_node_ids, config)
+    train_loader, val_loader, test_loader = make_neighbor_loaders(
+        data, split_tr_node_ids, val_node_ids, te_node_ids, config
+    )
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
@@ -396,10 +411,18 @@ def train_gnn_model(config, labels, chosen_model):
         metrics, f"{config.p_plot}all_metrics_{chosen_model}.json"
     )
     print("Plotting metrics and UMAP plots for final embeddings")
-    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
-    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
-    plot_gnn.plot_node_embed(embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4")
-    plot_gnn.plot_node_embed(embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d")
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d"
+    )
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
-    #plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
+    # plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
     print("Finished.")

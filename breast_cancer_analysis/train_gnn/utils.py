@@ -28,12 +28,18 @@ def detach_from_gpu(tensor):
 
 def choose_model(config, data, chosen_model, training=False):
     name = chosen_model.lower()
-    if name == "pna": return gnn_network.GPNA(config, data)
-    elif name == "gcn": return gnn_network.GCN(config)
-    elif name == "graphsage": return gnn_network.GraphSAGE(config)
-    elif name == "gatv2": return gnn_network.GATv2(config)
-    elif name == "graphtransformer": return gnn_network.GraphTransformer(config)
-    else: return gnn_network.GPNA(config, data, training)
+    if name == "pna":
+        return gnn_network.GPNA(config, data)
+    elif name == "gcn":
+        return gnn_network.GCN(config)
+    elif name == "graphsage":
+        return gnn_network.GraphSAGE(config)
+    elif name == "gatv2":
+        return gnn_network.GATv2(config)
+    elif name == "graphtransformer":
+        return gnn_network.GraphTransformer(config)
+    else:
+        return gnn_network.GPNA(config, data, training)
 
 
 def create_test_masks(mapped_node_ids, mask_list, out_genes):

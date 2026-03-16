@@ -23,7 +23,7 @@ conda env create -f env.yml
 
 #### Using preprocessed datasets 
 
-- Set `p_raw_data` to `false` and `download_preprocessed_data` to `true` in `config.yaml`. Preprocessed datasets will be downloaded from [Zenodo](https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1)
+- Set `p_raw_data` to `false` and `download_preprocessed_data` to `true` in `config.yaml`. Preprocessed datasets will be downloaded from [Zenodo](https://doi.org/10.5281/zenodo.19050630)
 - Run `breast_cancer_analysis/train_gnn/main.py` for training Graph neural network
 - Run `breast_cancer_analysis/train_gnn/run_xai_explainer.py` for explainable AI subgraph analysis
 
@@ -37,7 +37,7 @@ conda env create -f env.yml
 
 #### Using preprocessed datasets (faster)
 
-- Set `p_raw_data` to `false` and `download_preprocessed_data` to `true` in `config.yaml`.  Preprocessed datasets will be downloaded from [Zenodo](https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1)
+- Set `p_raw_data` to `false` and `download_preprocessed_data` to `true` in `config.yaml`.  Preprocessed datasets will be downloaded from [Zenodo](https://doi.org/10.5281/zenodo.19050582)
 - Run `aml_analysis/train_gnn/main.py` for training Graph neural network
 - Run `aml_analysis/train_gnn/run_xai_explainer.py` for explainable AI subgraph analysis
 

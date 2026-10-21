@@ -331,6 +331,8 @@ def process_arrays(
     )
     print("Loaded %d SNP probes", len(snp_probes))
 
+    ### source cross reactive probe: https://github.com/hamidghaedi/Methylation_Analysis
+
     cr_probes = pd.read_csv(config.p_cross_reactive_probes, sep=",", header=None)
     print("Loaded %d Cross-reactive probes", len(cr_probes))
     cross_reactive_probes = cr_probes[0].tolist()
@@ -464,12 +466,9 @@ def create_network_gene_ids(ppi_path, links_path, all_nodes=None):
                 if (id1, id2) not in mat and (id2, id1) not in mat:
                     mat[(id1, id2)] = mat[(id2, id1)] = 1
                     fout_link.write(f"{id1} {id2}\n")
-        # Correlation filtering can isolate nodes. Retain them in the feature and
-        # label files even though they have no edges.
-        for node in all_nodes or []:
-            if node not in gene:
-                gene[node] = ngene
-                ngene += 1
+        # NeDBIT computes features and propagated labels only for nodes with
+        # edges. Keep the graph node universe consistent with those outputs;
+        # isolated probes remain available in the signals and split manifest.
     return gene
 
 
@@ -523,11 +522,47 @@ def calculate_features(links_data_path, genes_data_path, nedbit_path):
     result.check_returncode()
 
 
+def retain_supported_nedbit_nodes(links_path, genes_path, nedbit_path):
+    """Remove NeDBIT's unsupported components and keep local graph IDs aligned."""
+    features = pd.read_csv(nedbit_path)
+    invalid = set(features["class"]) - {0, 1, -99}
+    if invalid:
+        raise ValueError(f"Unexpected NeDBIT seed flags: {invalid}")
+    features = features.loc[features["class"].isin([0, 1])].copy()
+    if features.empty or not features["name"].is_unique:
+        raise ValueError("Supported NeDBIT nodes must be nonempty and unique")
+    genes = pd.read_csv(genes_path, sep=r"\s+", header=None)
+    links = pd.read_csv(links_path, sep=r"\s+", header=None)
+    retained = genes.loc[genes[1].isin(features["name"])].copy()
+    if set(retained[1]) != set(features["name"]):
+        raise ValueError("Supported NeDBIT nodes are absent from the graph")
+    keep_ids = set(retained[0])
+    source_kept = links[0].isin(keep_ids)
+    target_kept = links[1].isin(keep_ids)
+    if (source_kept != target_kept).any():
+        raise ValueError("Unsupported NeDBIT nodes have edges into the supported component")
+    links = links.loc[source_kept & target_kept].copy()
+    mapping = dict(zip(retained[0], range(len(retained))))
+    retained[0] = retained[0].map(mapping)
+    links = links.apply(lambda column: column.map(mapping)).astype(int)
+    features = features.set_index("name").loc[retained[1]].reset_index()
+    print(f"Excluding {len(genes) - len(retained)} unsupported/isolated graph nodes")
+    retained.to_csv(genes_path, sep=" ", header=False, index=False)
+    links.to_csv(links_path, sep=" ", header=False, index=False)
+    features.to_csv(nedbit_path, index=False)
+
+
 def assign_initial_labels(
     nedbit_path, header, output_gene_ranking_path, q1=0.05, q2=0.2
 ):
     # apu_label_propagation nedbit_features HEADER_PRESENCE output_gene_ranking 0.05 0.2
     # apu-label-propagation
+    features = pd.read_csv(nedbit_path, header=0 if int(header) else None)
+    flags = features.iloc[:, 1]
+    if not flags.isin([0, 1]).all() or not flags.eq(1).any() or not flags.eq(0).any():
+        raise ValueError("APU requires binary seed flags with both seeds and unlabelled nodes")
+    if not np.isfinite(features.iloc[:, 2:].to_numpy(dtype=float)).all():
+        raise ValueError("APU features must be finite")
     print("propagating labels ...")
     result = subprocess.run(
         [
@@ -545,6 +580,14 @@ def assign_initial_labels(
     if result.stderr:
         print("Error:", result.stderr)
     result.check_returncode()
+    rankings = pd.read_csv(output_gene_ranking_path, sep=r"\s+", header=None)
+    if (len(rankings) != len(features) or
+            set(rankings[0]) != set(features.iloc[:, 0]) or
+            not np.isfinite(rankings[1]).all()):
+        raise ValueError("APU returned invalid node rankings")
+    if set(rankings[2]) != {1, 2, 3, 4, 5}:
+        raise ValueError(f"APU did not produce all five classes: {rankings[2].value_counts().to_dict()}")
+    print(f"Label counts: {rankings[2].value_counts().sort_index().to_dict()}")
 
 
 def merge_split_graphs(config) -> None:
@@ -557,13 +600,25 @@ def merge_split_graphs(config) -> None:
     for split in SPLIT_NAMES:
         genes = pd.read_csv(split_path(config.p_out_genes, split), sep=" ", header=None)
         links = pd.read_csv(split_path(config.p_out_links, split), sep=" ", header=None)
-        genes[0] = genes[0].astype(int) + offset
-        if not links.empty:
-            links = links.astype(int) + offset
         nedbit = pd.read_csv(split_path(config.p_nedbit_features, split))
         rankings = pd.read_csv(
             split_path(config.p_out_gene_rankings, split), sep=r"\s+", header=None
         )
+        # Also support datasets generated before isolated nodes were excluded.
+        # Never discard a connected node with missing features or labels.
+        supported = set(nedbit["name"]) & set(rankings[0])
+        unsupported = genes.loc[~genes[1].isin(supported)]
+        endpoints = set(links.to_numpy().ravel())
+        if set(unsupported[0]) & endpoints:
+            raise ValueError(f"{split}: connected nodes lack NeDBIT features or labels")
+        if not unsupported.empty:
+            print(f"{split}: excluding {len(unsupported)} isolated nodes without NeDBIT outputs")
+        genes = genes.loc[genes[1].isin(supported)].copy()
+        if set(genes[1]) != set(nedbit["name"]) or set(genes[1]) != set(rankings[0]):
+            raise ValueError(f"{split}: NeDBIT features, labels and graph nodes disagree")
+        id_map = dict(zip(genes[0], range(offset, offset + len(genes))))
+        genes[0] = genes[0].map(id_map)
+        links = links.apply(lambda column: column.map(id_map)).astype(int)
         merged_genes.append(genes)
         merged_edges.append(links)
         merged_nedbit.append(nedbit)
@@ -602,6 +657,7 @@ def main() -> None:
         genes = create_network_gene_ids(p_edges, p_links, selected)
         mark_seed_genes(split_path(config.p_seed_features, split), p_genes, genes)
         calculate_features(p_links, p_genes, p_nedbit)
+        retain_supported_nedbit_nodes(p_links, p_genes, p_nedbit)
         assign_initial_labels(
             p_nedbit, str(config.nedbit_header), p_rankings,
             str(config.quantile_1), str(config.quantile_2),

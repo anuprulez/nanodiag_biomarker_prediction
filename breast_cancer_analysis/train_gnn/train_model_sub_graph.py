@@ -1,4 +1,5 @@
 import copy
+from pathlib import Path
 import torch
 import math
 import torch.nn.functional as F
@@ -198,6 +199,31 @@ def test_evaluate(loader, model, criterion, device):
     )
 
 
+def validate_predefined_splits(data, out_genes, config):
+    """Require the original node partitions throughout training and evaluation."""
+    if out_genes[0].tolist() != list(range(data.num_nodes)):
+        raise ValueError("Graph node IDs must match tensor row order")
+    manifest = pd.read_csv(config.p_split_manifest)
+    if not manifest["feature_name"].is_unique:
+        raise ValueError("Split manifest contains duplicate node names")
+    split_by_name = manifest.set_index("feature_name")["split"]
+    assignments = split_by_name.reindex(out_genes[1].tolist())
+    if not assignments.isin(["train", "val", "test"]).all():
+        raise ValueError("Every graph node must have a predefined train, val or test split")
+    split_codes = torch.full((data.num_nodes,), -1, dtype=torch.long)
+    for code, split in enumerate(("train", "val", "test")):
+        expected = torch.tensor(assignments.eq(split).to_numpy(), dtype=torch.bool)
+        actual = getattr(data, f"{split}_mask", None)
+        if actual is None or actual.dtype != torch.bool or not torch.equal(actual.cpu(), expected):
+            raise ValueError(f"{split} mask does not match the original split manifest")
+        if not expected.any():
+            raise ValueError(f"The {split} partition is empty")
+        split_codes[expected] = code
+    src, dst = data.edge_index.cpu()
+    if not torch.equal(split_codes[src], split_codes[dst]):
+        raise ValueError("Graph edges must not connect different dataset partitions")
+
+
 def train_gnn_model(config, labels, chosen_model):
     """
     Create network architecture and assign loss, optimizers ...
@@ -209,6 +235,7 @@ def train_gnn_model(config, labels, chosen_model):
     print(f"Used device: {device}")
 
     data = torch.load(config.p_torch_data, weights_only=False)
+    validate_predefined_splits(data, out_genes, config)
     if hasattr(data, "x"):
         data.x = data.x.to(torch.float32)
     deg = degree(
@@ -257,9 +284,11 @@ def train_gnn_model(config, labels, chosen_model):
 
     # Masks were established before NeDBIT calculation and are stored with the
     # merged disconnected graph. Refuse inconsistent auxiliary split files.
-    assert torch.equal(data.train_mask, create_masks(node_ids, set(tr_node_ids)))
-    assert torch.equal(data.val_mask, create_masks(node_ids, set(val_node_ids)))
-    assert torch.equal(data.test_mask, create_masks(node_ids, set(te_node_ids)))
+    for split, ids in (("train", tr_node_ids), ("val", val_node_ids), ("test", te_node_ids)):
+        if len(ids) != len(set(ids)) or not torch.equal(
+            getattr(data, f"{split}_mask").cpu(), create_masks(node_ids, set(ids))
+        ):
+            raise ValueError(f"{split} node file does not match the predefined partition")
 
     print(f"Initialize model: {chosen_model}")
     model = utils.choose_model(config, data, chosen_model, True)
@@ -331,7 +360,8 @@ def train_gnn_model(config, labels, chosen_model):
             print(
                 f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}"
             )
-            torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
+            Path(config.p_torch_model).parent.mkdir(parents=True, exist_ok=True)
+            torch.save(model.state_dict(), config.p_torch_model)  # best validation checkpoint
 
     print("Plot and report all training epochs")
 

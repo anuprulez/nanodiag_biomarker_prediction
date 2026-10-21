@@ -8,15 +8,15 @@ and derive probe–probe relations via correlation.
 from __future__ import annotations
 
 import os
-import logging
 import random
-from typing import List
 import subprocess
-import requests
 import zipfile
+from collections.abc import Sequence
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import requests
 import scanpy as sc
 
 from omegaconf.omegaconf import OmegaConf
@@ -71,8 +71,8 @@ def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
         )
 
     probe_mapper = probe_mapper.dropna(subset=["probeID", "UCSC_RefGene_Name"])
-    expanded_probe_ids: List[str] = []
-    gene_names: List[str] = []
+    expanded_probe_ids: list[str] = []
+    gene_names: list[str] = []
 
     for _, row in probe_mapper.iterrows():
         genes = str(row["UCSC_RefGene_Name"]).split(";")
@@ -87,9 +87,9 @@ def expand_probe_gene_map(probe_mapper: pd.DataFrame) -> pd.DataFrame:
 
 def filter_snps_xy(
     merged: pd.DataFrame,
-    snp_probes: List[str],
-    cr_probes: List[str],
-    xy_probe_ids: List[str],
+    snp_probes: list[str],
+    cr_probes: list[str],
+    xy_probe_ids: list[str],
 ) -> pd.DataFrame:
     """
     Remove rows where ID_REF is in SNP probe list or X/Y chromosome probe IDs.
@@ -223,7 +223,7 @@ def build_correlation_edges(
 
 
 def extract_seed_features(
-    pos_feature_names: List[str],
+    pos_feature_names: list[str],
     seeds_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
@@ -235,8 +235,8 @@ def extract_seed_features(
         raise ValueError("seeds_df must contain 'probeID' and 'deltaBeta' columns.")
 
     probe_to_delta = dict(zip(seeds_df["probeID"], seeds_df["deltaBeta"]))
-    probe_ids: List[str] = []
-    importances: List[float] = []
+    probe_ids: list[str] = []
+    importances: list[float] = []
 
     for feat in pos_feature_names:
         probe = feat.split("_", 1)[0]
@@ -245,6 +245,40 @@ def extract_seed_features(
             importances.append(abs(float(probe_to_delta[probe])))
 
     return pd.DataFrame({"feature": probe_ids, "importance": importances})
+
+
+SPLIT_NAMES = ("train", "val", "test")
+
+
+def split_path(path: str, split: str) -> str:
+    """Return a sibling path with ``_<split>`` before its extension."""
+    p = Path(path)
+    return str(p.with_name(f"{p.stem}_{split}{p.suffix}"))
+
+
+def partition_probe_features(
+    feature_names: Sequence[str], ratios: Sequence[float], rng: random.Random
+) -> dict[str, list[str]]:
+    """Split nodes by CpG ID, keeping every mapping of a CpG in one partition."""
+    if len(ratios) != 3 or not np.isclose(sum(ratios), 1.0):
+        raise ValueError("split_ratios must contain three values that sum to 1")
+
+    by_probe: dict[str, list[str]] = {}
+    for feature in feature_names:
+        by_probe.setdefault(feature.split("_", 1)[0], []).append(feature)
+    probes = sorted(by_probe)
+    rng.shuffle(probes)
+    n_train = int(len(probes) * ratios[0])
+    n_val = int(len(probes) * ratios[1])
+    probe_splits = {
+        "train": probes[:n_train],
+        "val": probes[n_train : n_train + n_val],
+        "test": probes[n_train + n_val :],
+    }
+    return {
+        split: [feature for probe in selected for feature in by_probe[probe]]
+        for split, selected in probe_splits.items()
+    }
 
 
 # --------------------------------- Pipeline ----------------------------------
@@ -305,7 +339,6 @@ def process_arrays(
     df_no_snp_xy = filter_snps_xy(df_probe_signals, snp_probes, cross_reactive_probes, xy_ids)
 
     # ----------------------------- Feature building ----------------------------
-    info_cols = df_no_snp_xy[["ID_REF", "Genes"]].copy()
     feature_names = (
         df_no_snp_xy["ID_REF"].astype(str) + "_" + df_no_snp_xy["Genes"].astype(str)
     ).tolist()
@@ -332,8 +365,6 @@ def process_arrays(
         c for c in df_merged.columns if c.split("_", 1)[0] in all_seed_probes
     ]
     print("Positive features selected: %d", len(positive_features))
-    df_pos = df_merged[positive_features]
-
     # Negative pool: everything else
     all_features = df_merged.columns.tolist()
     negative_pool = [c for c in all_features if c not in positive_features]
@@ -350,32 +381,69 @@ def process_arrays(
     df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
     print("Selected %d negative features.", df_neg_hv.shape[1])
 
-    # ----------------------- Combine and build correlations ---------------------
-    combined = pd.concat([df_pos, df_neg_hv], axis=1)  # samples x features
-    combined.to_csv(config.p_combined_pos_neg_signals, sep="\t", index=False)
+    # Split before graph/NeDBIT computation. Split by probe rather than mapped
+    # feature so one CpG with several gene mappings cannot cross partitions.
+    ratios = list(config.split_ratios)
+    positive_splits = partition_probe_features(positive_features, ratios, rng)
+    negative_splits = partition_probe_features(df_neg_hv.columns.tolist(), ratios, rng)
+    manifest_rows = []
+    combined_parts = []
 
-    print(
-        "Computing feature–feature correlations (threshold=%.2f)...",
-        config.corr_threshold,
+    for split in SPLIT_NAMES:
+        split_features = positive_splits[split] + negative_splits[split]
+        combined = df_merged[split_features]
+        combined_parts.append(combined)
+        combined.to_csv(
+            split_path(config.p_combined_pos_neg_signals, split),
+            sep="\t",
+            index=False,
+        )
+        print(
+            f"Computing {split} correlations for {len(split_features)} nodes "
+            f"(threshold={config.corr_threshold:.2f})..."
+        )
+        edges, edges_corr = build_knn_correlation_edges(
+            combined,
+            k=config.knn_neighbours,
+            corr_threshold=config.corr_threshold,
+            mutual=True,
+        )
+        edges.to_csv(
+            split_path(config.p_significant_edges, split),
+            sep="\t", header=False, index=False,
+        )
+        edges_corr.to_csv(
+            split_path(config.p_significant_edges_with_corr, split),
+            sep="\t", header=False, index=False,
+        )
+        seed_feats = extract_seed_features(positive_splits[split], df_seeds)
+        seed_feats.to_csv(
+            split_path(config.p_seed_features, split),
+            sep="\t", index=False, header=False,
+        )
+        positive_set = set(positive_splits[split])
+        manifest_rows.extend(
+            {"feature_name": name, "split": split,
+             "source": "seed" if name in positive_set else "highly_variable"}
+            for name in split_features
+        )
+        print(
+            f"{split}: {len(positive_splits[split])} seed mappings, "
+            f"{len(negative_splits[split])} highly-variable mappings, "
+            f"{len(edges)} edges"
+        )
+
+    # Canonical signal file and manifest describe the disconnected union used by
+    # training. No cross-split correlations are ever calculated.
+    pd.concat(combined_parts, axis=1).to_csv(
+        config.p_combined_pos_neg_signals, sep="\t", index=False
     )
-    #edges, corr_df = build_correlation_edges(combined, threshold=config.corr_threshold)
-    edges, edges_corr = build_knn_correlation_edges(combined, k=config.knn_neighbours, \
-                                                    corr_threshold=config.corr_threshold, mutual=True)
-
-    print("Correlation edges found: %d", len(edges))
-
-    edges.to_csv(config.p_significant_edges, sep="\t", header=False, index=False)
-    edges_corr.to_csv(config.p_significant_edges_with_corr, sep="\t", header=False, index=False)
-
-    # --------------------------- Seed feature importances -----------------------
-    print("Extracting seed feature importances...")
-    seed_feats = extract_seed_features(positive_features, df_seeds)
-    seed_feats.to_csv(config.p_seed_features, sep="\t", index=False, header=False)
+    pd.DataFrame(manifest_rows).to_csv(config.p_split_manifest, index=False)
 
     print("Done.")
 
 
-def create_network_gene_ids(ppi_path, links_path):
+def create_network_gene_ids(ppi_path, links_path, all_nodes=None):
     gene = {}
     ngene = 0
     mat = {}
@@ -396,6 +464,12 @@ def create_network_gene_ids(ppi_path, links_path):
                 if (id1, id2) not in mat and (id2, id1) not in mat:
                     mat[(id1, id2)] = mat[(id2, id1)] = 1
                     fout_link.write(f"{id1} {id2}\n")
+        # Correlation filtering can isolate nodes. Retain them in the feature and
+        # label files even though they have no edges.
+        for node in all_nodes or []:
+            if node not in gene:
+                gene[node] = ngene
+                ngene += 1
     return gene
 
 
@@ -446,6 +520,7 @@ def calculate_features(links_data_path, genes_data_path, nedbit_path):
     print(result.stdout)
     if result.stderr:
         print("Error:", result.stderr)
+    result.check_returncode()
 
 
 def assign_initial_labels(
@@ -469,6 +544,44 @@ def assign_initial_labels(
     print(result.stdout)
     if result.stderr:
         print("Error:", result.stderr)
+    result.check_returncode()
+
+
+def merge_split_graphs(config) -> None:
+    """Merge three independently processed graphs as a disconnected union."""
+    merged_genes = []
+    merged_edges = []
+    merged_nedbit = []
+    merged_rankings = []
+    offset = 0
+    for split in SPLIT_NAMES:
+        genes = pd.read_csv(split_path(config.p_out_genes, split), sep=" ", header=None)
+        links = pd.read_csv(split_path(config.p_out_links, split), sep=" ", header=None)
+        genes[0] = genes[0].astype(int) + offset
+        if not links.empty:
+            links = links.astype(int) + offset
+        nedbit = pd.read_csv(split_path(config.p_nedbit_features, split))
+        rankings = pd.read_csv(
+            split_path(config.p_out_gene_rankings, split), sep=r"\s+", header=None
+        )
+        merged_genes.append(genes)
+        merged_edges.append(links)
+        merged_nedbit.append(nedbit)
+        merged_rankings.append(rankings)
+        offset += len(genes)
+
+    pd.concat(merged_genes, ignore_index=True).to_csv(
+        config.p_out_genes, sep=" ", header=False, index=False
+    )
+    pd.concat(merged_edges, ignore_index=True).to_csv(
+        config.p_out_links, sep=" ", header=False, index=False
+    )
+    pd.concat(merged_nedbit, ignore_index=True).to_csv(
+        config.p_nedbit_features, index=False
+    )
+    pd.concat(merged_rankings, ignore_index=True).to_csv(
+        config.p_out_gene_rankings, sep=" ", header=False, index=False
+    )
 
 
 # ----------------------------------  Main  -----------------------------------
@@ -478,16 +591,22 @@ def main() -> None:
     config = OmegaConf.load("../config/config.yaml")
     extract_preprocessed_data(config) if config.download_raw_data else None
     process_arrays(config)
-    genes = create_network_gene_ids(config.p_significant_edges, config.p_out_links)
-    mark_seed_genes(config.p_seed_features, config.p_out_genes, genes)
-    calculate_features(config.p_out_links, config.p_out_genes, config.p_nedbit_features)
-    assign_initial_labels(
-        config.p_nedbit_features,
-        str(config.nedbit_header),
-        config.p_out_gene_rankings,
-        str(config.quantile_1),
-        str(config.quantile_2),
-    )
+    manifest = pd.read_csv(config.p_split_manifest)
+    for split in SPLIT_NAMES:
+        selected = manifest.loc[manifest["split"] == split, "feature_name"].tolist()
+        p_edges = split_path(config.p_significant_edges, split)
+        p_links = split_path(config.p_out_links, split)
+        p_genes = split_path(config.p_out_genes, split)
+        p_nedbit = split_path(config.p_nedbit_features, split)
+        p_rankings = split_path(config.p_out_gene_rankings, split)
+        genes = create_network_gene_ids(p_edges, p_links, selected)
+        mark_seed_genes(split_path(config.p_seed_features, split), p_genes, genes)
+        calculate_features(p_links, p_genes, p_nedbit)
+        assign_initial_labels(
+            p_nedbit, str(config.nedbit_header), p_rankings,
+            str(config.quantile_1), str(config.quantile_2),
+        )
+    merge_split_graphs(config)
 
 
 if __name__ == "__main__":

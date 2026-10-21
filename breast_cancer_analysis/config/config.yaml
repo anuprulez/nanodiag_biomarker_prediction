@@ -8,7 +8,8 @@ gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
 hidden_dim: 128
 learning_rate: 5e-4
 weight_decay: 1e-3
-test_size: 0.33
+# Node partitions are created before graph and NeDBIT feature computation.
+split_ratios: [0.70, 0.15, 0.15] # train, validation, test
 keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
 umap_n_neighbors: 20
@@ -42,12 +43,14 @@ p_out_links: ${p_base}out_links_bc.csv
 p_out_genes: ${p_base}out_genes_bc.csv
 p_out_gene_rankings: ${p_base}out_gene_rankings_bc.csv
 p_nedbit_features: ${p_base}nedbit_features_bc.csv
+p_split_manifest: ${p_base}node_split_manifest_bc.csv
 p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_bc.csv
 p_dnam_features: ${p_base}dnam_features_bc_${model_type}.csv
 p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc_${model_type}.csv
 p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm_${model_type}.csv
 p_test_probe_genes: ${p_base}test_probe_genes_bc_${model_type}.csv
 p_train_probe_genes: ${p_base}train_probe_genes_bc_${model_type}.csv
+p_val_probe_genes: ${p_base}val_probe_genes_bc_${model_type}.csv
 p_pred_likely_pos: ${p_base}pred_likely_pos_bc_${model_type}.csv
 p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
 p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
@@ -80,7 +83,7 @@ quantile_1: 0.05 # quantile threshold 1
 quantile_2: 0.2 # quantile threshold 2
 
 # Preprocessed data path
-download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
 p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
 
 download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'

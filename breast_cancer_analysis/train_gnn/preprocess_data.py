@@ -1,6 +1,4 @@
-import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 
 import utils
 
@@ -20,6 +18,13 @@ def merge_features(config):
     keep_feature_names.extend(config.keep_feature_names.split(","))
     print(keep_feature_names)
     df_nebit_features = df_nebit_features[keep_feature_names]
+    if not df_nebit_features["name"].is_unique:
+        raise ValueError("Merged NeDBIT feature names must be unique across splits")
+    graph_node_names = pd.read_csv(config.p_out_genes, sep=" ", header=None)[1].tolist()
+    if set(graph_node_names) != set(df_nebit_features["name"]):
+        raise ValueError("NeDBIT nodes do not match the merged graph nodes")
+    # Graph tensor row i must describe graph node ID i.
+    df_nebit_features = df_nebit_features.set_index("name").loc[graph_node_names].reset_index()
     print("Selected Nedbit features")
     print(df_nebit_features)
 
@@ -27,6 +32,9 @@ def merge_features(config):
     df_merged_signals = utils.read_csv(
         config.p_combined_pos_neg_signals, sep="\t", engine="c", header="infer"
     )
+    missing_signals = set(feature_names) - set(df_merged_signals.columns)
+    if missing_signals:
+        raise ValueError(f"Missing DNAm signals for {len(missing_signals)} nodes")
     dnam_signals = df_merged_signals[feature_names]
     dnam_signals_transpose = dnam_signals.transpose()
     dnam_signals_transpose.to_csv(config.p_dnam_features)
@@ -40,16 +48,11 @@ def merge_features(config):
     nebit_dnam_features_embeddings = df_nebit_dnam_features.iloc[:, 1:]
     print("Assigning labels...")
     df_apu_labels = utils.read_csv(config.p_out_gene_rankings, sep=" ", header=None)
-    l_name = list()
-    l_labels = list()
-    for i, item in df_nebit_features.iterrows():
-        r_val = item.values
-        matched_row = df_apu_labels[df_apu_labels.loc[:, 0] == r_val[0]]
-        if len(matched_row.index) > 0:
-            l_name.append(r_val[0])
-            l_labels.append(matched_row.values[0][2])
-    df_labels = pd.DataFrame(zip(l_name, l_labels), columns=["feature_name", "labels"])
-    labels = df_labels["labels"].tolist()
+    label_by_name = df_apu_labels.drop_duplicates(0).set_index(0)[2]
+    missing_labels = set(feature_names) - set(label_by_name.index)
+    if missing_labels:
+        raise ValueError(f"Missing propagated labels for {len(missing_labels)} nodes")
+    labels = label_by_name.loc[feature_names].astype(int).tolist()
     df_nebit_dnam_features["labels"] = labels
     df_nebit_dnam_features.to_csv(config.p_nedbit_dnam_features, sep=",", index=None)
     print(f"nebit_dnam_features_embeddings: {nebit_dnam_features_embeddings.shape}")
@@ -65,7 +68,9 @@ def read_files(config):
     print("Reading out links and genes...")
     relations_probe_ids = utils.read_csv(config.p_out_links, sep=" ", header=None)
     print(f"Number of links: {len(relations_probe_ids)}")
-    links_relation_probes = relations_probe_ids.sample(config.n_edges)
+    links_relation_probes = relations_probe_ids.sample(
+        n=min(config.n_edges, len(relations_probe_ids)), random_state=config.SEED
+    )
     links_relation_probes.reset_index(drop=True, inplace=True)
     links_relation_probes = links_relation_probes.drop_duplicates()
 
@@ -82,21 +87,11 @@ def read_files(config):
         f" Num features and labels {len(node_ids), len(node_names), len(labels), naipu_dnam_features.shape}"
     )
 
-    print("Splitting test and train nodes...")
-    _, te_nodes = train_test_split(
-        node_ids,
-        shuffle=True,
-        test_size=config.test_size,
-        random_state=42,
-        stratify=labels,
-    )
-    print(f"Last test nodes: {te_nodes[-10:]}")
     utils.create_gnn_data(
         naipu_dnam_features,
         labels,
         links_relation_probes,
         node_ids,
-        te_nodes,
         config,
     )
     return labels

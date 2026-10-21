@@ -54,7 +54,6 @@ def run_training():
     config = OmegaConf.load("../config/config.yaml")
     extract_preprocessed_data(config) if config.download_preprocessed_data else None
     labels = preprocess_data.read_files(config)
-    # train_model.train_gnn_model(config)
     model_type = config.model_type
     train_model_sub_graph.train_gnn_model(config, labels, model_type)
 

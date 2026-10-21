@@ -7,7 +7,6 @@ from torch.optim.lr_scheduler import OneCycleLR
 from torch.nn.utils import clip_grad_norm_
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.data import Data
-from sklearn.model_selection import train_test_split
 from torch_geometric.utils import coalesce, degree
 from sklearn.metrics import f1_score, precision_recall_fscore_support
 
@@ -221,18 +220,17 @@ def train_gnn_model(config, labels, chosen_model):
     print(f"Median degree: {deg.median().item()}")
     ratio = deg.max().item() / (deg.mean().item() + 1e-9)
     print(f"Max / Mean ratio: {ratio}")
-    tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
-    te_nodes = pd.read_csv(config.p_test_probe_genes, sep=",")
+    tr_nodes = pd.read_csv(config.p_train_probe_genes)
+    val_nodes = pd.read_csv(config.p_val_probe_genes)
+    te_nodes = pd.read_csv(config.p_test_probe_genes)
     te_node_ids = te_nodes["test_gene_ids"].tolist()
-    tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
-    tr_node_ids = np.array(tr_node_ids)
-    labels = np.array(labels)
-    tr_labels = labels[tr_node_ids]
+    tr_node_ids = tr_nodes["train_gene_ids"].tolist()
+    val_node_ids = val_nodes["val_gene_ids"].tolist()
 
     print(f"tr_node_ids: {tr_node_ids[-10:]}")
-    print(f"tr_labels: {tr_labels[-10:]}")
-    print(f"tr_labels: {data.y[tr_node_ids[-10:][1]]}")
-    print(f"data.x: {data.x[tr_node_ids[-10:][1]]}")
+    if tr_node_ids:
+        print(f"Example training label: {data.y[tr_node_ids[0]]}")
+        print(f"Example training features: {data.x[tr_node_ids[0]]}")
 
     tr_loss_epo = list()
     tr_acc_epo = list()
@@ -240,41 +238,34 @@ def train_gnn_model(config, labels, chosen_model):
     te_acc_epo = list()
     val_loss_epo = list()
     val_acc_epo = list()
-    best_te_acc = -float("inf")
     best_val_acc = -float("inf")
     best_state = None
     best_epoch = -1
 
-    split_tr_node_ids, val_node_ids = train_test_split(
-        tr_node_ids,
-        shuffle=True,
-        test_size=config.test_size,
-        random_state=42,
-        stratify=tr_labels,
-    )
-
     print(
-        f"Intersection between train and val genes: {set(split_tr_node_ids).intersection(set(val_node_ids))}"
+        f"Intersection between train and val genes: {set(tr_node_ids).intersection(set(val_node_ids))}"
     )
     print(
-        f"Intersection between train and test genes: {set(split_tr_node_ids).intersection(set(te_node_ids))}"
+        f"Intersection between train and test genes: {set(tr_node_ids).intersection(set(te_node_ids))}"
     )
     print(
         f"Intersection between val and test genes: {set(val_node_ids).intersection(set(te_node_ids))}"
     )
     print(
-        f"Tr nodes: {len(split_tr_node_ids)}, Te nodes: {len(te_node_ids)}, Val nodes: {len(val_node_ids)}"
+        f"Tr nodes: {len(tr_node_ids)}, Te nodes: {len(te_node_ids)}, Val nodes: {len(val_node_ids)}"
     )
 
-    data.train_mask = create_masks(node_ids, split_tr_node_ids)
-    data.val_mask = create_masks(node_ids, val_node_ids)
-    data.test_mask = create_masks(node_ids, te_node_ids)
+    # Masks were established before NeDBIT calculation and are stored with the
+    # merged disconnected graph. Refuse inconsistent auxiliary split files.
+    assert torch.equal(data.train_mask, create_masks(node_ids, set(tr_node_ids)))
+    assert torch.equal(data.val_mask, create_masks(node_ids, set(val_node_ids)))
+    assert torch.equal(data.test_mask, create_masks(node_ids, set(te_node_ids)))
 
     print(f"Initialize model: {chosen_model}")
     model = utils.choose_model(config, data, chosen_model, True)
     for name, module in model.named_modules():
         print(f"{name}: {module}")
-    model = model.cuda()
+    model = model.to(device)
 
     # loss fn
     criterion = torch.nn.CrossEntropyLoss()
@@ -285,7 +276,7 @@ def train_gnn_model(config, labels, chosen_model):
         model.parameters(), lr=base_lr, weight_decay=weight_decay
     )  # lr=base_lr, weight_decay=weight_decay
 
-    steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
+    steps_per_epoch = math.ceil(len(tr_node_ids) / config.batch_size)
     total_steps = steps_per_epoch * config.n_epo
     scheduler = OneCycleLR(
         optimizer,
@@ -312,7 +303,7 @@ def train_gnn_model(config, labels, chosen_model):
     )
     print("Creating neighbor loaders ...")
     train_loader, val_loader, test_loader = make_neighbor_loaders(
-        data, split_tr_node_ids, val_node_ids, te_node_ids, config
+        data, tr_node_ids, val_node_ids, te_node_ids, config
     )
     print("Start training ...")
     for epoch in range(n_epo):
@@ -327,23 +318,18 @@ def train_gnn_model(config, labels, chosen_model):
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
             f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
-        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
-        print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
         print("-------------------")
         tr_loss_epo.append(tr_loss)
         tr_acc_epo.append(tr_acc)
         val_loss_epo.append(val_loss)
         val_acc_epo.append(val_acc)
-        te_acc_epo.append(te_acc)
-        te_loss_epo.append(te_loss)
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
-            best_te_acc = te_acc
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
-                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}, test accuracy {te_acc:.2f}"
+                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}"
             )
             torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
 
@@ -357,7 +343,7 @@ def train_gnn_model(config, labels, chosen_model):
 
     ## Restore the best trained model for downstream usages
     print(
-        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_val_acc:.2f})."
+        f"[Restore] Loaded best model from epoch {best_epoch} (val acc {best_val_acc:.2f})."
     )
     if best_state is not None:
         model.load_state_dict(best_state)
@@ -373,6 +359,8 @@ def train_gnn_model(config, labels, chosen_model):
         embs_pna4,
         embs_bn4,
     ) = test_evaluate(test_loader, model, criterion, device)
+    te_acc_epo.append(final_test_acc)
+    te_loss_epo.append(final_test_loss)
 
     # Save predictions, true labels, model
     torch.save(test_ids, config.p_test_loader_ids)

@@ -608,7 +608,7 @@ def collect_pred_labels(config):
     pred_likely_pos["gene_ids"] = l_gene_ids
 
     df_tr_probe_genes = pd.read_csv(config.p_train_probe_genes)
-    training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
+    training_node_ids = df_tr_probe_genes["train_gene_ids"].tolist()
 
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
 

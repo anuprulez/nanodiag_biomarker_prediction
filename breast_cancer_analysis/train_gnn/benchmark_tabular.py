@@ -1,4 +1,4 @@
-"""Fixed-split TabPFN, TabICLv2, XGBoost and CatBoost benchmark.
+"""Fixed-split TabPFN, TabICL, XGBoost and CatBoost benchmark.
 
 Selects hyperparameters/preprocessing on validation; never refits with validation
 labels, and evaluates test once per selected family. See BENCHMARKS.md.
@@ -18,7 +18,7 @@ from benchmark_common import fresh_output, input_snapshot, load_dataset, scores,
 
 from pretrained_checkpoints import default_checkpoint, ensure_checkpoint
 
-MODELS = ('TabPFN', 'TabICLv2', 'XGBoost', 'CatBoost')
+MODELS = ('TabPFN', 'TabICL', 'XGBoost', 'CatBoost')
 TABICL_V2 = 'tabicl-classifier-v2-20260212.ckpt'
 
 
@@ -43,12 +43,12 @@ def make_model(name, depth, args):
         checkpoint = ensure_checkpoint('TabPFN', args.tabpfn_model_path)
         return TabPFNClassifier(n_estimators=args.foundation_estimators, device=args.device,
                                 random_state=args.seed, model_path=str(checkpoint))
-    if name == 'TabICLv2':
+    if name == 'TabICL':
         from tabicl import TabICLClassifier
         parameters = inspect.signature(TabICLClassifier).parameters
         if 'checkpoint_version' not in parameters:
             raise RuntimeError('Installed tabicl does not support explicit v2 checkpoints; install tabicl>=2.0')
-        checkpoint = ensure_checkpoint('TabICLv2', args.tabicl_model_path)
+        checkpoint = ensure_checkpoint('TabICL', args.tabicl_model_path)
         return TabICLClassifier(n_estimators=args.foundation_estimators, device=None if args.device == 'auto' else args.device,
                                 random_state=args.seed, model_path=str(checkpoint),
                                 checkpoint_version=TABICL_V2, n_jobs=args.threads)
@@ -92,7 +92,7 @@ def main():
     parser.add_argument('--patience', type=int, default=30)
     parser.add_argument('--foundation-estimators', type=int, default=4)
     parser.add_argument('--tabpfn-model-path', default=str(default_checkpoint('TabPFN')), help='Local requested TabPFN v3 checkpoint')
-    parser.add_argument('--tabicl-model-path', default=str(default_checkpoint('TabICLv2')), help='Local requested TabICL v2 checkpoint')
+    parser.add_argument('--tabicl-model-path', default=str(default_checkpoint('TabICL')), help='Local requested TabICL v2 checkpoint')
     parser.add_argument('--save-foundation-models', action='store_true', help='Also joblib-dump fitted foundation estimators (potentially large)')
     args = parser.parse_args()
     if min(args.threads, args.tree_iterations, args.patience, args.foundation_estimators, *args.depths) < 1:
@@ -113,7 +113,7 @@ def main():
         start = time.perf_counter()
         selected = None
         try:
-            importlib.import_module({'TabPFN': 'tabpfn', 'TabICLv2': 'tabicl', 'XGBoost': 'xgboost', 'CatBoost': 'catboost'}[name])
+            importlib.import_module({'TabPFN': 'tabpfn', 'TabICL': 'tabicl', 'XGBoost': 'xgboost', 'CatBoost': 'catboost'}[name])
             for variant in args.variants:
                 x, scaler = dataset.features(variant)
                 depths = args.depths if name in ('XGBoost', 'CatBoost') else [None]
@@ -136,7 +136,7 @@ def main():
                     elif name == 'CatBoost':
                         row['best_iteration'] = int(model.get_best_iteration())
                     checkpoint = getattr(model, 'model_path_', None)
-                    if checkpoint is None and name in ('TabPFN', 'TabICLv2'):
+                    if checkpoint is None and name in ('TabPFN', 'TabICL'):
                         checkpoint = getattr(model, 'model_path', None)
                     if checkpoint and isinstance(checkpoint, (str, Path)) and Path(checkpoint).is_file():
                         row['checkpoint'] = {'path': str(checkpoint), 'sha256': sha256(checkpoint)}

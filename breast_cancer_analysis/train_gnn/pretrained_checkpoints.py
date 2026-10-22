@@ -11,7 +11,7 @@ CHECKPOINTS = {
         'url': 'https://huggingface.co/Prior-Labs/tabpfn_3/resolve/main/tabpfn-v3-classifier-v3_default.ckpt',
         'sha256': 'd0d865d54dfbc524f5703104be90620182dca7e5fb2c16de72e9959ea18f3988',
     },
-    'TabICLv2': {
+    'TabICL': {
         'filename': 'tabicl-classifier-v2-20260212.ckpt',
         'url': 'https://huggingface.co/jingang/TabICL/resolve/main/tabicl-classifier-v2-20260212.ckpt',
         'sha256': 'bdc7dbd5e4ff21f8f0456fcf90c6b7cdf72dbea960f2d05b19bec19f9b3d4ed0',
@@ -28,10 +28,12 @@ def file_digest(path):
 
 
 def default_checkpoint(name):
+    name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
     return MODEL_DIRECTORY / CHECKPOINTS[name]['filename']
 
 
 def ensure_checkpoint(name, requested=None):
+    name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
     spec = CHECKPOINTS[name]
     path = default_checkpoint(name) if requested in (None, 'auto') else Path(requested).expanduser().resolve()
     if path.exists():

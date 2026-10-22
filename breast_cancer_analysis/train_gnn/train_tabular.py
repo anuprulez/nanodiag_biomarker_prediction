@@ -13,7 +13,7 @@ from benchmark_tabular import make_model, fit_model, predict, TABICL_V2
 from pretrained_checkpoints import CHECKPOINTS, file_digest
 
 TABULAR_MODELS = {
-    'tabpfn': 'TabPFN', 'tabicl': 'TabICLv2', 'tabiclv2': 'TabICLv2',
+    'tabpfn': 'TabPFN', 'tabicl': 'TabICL', 'tabiclv2': 'TabICL',
     'xgboost': 'XGBoost', 'catboost': 'CatBoost',
 }
 
@@ -71,7 +71,7 @@ def train_tabular_model(config):
         patience=int(config.get('tabular_patience', 30)),
         foundation_estimators=int(config.get('foundation_estimators', 4)),
         tabpfn_model_path=config.get('tabpfn_model_path', str(Path(config.p_model) / CHECKPOINTS['TabPFN']['filename'])),
-        tabicl_model_path=config.get('tabicl_model_path', str(Path(config.p_model) / CHECKPOINTS['TabICLv2']['filename'])),
+        tabicl_model_path=config.get('tabicl_model_path', str(Path(config.p_model) / CHECKPOINTS['TabICL']['filename'])),
     )
     print(f'Initialize model: {name}; preprocessing={variant}', flush=True)
     print(f'Train={train.sum()}, validation={val.sum()}, test={test.sum()}', flush=True)
@@ -92,7 +92,7 @@ def train_tabular_model(config):
     artifact = dict(model=model, scaler=scaler, variant=variant, model_type=name,
                     feature_columns=list(features.columns), nedbit_columns=ned,
                     versions=versions(), seed=options.seed,
-                    tabicl_checkpoint=TABICL_V2 if name == 'TabICLv2' else None,
+                    tabicl_checkpoint=TABICL_V2 if name == 'TabICL' else None,
                     checkpoint_path=str(checkpoint) if checkpoint is not None else None,
                     checkpoint_sha256=file_digest(checkpoint) if checkpoint is not None else None)
     joblib.dump(artifact, model_path)

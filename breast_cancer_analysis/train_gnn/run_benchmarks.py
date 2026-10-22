@@ -12,7 +12,7 @@ from benchmark_common import fresh_output
 from compare_benchmarks import compare
 from pretrained_checkpoints import default_checkpoint
 
-TABULAR = ['TabPFN', 'TabICLv2', 'XGBoost', 'CatBoost']
+TABULAR = ['TabPFN', 'TabICL', 'XGBoost', 'CatBoost']
 GNNS = ['PNA', 'GCN', 'GraphSAGE', 'GATv2', 'GraphTransformer']
 
 
@@ -30,7 +30,7 @@ def main():
     parser.add_argument('--tree-iterations', type=int, default=500)
     parser.add_argument('--foundation-estimators', type=int, default=4)
     parser.add_argument('--tabpfn-model-path', default=str(default_checkpoint('TabPFN')))
-    parser.add_argument('--tabicl-model-path', default=str(default_checkpoint('TabICLv2')))
+    parser.add_argument('--tabicl-model-path', default=str(default_checkpoint('TabICL')))
     args = parser.parse_args()
     if len(set(args.seeds)) != len(args.seeds) or len(set(args.models)) != len(args.models):
         parser.error('Seeds and model names must be unique')

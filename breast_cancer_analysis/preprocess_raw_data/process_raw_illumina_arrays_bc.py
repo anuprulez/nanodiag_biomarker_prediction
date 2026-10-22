@@ -27,7 +27,7 @@ from omegaconf.omegaconf import OmegaConf
 def extract_preprocessed_data(config):
     # Your Zenodo link
     url = config.p_raw_data
-    output_dir = config.p_base
+    output_dir = config.get("p_base_files", config.p_base)
     os.makedirs(output_dir, exist_ok=True)
 
     zip_path = os.path.join(output_dir, "download.zip")
@@ -99,11 +99,25 @@ def filter_snps_xy(
     return merged.loc[keep_mask].copy()
 
 
-def select_hv_features(negative_df: pd.DataFrame, n_top: int) -> pd.DataFrame:
+def select_hv_features(negative_df: pd.DataFrame, n_top: int, method: str = "seurat") -> pd.DataFrame:
     """
     Select highly variable 'genes' (here: probe_gene features) using Scanpy's
-    Seurat flavor. negative_df is shape (n_samples, n_features).
+    Seurat flavor by default, or variance/MAD directly on beta values.
+    negative_df is shape (n_samples, n_features).
     """
+    if n_top < 1 or negative_df.empty:
+        raise ValueError("Negative feature selection requires n_top >= 1 and nonempty data")
+    values = negative_df.to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Impute or remove non-finite methylation values before selection")
+    if method in ("variance", "mad"):
+        # Work directly on beta values; no RNA count dispersion assumptions.
+        score = (negative_df.var(axis=0) if method == "variance" else
+                 negative_df.sub(negative_df.median(axis=0), axis=1).abs().median(axis=0))
+        selected = score.sort_values(ascending=False, kind="stable").head(n_top).index
+        return negative_df.loc[:, selected]
+    if method != "seurat":
+        raise ValueError(f"Unknown negative_selection_method: {method}")
     # Scanpy expects observations (cells/samples) x variables (features)
     adata = sc.AnnData(negative_df)
     sc.pp.highly_variable_genes(adata, flavor="seurat", n_top_genes=n_top)
@@ -124,6 +138,9 @@ def build_knn_correlation_edges(
     k: int,
     corr_threshold: float = 0.5,
     mutual: bool = False,
+    correlation_method: str = "pearson",
+    signal_transform: str = "beta",
+    neighbor_fraction: float | None = None,
 ) -> pd.DataFrame:
     """
     Build a kNN correlation graph between features and return edges (In, Out, Corr)
@@ -151,12 +168,32 @@ def build_knn_correlation_edges(
     feature_names = features_df.columns.to_list()
     n_feat = len(feature_names)
     if n_feat < 2:
-        return pd.DataFrame(columns=["In", "Out", "Corr"])
+        return (pd.DataFrame(columns=["In", "Out"]),
+                pd.DataFrame(columns=["In", "Out", "Corr"]))
 
-    # Compute feature-feature correlation matrix
-    corr = np.corrcoef(features_df.T)
-    np.fill_diagonal(corr, -np.inf)  # exclude self-correlation
-    corr = np.nan_to_num(corr, nan=-np.inf)
+    values = features_df.to_numpy(dtype=float)
+    if not np.isfinite(values).all():
+        raise ValueError("Correlation graph requires finite methylation values")
+    if signal_transform == "mvalue":
+        if np.any((values < 0) | (values > 1)):
+            raise ValueError("M-value conversion requires beta values in [0, 1]")
+        beta = np.clip(values, 1e-5, 1 - 1e-5)
+        values = np.log2(beta / (1 - beta))
+    elif signal_transform != "beta":
+        raise ValueError(f"Unknown graph_signal_transform: {signal_transform}")
+    if correlation_method == "spearman":
+        values = pd.DataFrame(values).rank(axis=0, method="average").to_numpy()
+    elif correlation_method != "pearson":
+        raise ValueError(f"Unknown correlation_method: {correlation_method}")
+    # Constant columns cannot form correlation edges. Keep them isolated.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(values.T)
+    corr[~np.isfinite(corr)] = -np.inf
+    np.fill_diagonal(corr, -np.inf)
+    if neighbor_fraction is not None:
+        if not 0 < neighbor_fraction <= 1:
+            raise ValueError("knn_neighbor_fraction must be in (0, 1]")
+        k = max(1, int(np.ceil(neighbor_fraction * (n_feat - 1))))
 
     k_eff = min(k, n_feat - 1)
     in_nodes, out_nodes, corrs = [], [], []
@@ -293,7 +330,7 @@ def process_arrays(
     rng = random.Random(config.SEED)
     np.random.seed(config.SEED)
 
-    output_dir = config.p_base
+    output_dir = config.get("p_base_files", config.p_base)
     os.makedirs(output_dir, exist_ok=True)
 
     print("Loading Illumina arrays: %s", config.p_arrays)
@@ -380,7 +417,10 @@ def process_arrays(
         "Selecting highly variable negative features (target n=%d)...",
         config.size_negative,
     )
-    df_neg_hv = select_hv_features(df_neg_pool, n_top=config.size_negative)
+    df_neg_hv = select_hv_features(
+        df_neg_pool, n_top=config.size_negative,
+        method=config.get("negative_selection_method", "seurat"),
+    )
     print("Selected %d negative features.", df_neg_hv.shape[1])
 
     # Split before graph/NeDBIT computation. Split by probe rather than mapped
@@ -409,6 +449,9 @@ def process_arrays(
             k=config.knn_neighbours,
             corr_threshold=config.corr_threshold,
             mutual=True,
+            correlation_method=config.get("correlation_method", "pearson"),
+            signal_transform=config.get("graph_signal_transform", "beta"),
+            neighbor_fraction=config.get("knn_neighbor_fraction", None),
         )
         edges.to_csv(
             split_path(config.p_significant_edges, split),
@@ -642,8 +685,8 @@ def merge_split_graphs(config) -> None:
 # ----------------------------------  Main  -----------------------------------
 
 
-def main() -> None:
-    config = OmegaConf.load("../config/config.yaml")
+def main(config_path="../config/config.yaml") -> None:
+    config = OmegaConf.load(config_path)
     extract_preprocessed_data(config) if config.download_raw_data else None
     process_arrays(config)
     manifest = pd.read_csv(config.p_split_manifest)
@@ -666,4 +709,7 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", default="../config/config.yaml")
+    main(parser.parse_args().config)

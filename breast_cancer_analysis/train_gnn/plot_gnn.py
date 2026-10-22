@@ -39,11 +39,10 @@ def plot_loss_acc(
     n_epo, tr_loss, val_loss, tr_acc, val_acc, chosen_model, config, te_acc=None
 ):
     """
-    Signature unchanged. Saves two PDFs and (as before) shows the last figure.
+    Save loss and accuracy histories using the actual completed epoch count.
     """
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
-    n_epo = config.n_epo
     dpi = config.dpi
 
     tr_loss = np.asarray(tr_loss)
@@ -52,6 +51,10 @@ def plot_loss_acc(
     tr_acc = np.asarray(tr_acc)
     te_acc = None if te_acc is None else np.asarray(te_acc)
 
+    # Early stopping can finish before config.n_epo (or the supplied limit).
+    n_epo = len(tr_loss)
+    if any(len(history) != n_epo for history in (val_loss, tr_acc, val_acc)):
+        raise ValueError("Training and validation histories must have equal lengths")
     x_val = np.arange(n_epo)
 
     # --- Training loss
@@ -515,3 +518,84 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
         dpi,
     )
     plt.close()
+
+
+def plot_model_comparison(results, models, config):
+    """Compare this run's final metrics; missing/failed models appear as N/A."""
+    if not config.get('MAKE_HEATMAP', True):
+        return None
+    metric_labels = {
+        'best_val_acc': 'Validation accuracy',
+        'te_acc': 'Test accuracy',
+        'te_f1_macro': 'Macro F1',
+        'te_f1_weighted': 'Weighted F1',
+        'te_f1_micro': 'Micro F1',
+        'te_precision': 'Precision (weighted)',
+        'te_recall': 'Recall (weighted)',
+    }
+    metric_keys = list(metric_labels)
+    rows = []
+    for name in models:
+        metrics = results.get(name, {})
+        metrics = metrics if isinstance(metrics, dict) else {}
+        row = []
+        for key in metric_keys:
+            value = metrics.get(key, np.nan)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                value = value[-1] if len(value) else np.nan
+            row.append(float(value) if value is not None else np.nan)
+        rows.append(row)
+    mat = np.asarray(rows, dtype=float)
+    mat[~np.isfinite(mat)] = np.nan
+    if not np.isfinite(mat).any():
+        return None
+
+    normalize = config.get('NORMALIZE_FOR_HEATMAP', True)
+    A_norm = np.full_like(mat, np.nan)
+    if normalize:
+        for j in range(mat.shape[1]):
+            valid = np.isfinite(mat[:, j])
+            if valid.any():
+                low, high = mat[valid, j].min(), mat[valid, j].max()
+                A_norm[valid, j] = (mat[valid, j] - low) / max(high - low, 1e-12)
+    else:
+        low, high = np.nanmin(mat), np.nanmax(mat)
+        A_norm = (mat - low) / max(high - low, 1e-12)
+
+    cmap = plt.cm.YlGnBu.copy()
+    cmap.set_bad('#dddddd')
+    fig, ax = plt.subplots(figsize=(1.2 * len(metric_keys) + 2.5, 0.6 * len(models) + 2.5))
+    try:
+        im = ax.imshow(np.ma.masked_invalid(A_norm), aspect='auto', interpolation='nearest',
+                       cmap=cmap, vmin=0., vmax=1.)
+        ax.set_xticks(np.arange(len(metric_keys)))
+        ax.set_yticks(np.arange(len(models)))
+        ax.set_xticklabels(list(metric_labels.values()), rotation=30, ha='right')
+        ax.set_yticklabels(models)
+        for i in range(len(models)):
+            for j in range(len(metric_keys)):
+                value = mat[i, j]
+                color = 'black'
+                if np.isfinite(value):
+                    r, g, b, _ = cmap(A_norm[i, j])
+                    color = 'black' if .299 * r + .587 * g + .114 * b > .55 else 'white'
+                ax.text(j, i, f'{value:.3f}' if np.isfinite(value) else 'N/A',
+                        ha='center', va='center', fontsize=12, color=color)
+        ax.set_xticks(np.arange(-.5, len(metric_keys), 1), minor=True)
+        ax.set_yticks(np.arange(-.5, len(models), 1), minor=True)
+        ax.grid(False)
+        ax.grid(which='minor', color='white', linewidth=.6, alpha=.6)
+        ax.tick_params(which='minor', bottom=False, left=False)
+        ax.set_title('Models vs Metrics', pad=10)
+        cbar = fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
+        cbar.set_label('Per-metric normalized score' if normalize else 'Globally normalized score', labelpad=12)
+        output = _as_path(config.p_plot)
+        stem = f'Heatmap_avg_edges_{config.n_edges}_epochs_{config.n_epo}'
+        # Save original values alongside the normalized visualization.
+        pd.DataFrame(mat, index=pd.Index(models, name='model'), columns=metric_keys).to_csv(output / f'{stem}.csv')
+        path = output / f'{stem}.pdf'
+        _save(fig, path, config.dpi)
+        print(f'Saved heatmap -> {path}', flush=True)
+        return path
+    finally:
+        plt.close(fig)

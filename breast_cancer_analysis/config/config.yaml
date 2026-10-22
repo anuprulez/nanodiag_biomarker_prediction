@@ -1,16 +1,20 @@
 SEED: 32
 n_edges: 9913451 #14251734 #14251734 # 9913451 knn_3000
 # BC: all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 5
-batch_size: 32
+n_epo: 30
+batch_size: 256
+num_workers: 0
+grad_clip_norm: 1.5
 num_classes: 5
-gene_dim: 86 # Number of NedBit features + 50 BC + 30 NC
-hidden_dim: 128
-learning_rate: 5e-4
+gene_dim: 84 # Number of NedBit features + 50 BC + 30 NC
+hidden_dim: 64
+learning_rate: 3e-4
 weight_decay: 1e-3
+lr_patience: 2
+early_stopping_patience: 7
 # Node partitions are created before graph and NeDBIT feature computation.
 split_ratios: [0.70, 0.15, 0.15] # train, validation, test
-keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
+keep_feature_names: "ring,NetRank,HeatDiff,InfoDiff"
 # All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
 umap_n_neighbors: 20
 umap_min_dist: 0.8
@@ -20,10 +24,12 @@ dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
 heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 dpi: 300
-model_type: "PNA" # PNA, GCN, GraphSage, GATV2, GraphTransformer  ### gcn2, appnet
-best_trained_model: ${model_type} # Find the best trained model via training and then set it
-neighbors_spread: [-1, 100, 50] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
-explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+MAKE_HEATMAP: true
+NORMALIZE_FOR_HEATMAP: true # Per-metric colors; annotations retain original scores
+model_type: ["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"]
+best_trained_model: "PNA" # Scalar model selected for the separate GNN explanation workflow
+neighbors_spread: [10, 5, 5, 5] # Bounded four-hop sampling for four convolution layers
+explain_neighbors_spread: [-1, 100, 50] #[-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
 explanation_nodes_ratio: 1.0
 neighbour_predictions: [0, 1, 2, 3, 4]
 src_neighbour_predictions: [0, 1, 2, 3, 4] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
@@ -34,48 +40,53 @@ graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 50
 knn_neighbours: 3000
 p_base: ../data_corr_0.33_negative_10000_knn/
-p_significant_edges: ${p_base}significant_gene_relations.tsv
-p_cross_reactive_probes: ${p_base}cross_reactive_probes.csv
-p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
-p_merged_signals: ${p_base}merged_signals_bc.csv
-p_seed_features: ${p_base}seed_features.csv
-p_out_links: ${p_base}out_links_bc.csv
-p_out_genes: ${p_base}out_genes_bc.csv
-p_out_gene_rankings: ${p_base}out_gene_rankings_bc.csv
-p_nedbit_features: ${p_base}nedbit_features_bc.csv
-p_split_manifest: ${p_base}node_split_manifest_bc.csv
-p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_bc.csv
-p_dnam_features: ${p_base}dnam_features_bc_${model_type}.csv
-p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_bc_${model_type}.csv
-p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm_${model_type}.csv
-p_test_probe_genes: ${p_base}test_probe_genes_bc_${model_type}.csv
-p_train_probe_genes: ${p_base}train_probe_genes_bc_${model_type}.csv
-p_val_probe_genes: ${p_base}val_probe_genes_bc_${model_type}.csv
-p_pred_likely_pos: ${p_base}pred_likely_pos_bc_${model_type}.csv
-p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
-p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
-p_torch_data: ${p_base}data_bc_${model_type}.pt
-p_torch_embed: ${p_base}embed_conv_bc_${model_type}.pt
-p_torch_embed_batch_norm: ${p_base}embed_batch_norm_bc_${model_type}.pt
-p_true_labels: ${p_base}true_labels_bc_${model_type}.pt
+p_base_files: ${p_base}base_files/
+p_generated_files: ${p_base}generated_files/
+p_significant_edges: ${p_base_files}significant_gene_relations.tsv
+p_cross_reactive_probes: ${p_base_files}cross_reactive_probes.csv
+p_significant_edges_with_corr: ${p_base_files}significant_gene_relations_with_corr.tsv
+p_merged_signals: ${p_base_files}merged_signals_bc.csv
+p_seed_features: ${p_base_files}seed_features.csv
+p_out_links: ${p_base_files}out_links_bc.csv
+p_out_genes: ${p_base_files}out_genes_bc.csv
+p_out_gene_rankings: ${p_base_files}out_gene_rankings_bc.csv
+p_nedbit_features: ${p_base_files}nedbit_features_bc.csv
+p_split_manifest: ${p_base_files}node_split_manifest_bc.csv
+p_combined_pos_neg_signals: ${p_base_files}combined_pos_neg_signals_bc.csv
+p_dnam_features: ${p_generated_files}dnam_features_bc_${model_type}.csv
+p_nedbit_dnam_features: ${p_generated_files}df_nebit_dnam_features_bc_${model_type}.csv
+p_nedbit_dnam_features_norm: ${p_generated_files}df_nebit_dnam_features_norm_${model_type}.csv
+p_test_probe_genes: ${p_generated_files}test_probe_genes_bc_${model_type}.csv
+p_train_probe_genes: ${p_generated_files}train_probe_genes_bc_${model_type}.csv
+p_val_probe_genes: ${p_generated_files}val_probe_genes_bc_${model_type}.csv
+p_pred_likely_pos: ${p_generated_files}pred_likely_pos_bc_${model_type}.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_generated_files}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
+p_pred_negatives: ${p_generated_files}pred_negatives_${model_type}.csv
+p_torch_data: ${p_generated_files}data_bc_${model_type}.pt
+p_torch_embed: ${p_generated_files}embed_conv_bc_${model_type}.pt
+p_torch_embed_batch_norm: ${p_generated_files}embed_batch_norm_bc_${model_type}.pt
+p_true_labels: ${p_generated_files}true_labels_bc_${model_type}.pt
 p_torch_model: ${p_model}best_model_bc_${model_type}.pt
-p_pred_labels: ${p_base}pred_labels_bc_${model_type}.pt
-p_all_class_pred_probs: ${p_base}all_class_pred_probs_bc_${model_type}.pt
-p_best_class_pred_probs: ${p_base}best_class_pred_probs_bc_${model_type}.pt
-p_test_loader_ids: ${p_base}test_ids_bc_${model_type}.pt
-p_plot: ${p_base}
-p_data: ${p_base}
-p_model: ../model/
+p_pred_labels: ${p_generated_files}pred_labels_bc_${model_type}.pt
+p_all_class_pred_probs: ${p_generated_files}all_class_pred_probs_bc_${model_type}.pt
+p_best_class_pred_probs: ${p_generated_files}best_class_pred_probs_bc_${model_type}.pt
+p_test_loader_ids: ${p_generated_files}test_ids_bc_${model_type}.pt
+p_plot: ${p_generated_files}
+p_data: ${p_generated_files}
+p_model: ${p_generated_files}models/
+# Exact pretrained weights shared by main.py and the benchmark scripts.
+tabpfn_model_path: ${p_base_files}pretrained_models/tabpfn-v3-classifier-v3_default.ckpt
+tabicl_model_path: ${p_base_files}pretrained_models/tabicl-classifier-v2-20260212.ckpt
 # Preprocess breast cancer Illumina arrays
 # Input files
-p_arrays: ${p_base}GSE237036_matrix_processed.txt # Path to arrays matrix (TSV).
-p_mapper: ${p_base}probe_genes.csv # Path to probe-gene mapper (TSV with columns: probeID, UCSC_RefGene_Name).
-p_snp_probes: ${p_base}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
-p_platform: ${p_base}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
-p_seeds: ${p_base}seed_probes.csv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
+p_arrays: ${p_base_files}GSE237036_matrix_processed.txt # Path to arrays matrix (TSV).
+p_mapper: ${p_base_files}probe_genes.csv # Path to probe-gene mapper (TSV with columns: probeID, UCSC_RefGene_Name).
+p_snp_probes: ${p_base_files}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
+p_platform: ${p_base_files}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
+p_seeds: ${p_base_files}seed_probes.csv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
 # Parameters
-size_negative: 5000 # Number of negative samples to draw (highly variable probes).
-corr_threshold: 0.33 #0.5 # Correlation threshold for gene-gene links
+size_negative: 10000 # Number of negative samples to draw (highly variable probes).
+corr_threshold: 0.33 #0.33 #0.5 # Correlation threshold for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1

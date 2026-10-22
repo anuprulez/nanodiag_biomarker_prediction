@@ -4,7 +4,7 @@ import torch
 import math
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import OneCycleLR
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.utils import clip_grad_norm_
 from torch_geometric.loader import NeighborLoader
 from torch_geometric.data import Data
@@ -69,7 +69,7 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=True,
-        num_workers=8,
+        num_workers=int(config.get("num_workers", 8)),
         pin_memory=True,
         subgraph_type=config.graph_subtype,
     )
@@ -80,7 +80,7 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=8,
+        num_workers=int(config.get("num_workers", 8)),
         pin_memory=True,
         subgraph_type=config.graph_subtype,
     )
@@ -90,14 +90,14 @@ def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
         num_neighbors=config.neighbors_spread,
         batch_size=config.batch_size,
         shuffle=False,
-        num_workers=8,
+        num_workers=int(config.get("num_workers", 8)),
         pin_memory=True,
         subgraph_type=config.graph_subtype,
     )
     return train_loader, val_loader, test_loader
 
 
-def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
+def train_one_epoch(train_loader, model, optimizer, criterion, device, grad_clip_norm=None):
     model.train()
     total_loss, total_correct, total_count = 0.0, 0, 0
 
@@ -110,9 +110,9 @@ def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device
         targets = batch.y[:seed_n].long()
         loss = criterion(logits, targets)
         loss.backward()
-        # clip_grad_norm_(model.parameters(), max_norm=1.5)
+        if grad_clip_norm is not None:
+            clip_grad_norm_(model.parameters(), max_norm=float(grad_clip_norm))
         optimizer.step()
-        # scheduler.step()
 
         total_loss += float(loss.detach()) * seed_n
         total_correct += (logits.argmax(-1) == targets).sum().item()
@@ -305,16 +305,15 @@ def train_gnn_model(config, labels, chosen_model):
         model.parameters(), lr=base_lr, weight_decay=weight_decay
     )  # lr=base_lr, weight_decay=weight_decay
 
-    steps_per_epoch = math.ceil(len(tr_node_ids) / config.batch_size)
-    total_steps = steps_per_epoch * config.n_epo
-    scheduler = OneCycleLR(
-        optimizer,
-        max_lr=base_lr,
-        total_steps=total_steps,
-        pct_start=0.1,
-        div_factor=10.0,
-        final_div_factor=1e2,
+    scheduler = ReduceLROnPlateau(
+        optimizer, mode="max", factor=0.5,
+        patience=int(config.get("lr_patience", 1)),
+        threshold=0.0, threshold_mode="abs", min_lr=1e-6,
     )
+    early_stopping_patience = int(config.get("early_stopping_patience", 5))
+    if early_stopping_patience < 1:
+        raise ValueError("early_stopping_patience must be positive")
+    epochs_without_improvement = 0
 
     print(
         f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
@@ -337,11 +336,17 @@ def train_gnn_model(config, labels, chosen_model):
     print("Start training ...")
     for epoch in range(n_epo):
         tr_loss, tr_acc = train_one_epoch(
-            train_loader, model, optimizer, criterion, scheduler, device
+            train_loader, model, optimizer, criterion, device,
+            grad_clip_norm=config.get("grad_clip_norm", None),
         )
-        val_loss, val_acc, used_val_ids = val_evaluate(
-            val_loader, model, criterion, device
-        )
+        # Repeat the same sampled validation neighborhoods each epoch without
+        # changing the random stream used for training or dropout.
+        with torch.random.fork_rng(devices=[]):
+            torch.random.default_generator.manual_seed(int(config.SEED))
+            val_loss, val_acc, used_val_ids = val_evaluate(
+                val_loader, model, criterion, device
+            )
+        scheduler.step(val_acc)
         print(
             f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
@@ -354,6 +359,7 @@ def train_gnn_model(config, labels, chosen_model):
         val_acc_epo.append(val_acc)
 
         if val_acc > best_val_acc:
+            epochs_without_improvement = 0
             best_val_acc = val_acc
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
@@ -363,13 +369,21 @@ def train_gnn_model(config, labels, chosen_model):
             Path(config.p_torch_model).parent.mkdir(parents=True, exist_ok=True)
             torch.save(model.state_dict(), config.p_torch_model)  # best validation checkpoint
 
-    print("Plot and report all training epochs")
+        else:
+            epochs_without_improvement += 1
+        print(f"Learning rate: {optimizer.param_groups[0]['lr']:.6g}")
+        if epochs_without_improvement >= early_stopping_patience:
+            print(f"Early stopping: no validation accuracy improvement for {early_stopping_patience} epochs")
+            break
+
+    completed_epochs = len(tr_loss_epo)
+    print("Plot and report all completed training epochs")
 
     plot_gnn.plot_loss_acc(
-        n_epo, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
+        completed_epochs, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
     )
-    print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
-    print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
+    print(f"Mean training loss over {completed_epochs} epochs: {np.mean(tr_loss_epo):.2f}")
+    print(f"Best validation accuracy: {best_val_acc:.4f} at epoch {best_epoch}")
 
     ## Restore the best trained model for downstream usages
     print(
@@ -393,6 +407,8 @@ def train_gnn_model(config, labels, chosen_model):
     te_loss_epo.append(final_test_loss)
 
     # Save predictions, true labels, model
+    torch.save(embs_pna4, config.p_torch_embed)
+    torch.save(embs_bn4, config.p_torch_embed_batch_norm)
     torch.save(test_ids, config.p_test_loader_ids)
     torch.save(true_labels, config.p_true_labels)
     torch.save(pred_labels, config.p_pred_labels)
@@ -400,7 +416,7 @@ def train_gnn_model(config, labels, chosen_model):
     torch.save(all_class_pred_probs, config.p_all_class_pred_probs)
 
     print(
-        f"Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}, {final_test_loss: .2f}"
+        f"Test acc using the best model (stored at {best_epoch}): acc {final_test_acc:.2f}, loss {final_test_loss: .2f}"
     )
 
     te_f1_macro = f1_score(true_labels, pred_labels, average="macro")
@@ -411,6 +427,9 @@ def train_gnn_model(config, labels, chosen_model):
     )
 
     metrics = {
+        "best_epoch": best_epoch,
+        "best_val_acc": best_val_acc,
+        "completed_epochs": completed_epochs,
         "te_f1_macro": te_f1_macro,
         "te_f1_weighted": te_f1_weighted,
         "te_f1_micro": te_f1_micro,
@@ -426,15 +445,9 @@ def train_gnn_model(config, labels, chosen_model):
 
     print(f"All metrics: {metrics}")
     utils.save_accuracy_scores(
-        metrics, f"{config.p_plot}all_metrics_{chosen_model}.json"
+        metrics, Path(config.p_plot) / f"all_metrics_{chosen_model}.json"
     )
     print("Plotting metrics and UMAP plots for final embeddings")
-    plot_gnn.plot_node_embed(
-        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
-    )
-    plot_gnn.plot_node_embed(
-        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
-    )
     plot_gnn.plot_node_embed(
         embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
     )
@@ -444,3 +457,4 @@ def train_gnn_model(config, labels, chosen_model):
     plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
     # plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
     print("Finished.")
+    return metrics

@@ -168,7 +168,7 @@ def plot_radar_runs_multiple(config):
     NORMALIZE_FOR_HEATMAP = True  # per-metric min-max to [0,1]
 
     plot_local_path = Path(getattr(config, "p_plot", "./plots"))
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 5)
@@ -477,7 +477,7 @@ def plot_radar_runs(config):
     }
 
     plot_local_path = _as_path(config.p_plot)
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 2)
@@ -585,7 +585,7 @@ def plot_mean_std_loss_acc(config):
 
     for item in range(n_runs):
         run_id = item + 1
-        file_path = f"{config.p_base}runs/{run_id}/all_metrics_{chosen_model}.json"
+        file_path = f"{config.get('p_generated_files', config.p_base)}runs/{run_id}/all_metrics_{chosen_model}.json"
         with open(file_path) as f:
             metrics_list.append(json.load(f))
     print(metrics_list)
@@ -705,8 +705,8 @@ def plot_xai_nodes_raw_values(config):
     # topk = 50
     cmap = "cividis"  # cividis viridis  inferno
     # path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"
-    path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
-    path_signals = config.p_base + "combined_pos_neg_signals_bc.csv"
+    path_pred_LP = config.get("p_generated_files", config.p_base) + f"pred_negatives_{chosen_model}.csv"
+    path_signals = config.p_combined_pos_neg_signals
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     df_signals = pd.read_csv(path_signals, sep="\t")
 
@@ -904,7 +904,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     cmap = "cividis"  # cividis / viridis / inferno
 
     # Signals matrix (patients x features), shared across runs
-    path_signals = os.path.join(config.p_base, "combined_pos_neg_signals_bc.csv")
+    path_signals = config.p_combined_pos_neg_signals
     df_signals = pd.read_csv(path_signals, sep="\t")
 
     # ------------------------------
@@ -912,7 +912,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # ------------------------------
     per_run_lists = []
     for run_id in range(1, n_runs + 1):
-        path_pred = _find_run_file(config.p_base, run_id, chosen_model)
+        path_pred = _find_run_file(config.get("p_generated_files", config.p_base), run_id, chosen_model)
         df_pred = pd.read_csv(path_pred, sep="\t")
         print("All: ", df_pred)
         N = [5]

@@ -29,12 +29,13 @@ def model_configs(config):
     if not names or any(not isinstance(name, str) or name.lower() not in
                         GNN_MODELS | TABULAR_NAMES for name in names):
         raise ValueError("model_type must be a model name or nonempty list of PNA, GCN, "
-                         "GraphSAGE, GATv2, GraphTransformer, TabPFN, TabICLv2, XGBoost, CatBoost")
-    keys = ["tabiclv2" if name.lower() == "tabicl" else name.lower() for name in names]
+                         "GraphSAGE, GATv2, GraphTransformer, TabPFN, TabICL, XGBoost, CatBoost")
+    keys = ["tabicl" if name.lower() == "tabiclv2" else name.lower() for name in names]
     if len(set(keys)) != len(keys):
         raise ValueError("model_type contains duplicate models (including aliases)")
     configs, owners = [], {}
     for name in names:
+        name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
         current = copy.deepcopy(config)
         current.model_type = name
         for field in MODEL_OUTPUTS:
@@ -99,7 +100,7 @@ def run_training(config_path="../config/config.yaml"):
     plot_model_comparison(results, [str(c.model_type) for c in configs], configs[0])
     if failures:
         raise RuntimeError(f"Training failed for {failures}; remaining models were attempted")
-    return results if is_list else results[str(config.model_type)]
+    return results if is_list else results[str(configs[0].model_type)]
 
 
 if __name__ == "__main__":

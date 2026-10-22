@@ -56,8 +56,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
             nodes_with_idxs[node] = i
     print("[+]", len(nodes_with_idxs), "likely positive nodes found in the graph")
 
-    if xai_node not in nodes_with_idxs:
-        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")
+    """if xai_node not in nodes_with_idxs:
+        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")"""
 
     idx_global = int(nodes_with_idxs[xai_node])
 
@@ -608,7 +608,7 @@ def collect_pred_labels(config):
     pred_likely_pos["gene_ids"] = l_gene_ids
 
     df_tr_probe_genes = pd.read_csv(config.p_train_probe_genes)
-    training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
+    training_node_ids = df_tr_probe_genes["train_gene_ids"].tolist()
 
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
 
@@ -688,12 +688,14 @@ def get_node_names_links(n_nodes, xai_node, config):
 
 if __name__ == "__main__":
     config = OmegaConf.load("../config/config.yaml")
+    # Bind model-dependent paths to the scalar model selected for explanation.
+    if OmegaConf.is_list(config.model_type):
+        config.model_type = str(config.best_trained_model)
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)
-    # test_data = torch.load(config.p_torch_test_data, weights_only=False)
     model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 273  # 2025 #273
+    node_i = 9378 # 5389 #8335 #5619 #1867
     collect_pred_labels(config)
     print(f"Creating graph with all nodes ...")
     G = to_networkx(data, node_attrs=["x"], to_undirected=True)

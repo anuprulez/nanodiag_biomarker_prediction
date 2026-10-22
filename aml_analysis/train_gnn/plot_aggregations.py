@@ -16,6 +16,13 @@ from sklearn.metrics import (
     confusion_matrix,
 )
 
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import random
+
 from sklearn.preprocessing import label_binarize
 
 from omegaconf.omegaconf import OmegaConf
@@ -24,10 +31,10 @@ from omegaconf.omegaconf import OmegaConf
 sns.set_theme(style="whitegrid", context="talk")
 
 # for merging the results from multiple runs
-topk = 250  # 200 for best results so far
+topk = 200  # 200 for best results so far
 toshow = 20
-group_partition1 = 28
-group_partition2 = 28
+group_partition1 = 464
+group_partition2 = 62
 n_runs = 5
 
 
@@ -149,7 +156,7 @@ def plot_radar_runs_multiple(config):
         "te_precision": "Precision",
         "te_recall": "Recall",
     }
-    models = ["PNA", "GATv2", "GCN", "GraphSage", "GraphTransformer"]
+    models = ["PNA", "GATV2", "GCN", "GraphSage", "GraphTransformer"]
 
     # Plot toggles & options
     MAKE_OVERLAY_RADAR = True
@@ -161,7 +168,7 @@ def plot_radar_runs_multiple(config):
     NORMALIZE_FOR_HEATMAP = True  # per-metric min-max to [0,1]
 
     plot_local_path = Path(getattr(config, "p_plot", "./plots"))
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 5)
@@ -459,7 +466,7 @@ def plot_radar_runs(config):
         "te_precision",
         "te_recall",
     ]
-    models = ["PNA", "GATv2", "GCN", "GraphSage", "GraphTransformer"]
+    models = ["PNA", "GATV2", "GCN", "GraphSage", "GraphTransformer"]
 
     metric_labels = {
         "te_f1_macro": "F1 (macro)",
@@ -470,7 +477,7 @@ def plot_radar_runs(config):
     }
 
     plot_local_path = _as_path(config.p_plot)
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 2)
@@ -578,7 +585,7 @@ def plot_mean_std_loss_acc(config):
 
     for item in range(n_runs):
         run_id = item + 1
-        file_path = f"{config.p_base}runs/{run_id}/all_metrics_{chosen_model}.json"
+        file_path = f"{config.get('p_generated_files', config.p_base)}runs/{run_id}/all_metrics_{chosen_model}.json"
         with open(file_path) as f:
             metrics_list.append(json.load(f))
     print(metrics_list)
@@ -697,12 +704,9 @@ def plot_xai_nodes_raw_values(config):
     dpi = getattr(config, "dpi", 200)
     # topk = 50
     cmap = "cividis"  # cividis viridis  inferno
-    path_pred_LP = (
-        config.p_base
-        + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
-    )
-    # path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
-    path_signals = config.p_base + "combined_pos_neg_signals_aml.csv"
+    # path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
+    path_pred_LP = config.get("p_generated_files", config.p_base) + f"pred_negatives_{chosen_model}.csv"
+    path_signals = config.p_combined_pos_neg_signals
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     df_signals = pd.read_csv(path_signals, sep="\t")
 
@@ -710,9 +714,9 @@ def plot_xai_nodes_raw_values(config):
     list_nodes = xai_nodes["test_gene_names"].tolist()
     df_top_signals = df_signals[list_nodes]
 
-    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
+    group_labels = ["Healthy"] * group_partition1 + ["AML"] * group_partition2
     df_top_signals["Group"] = group_labels
-    group_colors = {"Day0": "darkred", "Day8": "steelblue"}
+    group_colors = {"Healthy": "darkred", "AML": "steelblue"}
     row_colors = df_top_signals["Group"].map(group_colors)
 
     # Drop the group column before plotting
@@ -744,7 +748,7 @@ def plot_xai_nodes_raw_values(config):
     cb.set_label("β-value", rotation=90, labelpad=10)
 
     # --- add group legend (row_colors) outside under the colorbar ---
-    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Healthy", "AML"]]
     g.fig.legend(
         handles=handles,
         title="Group",
@@ -753,17 +757,17 @@ def plot_xai_nodes_raw_values(config):
     )
     # Titles and formatting
     g.ax_heatmap.set_title(
-        f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Day0 vs Day8 Patients)",
+        f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Healthy controls vs AML patients)",
         pad=4,
         fontsize=14,
     )
     g.ax_col_dendrogram.set_visible(False)
     plt.tight_layout()
-    # path = plot_local_path / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     path = (
         plot_local_path
-        / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
+        / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     )
+    # path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     plt.savefig(path, dpi=dpi, bbox_inches="tight")
 
 
@@ -800,31 +804,11 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
     print("df_signals")
     print(df_signals)
-    """seed_nodes = ["cg09242307_SOX5", 
-                  "cg10990959_SOX5",
-                  "cg02147465_ZBTB20",
-                  "cg13697223_GALNTL6", 
-                  "cg06126815_PON2",
-                  "cg09962458_SIPA1L1",
-                  "cg16036046_RIT2"
-                  ]"""
-    seed_nodes = [
-        "cg26246840_CD226",
-        "cg26626251_OPCML",
-        "cg12915585_MYT1L",
-        "cg05592278_LRRC37A3",
-        "cg22862734_FREM2",
-    ]
-    # seed_nodes = seed_nodes[:100]
+    seed_nodes = [name for name in seed_nodes if name in df_signals][:5]
     df_seed = df_signals[seed_nodes]
-    print("Seed signals")
-    print(df_seed)
-    print("Top LP signals")
-    # top_lp = "cg13985132_LOC390595"
-    top_lp = "cg00315391_SCNN1G"  # "cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
-    df_lp = df_signals[[top_lp]]
-    print(df_lp)
-
+    if df_lp.empty or not seed_nodes:
+        return
+    df_lp = df_lp.iloc[:, :1].copy()
     df_seed = df_seed.apply(pd.to_numeric, errors="coerce")
     df_lp = df_lp.apply(pd.to_numeric, errors="coerce")
 
@@ -850,18 +834,14 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     # --- Plot correlations for each LP signal ---
     for lp_col in df_lp.columns:
         corr_series = df_corr[lp_col].sort_values(ascending=False)
-        corr_series = corr_series.astype(float)
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(6, 6))
         bar_colors = sns.color_palette("viridis", len(corr_series))
         sns.barplot(
             x=corr_series.index,
             y=corr_series.values,
-            ### uncommment for 2025 node prediction show
-            # x=np.arange(0, len(corr_series)),
             # palette=bar_colors
         )
-        ### uncommment for 2025 node prediction show
-        # plt.xticks(np.arange(0, len(corr_series), 50), fontsize=16)
+
         plt.xticks(rotation=90, fontsize=16)
         plt.yticks(fontsize=16)
         plt.ylabel("Pearson correlation", fontsize=18)
@@ -881,7 +861,6 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
 def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
-    # n_runs = 5
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
@@ -891,7 +870,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     cmap = "cividis"  # cividis / viridis / inferno
 
     # Signals matrix (patients x features), shared across runs
-    path_signals = os.path.join(config.p_base, "combined_pos_neg_signals_aml.csv")
+    path_signals = config.p_combined_pos_neg_signals
     df_signals = pd.read_csv(path_signals, sep="\t")
 
     # ------------------------------
@@ -899,7 +878,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # ------------------------------
     per_run_lists = []
     for run_id in range(1, n_runs + 1):
-        path_pred = _find_run_file(config.p_base, run_id, chosen_model)
+        path_pred = _find_run_file(config.get("p_generated_files", config.p_base), run_id, chosen_model)
         df_pred = pd.read_csv(path_pred, sep="\t")
         print("All: ", df_pred)
         N = [5]
@@ -950,7 +929,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # 4) Groups & cosmetics
     # ------------------------------
     # Adjust these counts if your cohort sizes differ
-    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
+    group_labels = ["Healthy"] * group_partition1 + ["AML"] * group_partition2
     if len(group_labels) != len(df_top_signals):
         raise ValueError(
             f"Group label length ({len(group_labels)}) doesn't match data rows ({len(df_top_signals)}). "
@@ -958,8 +937,8 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         )
 
     df_top_signals["Group"] = group_labels
-    group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
-    hue_order = ["Day0", "Day8"]
+    group_colors = {"Healthy": "#dd8452", "AML": "#4c72b0"}
+    hue_order = ["Healthy", "AML"]
     row_colors = df_top_signals["Group"].map(group_colors)
 
     data = df_top_signals.drop(columns=["Group"])
@@ -979,8 +958,8 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         if group_colors is None:
             # fallback colors if not provided
             group_colors = {
-                "Day0": "#1f77b4",
-                "Day8": "#ff7f0e",
+                "Healthy": "#1f77b4",
+                "AML": "#ff7f0e",
             }
 
         title_font = 24
@@ -1015,7 +994,9 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
         # Δμ = Day0 − Day8 (order given by hue_order)
         day0, day8 = hue_order
-        group_means_all["DeltaMu"] = group_means_all[day0] - group_means_all[day8]
+        group_means_all["DeltaMu"] = np.abs(
+            group_means_all[day8] - group_means_all[day0]
+        )
 
         # Sort features by Δμ descending
         features_sorted = (
@@ -1139,20 +1120,10 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
         plt.close(ax.figure)
 
-    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
-
-
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-import random
-
 
 def plot_positive_xai_nodes_raw_values(config):
     """
-    Violin plot of top 20 positive CpG features comparing Day0 vs Day8.
+    Violin plot of top 20 positive CpG features comparing Healthy controls vs AML.
     Each half of violin uses group color; means and Δμ are annotated.
     """
     base_path = Path(config.p_plot)
@@ -1161,12 +1132,12 @@ def plot_positive_xai_nodes_raw_values(config):
     x_y_font = 16
     mean_annot_font = 14
 
+    n_edges = config.n_edges
+    n_epo = config.n_epo
+
     # --- Load data ---
-    df_nebit_features = pd.read_csv(
-        base_path / "df_nebit_dnam_features_aml_PNA.csv", sep=","
-    )
-    df_signals = pd.read_csv(base_path / "combined_pos_neg_signals_aml.csv", sep="\t")
-    df_seed_genes = pd.read_csv(base_path / "out_gene_rankings_aml.csv", sep=" ")
+    df_signals = pd.read_csv(config.p_combined_pos_neg_signals, sep="\t")
+    df_seed_genes = pd.read_csv(config.p_out_gene_rankings, sep=" ", header=None)
 
     df_seed_genes.columns = ["names", "associations", "labels"]
     df_seed_genes = df_seed_genes[df_seed_genes["labels"] == 1]
@@ -1179,22 +1150,26 @@ def plot_positive_xai_nodes_raw_values(config):
     # --- Select top 20 features and split into groups ---
     topk_features = toshow
     df = seed_signals.iloc[:, :topk_features].copy()
-    group1 = df.iloc[:group_partition1].assign(Group="Day0")
-    group2 = df.iloc[group_partition2:].assign(Group="Day8")
+    group1 = df.iloc[:group_partition1].assign(Group="Healthy")
+    group2 = df.iloc[group_partition1:].assign(Group="AML")
 
     df_melted = pd.concat([group1, group2], axis=0).melt(
         id_vars="Group", var_name="CpG", value_name="Value"
     )
 
     # --- Colors and ordering ---
-    hue_order = ["Day0", "Day8"]  # legend order: blue, orange
-    group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
+    hue_order = ["Healthy", "AML"]  # legend order: blue, orange
+    group_colors = {"Healthy": "#dd8452", "AML": "#4c72b0"}
 
     df_melted["Group"] = pd.Categorical(
         df_melted["Group"], categories=hue_order, ordered=True
     )
     df_melted["CpG"] = pd.Categorical(
         df_melted["CpG"], categories=list(df.columns), ordered=True
+    )
+    df_melted.to_csv(
+        base_path
+        / f"data_for_violin_top_positive_genes_edges_{n_edges}_links_{n_epo}_epochs_aml.csv"
     )
 
     # --- Plot ---
@@ -1234,7 +1209,7 @@ def plot_positive_xai_nodes_raw_values(config):
 
     # clean duplicate legend
     _, labels = ax.get_legend_handles_labels()
-    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Healthy", "AML"]]
     ax.legend(
         handles[-2:],
         labels[-2:],
@@ -1246,6 +1221,8 @@ def plot_positive_xai_nodes_raw_values(config):
 
     # --- Compute per-feature means ---
     group_means = df_melted.groupby(["CpG", "Group"])["Value"].mean().unstack("Group")
+
+    print(group_means)
 
     # annotate per-group means at markers
     point_lines = [ln for ln in ax.lines if ln.get_marker() == "o"]
@@ -1266,16 +1243,18 @@ def plot_positive_xai_nodes_raw_values(config):
                 bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6),
             )
 
-    # Δμ (Day0 − Day8) above each CpG
+    # Δμ (normal - bc) above each CpG
     ymax_per_cpg = df_melted.groupby("CpG")["Value"].max()
     for i, cpg in enumerate(df.columns):
         if cpg not in group_means.index:
             continue
-        mu_day0 = group_means.loc[cpg].get("Day0", np.nan)
-        mu_day8 = group_means.loc[cpg].get("Day8", np.nan)
-        if np.isnan(mu_day0) or np.isnan(mu_day8):
+        mu_aml = group_means.loc[cpg].get("Healthy", np.nan)
+        mu_normal = group_means.loc[cpg].get("AML", np.nan)
+
+        print(f"{cpg}: normal {mu_normal}, bc {mu_aml}")
+        if np.isnan(mu_aml) or np.isnan(mu_normal):
             continue
-        dmu = mu_day0 - mu_day8
+        dmu = mu_aml - mu_normal
         ytxt = ymax_per_cpg.get(cpg, df_melted["Value"].max()) + 0.02
         ax.text(
             i,
@@ -1297,12 +1276,12 @@ def plot_positive_xai_nodes_raw_values(config):
     ax.tick_params(axis="y", labelsize=x_y_font)
 
     title_main = (
-        "Distribution and mean differences per feature (β-values): Day0 vs Day8"
+        "Distribution and mean differences per feature (β-values): Healthy controls vs AML"
     )
     ax.set_title(f"{title_main}", fontsize=title_font, pad=10)
 
     plt.tight_layout()
-    out_path = base_path / "violin_positive_seeds_day0_day8.pdf"
+    out_path = base_path / "violin_positive_seeds_aml_normal.pdf"
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"[+] Saved: {out_path}")

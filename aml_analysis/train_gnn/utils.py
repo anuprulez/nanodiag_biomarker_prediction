@@ -29,6 +29,8 @@ def detach_from_gpu(tensor):
 def choose_model(config, data, chosen_model, training=False):
     name = chosen_model.lower()
     if name == "pna":
+        if config.get("pna_variant", "original") == "residual":
+            return gnn_network.ResidualPNA(config, data)
         return gnn_network.GPNA(config, data)
     elif name == "gcn":
         return gnn_network.GCN(config)

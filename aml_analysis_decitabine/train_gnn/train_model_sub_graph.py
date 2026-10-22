@@ -1,0 +1,428 @@
+import copy
+import torch
+import math
+import torch.nn.functional as F
+from torch.optim import AdamW
+from torch.optim.lr_scheduler import OneCycleLR
+from torch.nn.utils import clip_grad_norm_
+from torch_geometric.loader import NeighborLoader
+from torch_geometric.data import Data
+from sklearn.model_selection import train_test_split
+from torch_geometric.utils import coalesce, degree
+from sklearn.metrics import f1_score, precision_recall_fscore_support
+
+import joblib
+
+import numpy as np
+import pandas as pd
+
+import gnn_network
+import plot_gnn
+import utils
+
+
+detach = utils.detach_from_gpu
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def create_masks(mapped_node_ids, mask_list):
+    # True where the SERIES VALUE (node id/name) is in the mask list
+    mask = torch.tensor([x in mask_list for x in mapped_node_ids], dtype=torch.bool)
+    return mask
+
+
+def ensure_bool(m):
+    return m if m.dtype == torch.bool else m.bool()
+
+
+def filter_edges(edge_index, allowed_nodes):
+    allowed = allowed_nodes  # set(allowed_nodes.tolist())
+    src, dst = edge_index
+
+    mask = [(u.item() in allowed and v.item() in allowed) for u, v in zip(src, dst)]
+    mask = torch.tensor(mask, dtype=torch.bool, device=edge_index.device)
+    return edge_index[:, mask]
+
+
+def make_neighbor_loaders(data, train_nodes, val_nodes, te_nodes, config):
+    # Keep the big graph on CPU
+    data = data.cpu()
+
+    data.edge_index = coalesce(data.edge_index, num_nodes=data.num_nodes)
+
+    print(
+        f"Intersection between train and val genes: {set(train_nodes).intersection(set(val_nodes))}"
+    )
+    print(
+        f"Intersection between train and test genes: {set(train_nodes).intersection(set(te_nodes))}"
+    )
+    print(
+        f"Intersection between val and test genes: {set(val_nodes).intersection(set(te_nodes))}"
+    )
+    print(
+        f"Tr nodes: {len(train_nodes)}, Te nodes: {len(te_nodes)}, Val nodes: {len(val_nodes)}"
+    )
+
+    train_loader = NeighborLoader(
+        data,
+        input_nodes=ensure_bool(data.train_mask),
+        num_neighbors=config.neighbors_spread,
+        batch_size=config.batch_size,
+        shuffle=True,
+        num_workers=8,
+        pin_memory=True,
+        subgraph_type=config.graph_subtype,
+    )
+
+    val_loader = NeighborLoader(
+        data,
+        input_nodes=ensure_bool(data.val_mask),
+        num_neighbors=config.neighbors_spread,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        subgraph_type=config.graph_subtype,
+    )
+    test_loader = NeighborLoader(
+        data,
+        input_nodes=ensure_bool(data.test_mask),
+        num_neighbors=config.neighbors_spread,
+        batch_size=config.batch_size,
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        subgraph_type=config.graph_subtype,
+    )
+    return train_loader, val_loader, test_loader
+
+
+def train_one_epoch(train_loader, model, optimizer, criterion, scheduler, device):
+    model.train()
+    total_loss, total_correct, total_count = 0.0, 0, 0
+
+    for _, batch in enumerate(train_loader):
+        batch = batch.to(device, non_blocking=True)
+        optimizer.zero_grad(set_to_none=True)
+        out, *_ = model(batch.x, batch.edge_index)
+        seed_n = batch.batch_size  # first seed_n nodes = seeds
+        logits = out[:seed_n]
+        targets = batch.y[:seed_n].long()
+        loss = criterion(logits, targets)
+        loss.backward()
+        # clip_grad_norm_(model.parameters(), max_norm=1.5)
+        optimizer.step()
+        # scheduler.step()
+
+        total_loss += float(loss.detach()) * seed_n
+        total_correct += (logits.argmax(-1) == targets).sum().item()
+        total_count += seed_n
+
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
+    return avg_loss, avg_acc
+
+
+@torch.no_grad()
+def val_evaluate(loader, model, criterion, device):
+    model.eval()
+    total_loss, total_correct, total_count = 0.0, 0, 0
+    used_val_ids = []
+    with torch.no_grad():
+        for batch in loader:
+            batch = batch.to(device, non_blocking=True)
+            seed_n = batch.batch_size
+            used_val_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
+            out, *_ = model(batch.x, batch.edge_index)
+            # evaluating only the seed nodes of this batch
+            logits = out[:seed_n]
+            targets = batch.y[:seed_n].long()
+            loss = criterion(logits, targets)
+
+            total_loss += float(loss.detach()) * seed_n
+            total_correct += (logits.argmax(-1) == targets).sum().item()
+            total_count += seed_n
+
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
+    return avg_loss, avg_acc, used_val_ids
+
+
+@torch.no_grad()
+def test_evaluate(loader, model, criterion, device):
+    model.eval()
+    total_loss, total_correct, total_count = 0.0, 0, 0
+    with torch.no_grad():
+        (
+            pred_labels,
+            true_labels,
+            all_probs,
+            best_class_pred_probs,
+            test_ids,
+            emb_pna4,
+            emb_bn4,
+        ) = ([], [], [], [], [], [], [])
+        for batch in loader:
+            batch = batch.to(device, non_blocking=True)
+            out, out_pna4, out_bn4 = model(batch.x, batch.edge_index)
+            seed_n = batch.batch_size  # evaluating only the seed nodes of this batch
+            test_ids.extend(batch.n_id.cpu().tolist()[:seed_n])
+            logits = out[:seed_n]
+            emb_pna4.extend(detach(out_pna4[:seed_n]))
+            emb_bn4.extend(detach(out_bn4[:seed_n]))
+            batch_prob = F.softmax(logits, dim=1)
+            batch_max_prob = batch_prob.max(dim=1).values
+            targets = batch.y[:seed_n].long()
+            loss = criterion(logits, targets)
+
+            batch_pred_label = logits.argmax(-1)
+            total_loss += float(detach(loss)) * seed_n
+            pred_labels.extend(detach(batch_pred_label))
+            true_labels.extend(detach(targets))
+            all_probs.extend(detach(batch_prob))
+            best_class_pred_probs.extend(detach(batch_max_prob))
+            total_correct += (batch_pred_label == targets).sum().item()
+            total_count += seed_n
+
+    avg_loss = total_loss / total_count
+    avg_acc = total_correct / total_count
+    return (
+        avg_loss,
+        avg_acc,
+        pred_labels,
+        true_labels,
+        all_probs,
+        best_class_pred_probs,
+        test_ids,
+        emb_pna4,
+        emb_bn4,
+    )
+
+
+def train_gnn_model(config, labels, chosen_model):
+    """
+    Create network architecture and assign loss, optimizers ...
+    """
+    n_epo = config.n_epo
+    out_genes = pd.read_csv(config.p_out_genes, sep=" ", header=None)
+    node_ids = out_genes.loc[:, 0].tolist()
+
+    print(f"Used device: {device}")
+
+    data = torch.load(config.p_torch_data, weights_only=False)
+    if hasattr(data, "x"):
+        data.x = data.x.to(torch.float32)
+    deg = degree(
+        data.edge_index[0], num_nodes=data.num_nodes
+    )  # in-degree or out-degree
+    print(f"Mean degree: {deg.mean().item()}")
+    print(f"Max degree: {deg.max().item()}")
+    print(f"Std dev: {deg.std().item()}")
+    print(f"Median degree: {deg.median().item()}")
+    ratio = deg.max().item() / (deg.mean().item() + 1e-9)
+    print(f"Max / Mean ratio: {ratio}")
+    tr_nodes = pd.read_csv(config.p_train_probe_genes, sep=",")
+    te_nodes = pd.read_csv(config.p_test_probe_genes, sep=",")
+    te_node_ids = te_nodes["test_gene_ids"].tolist()
+    tr_node_ids = tr_nodes["tr_gene_ids"].tolist()
+    tr_node_ids = np.array(tr_node_ids)
+    labels = np.array(labels)
+    tr_labels = labels[tr_node_ids]
+
+    print(f"tr_node_ids: {tr_node_ids[-10:]}")
+    print(f"tr_labels: {tr_labels[-10:]}")
+    print(f"tr_labels: {data.y[tr_node_ids[-10:][1]]}")
+    print(f"data.x: {data.x[tr_node_ids[-10:][1]]}")
+
+    tr_loss_epo = list()
+    tr_acc_epo = list()
+    te_loss_epo = list()
+    te_acc_epo = list()
+    val_loss_epo = list()
+    val_acc_epo = list()
+    best_te_acc = -float("inf")
+    best_val_acc = -float("inf")
+    best_state = None
+    best_epoch = -1
+
+    split_tr_node_ids, val_node_ids = train_test_split(
+        tr_node_ids,
+        shuffle=True,
+        test_size=config.test_size,
+        random_state=42,
+        stratify=tr_labels,
+    )
+
+    print(
+        f"Intersection between train and val genes: {set(split_tr_node_ids).intersection(set(val_node_ids))}"
+    )
+    print(
+        f"Intersection between train and test genes: {set(split_tr_node_ids).intersection(set(te_node_ids))}"
+    )
+    print(
+        f"Intersection between val and test genes: {set(val_node_ids).intersection(set(te_node_ids))}"
+    )
+    print(
+        f"Tr nodes: {len(split_tr_node_ids)}, Te nodes: {len(te_node_ids)}, Val nodes: {len(val_node_ids)}"
+    )
+
+    data.train_mask = create_masks(node_ids, split_tr_node_ids)
+    data.val_mask = create_masks(node_ids, val_node_ids)
+    data.test_mask = create_masks(node_ids, te_node_ids)
+
+    print(f"Initialize model: {chosen_model}")
+    model = utils.choose_model(config, data, chosen_model, True)
+    for name, module in model.named_modules():
+        print(f"{name}: {module}")
+    model = model.cuda()
+
+    # loss fn
+    criterion = torch.nn.CrossEntropyLoss()
+
+    base_lr = config.learning_rate
+    weight_decay = config.weight_decay
+    optimizer = AdamW(
+        model.parameters(), lr=base_lr, weight_decay=weight_decay
+    )  # lr=base_lr, weight_decay=weight_decay
+
+    steps_per_epoch = math.ceil(len(split_tr_node_ids) / config.batch_size)
+    total_steps = steps_per_epoch * config.n_epo
+    scheduler = OneCycleLR(
+        optimizer,
+        max_lr=base_lr,
+        total_steps=total_steps,
+        pct_start=0.1,
+        div_factor=10.0,
+        final_div_factor=1e2,
+    )
+
+    print(
+        f"Tr masks: {data.train_mask.sum().item()}, Te masks: {data.test_mask.sum().item()}, Val masks: {data.val_mask.sum().item()}"
+    )
+    print("Plotting UMAP using raw features ...")
+    test_x = data.x[data.test_mask == 1]
+    test_y = data.y[data.test_mask == 1]
+    plot_gnn.plot_features(
+        test_x,
+        test_y,
+        chosen_model,
+        config,
+        f"UMAP of raw features (NeDBIT + DNA Methylation): {chosen_model}",
+        "test_before_GNN",
+    )
+    print("Creating neighbor loaders ...")
+    train_loader, val_loader, test_loader = make_neighbor_loaders(
+        data, split_tr_node_ids, val_node_ids, te_node_ids, config
+    )
+    print("Start training ...")
+    for epoch in range(n_epo):
+        tr_loss, tr_acc = train_one_epoch(
+            train_loader, model, optimizer, criterion, scheduler, device
+        )
+        val_loss, val_acc, used_val_ids = val_evaluate(
+            val_loader, model, criterion, device
+        )
+        print(
+            f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
+            f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
+            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
+        )
+        te_loss, te_acc, *_ = test_evaluate(test_loader, model, criterion, device)
+        print(f"[TEST] loss={te_loss:.4f} acc={te_acc:.4f}")
+        print("-------------------")
+        tr_loss_epo.append(tr_loss)
+        tr_acc_epo.append(tr_acc)
+        val_loss_epo.append(val_loss)
+        val_acc_epo.append(val_acc)
+        te_acc_epo.append(te_acc)
+        te_loss_epo.append(te_loss)
+
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            best_te_acc = te_acc
+            best_state = copy.deepcopy(model.state_dict())
+            best_epoch = epoch + 1
+            print(
+                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}, test accuracy {te_acc:.2f}"
+            )
+            torch.save(model.state_dict(), config.p_torch_model)  # <-- best checkpoint
+
+    print("Plot and report all training epochs")
+
+    plot_gnn.plot_loss_acc(
+        n_epo, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
+    )
+    print(f"Training loss after {n_epo} epochs: {np.mean(tr_loss_epo):.2f}")
+    print(f"Val acc after {n_epo} epochs: {np.mean(val_acc_epo):.2f}")
+
+    ## Restore the best trained model for downstream usages
+    print(
+        f"[Restore] Loaded best model from epoch {best_epoch} (test acc {best_val_acc:.2f})."
+    )
+    if best_state is not None:
+        model.load_state_dict(best_state)
+    # avg_loss, avg_acc, pred_labels, true_labels, all_probs, all_pred_probs
+    (
+        final_test_loss,
+        final_test_acc,
+        pred_labels,
+        true_labels,
+        all_class_pred_probs,
+        best_class_pred_probs,
+        test_ids,
+        embs_pna4,
+        embs_bn4,
+    ) = test_evaluate(test_loader, model, criterion, device)
+
+    # Save predictions, true labels, model
+    torch.save(test_ids, config.p_test_loader_ids)
+    torch.save(true_labels, config.p_true_labels)
+    torch.save(pred_labels, config.p_pred_labels)
+    torch.save(best_class_pred_probs, config.p_best_class_pred_probs)
+    torch.save(all_class_pred_probs, config.p_all_class_pred_probs)
+
+    print(
+        f"Test acc using the best model (stored at {best_epoch}): {final_test_acc:.2f}, {final_test_loss: .2f}"
+    )
+
+    te_f1_macro = f1_score(true_labels, pred_labels, average="macro")
+    te_f1_weighted = f1_score(true_labels, pred_labels, average="weighted")
+    te_f1_micro = f1_score(true_labels, pred_labels, average="micro")
+    te_prec, te_recall, *_ = precision_recall_fscore_support(
+        true_labels, pred_labels, average="weighted"
+    )
+
+    metrics = {
+        "te_f1_macro": te_f1_macro,
+        "te_f1_weighted": te_f1_weighted,
+        "te_f1_micro": te_f1_micro,
+        "te_precision": te_prec,
+        "te_recall": te_recall,
+        "tr_loss": tr_loss_epo,
+        "te_loss": te_loss_epo,
+        "val_loss": val_loss_epo,
+        "tr_acc": tr_acc_epo,
+        "te_acc": te_acc_epo,
+        "val_acc": val_acc_epo,
+    }
+
+    print(f"All metrics: {metrics}")
+    utils.save_accuracy_scores(
+        metrics, f"{config.p_plot}all_metrics_{chosen_model}.json"
+    )
+    print("Plotting metrics and UMAP plots for final embeddings")
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_pna4, true_labels, pred_labels, chosen_model, config, "PNAConv4"
+    )
+    plot_gnn.plot_node_embed(
+        embs_bn4, true_labels, pred_labels, chosen_model, config, "BatchNorm1d"
+    )
+    plot_gnn.plot_confusion_matrix(true_labels, pred_labels, chosen_model, config)
+    # plot_gnn.plot_precision_recall(true_labels, all_class_pred_probs, chosen_model, config)
+    print("Finished.")

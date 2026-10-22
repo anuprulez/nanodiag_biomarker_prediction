@@ -691,6 +691,8 @@ if __name__ == "__main__":
     # Bind model-dependent paths to the scalar model selected for explanation.
     if OmegaConf.is_list(config.model_type):
         config.model_type = str(config.best_trained_model)
+    from model_settings import apply_model_settings
+    config = apply_model_settings(config, str(config.best_trained_model))
     plot_local_path = config.p_plot
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     data = torch.load(config.p_torch_data, weights_only=False)

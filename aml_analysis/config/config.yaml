@@ -25,7 +25,7 @@ class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "L
 dpi: 300
 MAKE_HEATMAP: true
 NORMALIZE_FOR_HEATMAP: true # Per-metric colors; annotations retain original scores
-model_type: ["PNA", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"]
+model_type: ["PNA", "TabPFN", "TabICL", "XGBoost", "CatBoost"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"]
 best_trained_model: "PNA" # Scalar model selected for the separate GNN explanation workflow
 neighbors_spread: [10, 5, 5, 5] # Bounded four-hop sampling for four convolution layers
 explain_neighbors_spread: [-1, 100, 50] #[-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
@@ -108,3 +108,20 @@ graph_signal_transform: beta
 p_sample_metadata: ../data/harmonised/sample_metadata.tsv
 
 p_preprocessing_manifest: ${p_base_files}seed_preprocessing_manifest.json
+
+# Validation-selected improved PNA. Other model families retain their settings.
+model_overrides:
+  PNA:
+    pna_variant: residual
+    pna_layers: 2
+    hidden_dim: 128
+    dropout: 0.3
+    learning_rate: 0.0005
+    weight_decay: 0.005
+    neighbors_spread: [25, 10]
+    class_weight_power: 0.5
+    selection_metric: macro_f1
+    n_epo: 45
+    early_stopping_patience: 10
+    lr_patience: 4
+    p_generated_files: ${p_base}generated_files_pna_improved/

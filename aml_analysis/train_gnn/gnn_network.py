@@ -315,3 +315,41 @@ class GraphTransformer(torch.nn.Module):
         h = F.elu(out_batch_norm)
         h = self.dropout4(h)
         return self.classifier(h), out_pnaconv, out_batch_norm
+
+
+class ResidualPNA(torch.nn.Module):
+    """Shallow PNA with residual updates and a direct node-feature classifier path."""
+
+    def __init__(self, config, dataset):
+        super().__init__()
+        hidden = int(config.hidden_dim)
+        layers = int(config.get('pna_layers', 2))
+        if layers not in (1, 2, 3):
+            raise ValueError('pna_layers must be 1, 2 or 3')
+        self.dropout = float(config.dropout)
+        # edge_index is already bidirectional: count incoming degree once.
+        src, dst = dataset.edge_index
+        mask = dataset.train_mask[src] & dataset.train_mask[dst]
+        deg = degree(dst[mask], num_nodes=dataset.num_nodes, dtype=torch.long)[dataset.train_mask]
+        histogram = torch.bincount(deg, minlength=int(deg.max()) + 1)
+        self.encoder = torch.nn.Sequential(Linear(config.gene_dim, hidden), LayerNorm(hidden), torch.nn.GELU())
+        self.convs = torch.nn.ModuleList([
+            PNAConv(hidden, hidden, ['mean', 'min', 'max', 'std'],
+                    ['identity', 'amplification', 'attenuation'], histogram)
+            for _ in range(layers)])
+        self.norms = torch.nn.ModuleList([LayerNorm(hidden) for _ in range(layers)])
+        # Original features bypass message passing, preserving rare-node signals.
+        self.classifier = torch.nn.Sequential(
+            Linear(config.gene_dim + hidden * (layers + 1), hidden * 2),
+            LayerNorm(hidden * 2), torch.nn.GELU(), Dropout(self.dropout),
+            Linear(hidden * 2, config.num_classes))
+
+    def forward(self, x, edge_index):
+        h = self.encoder(x)
+        states = [h]
+        for conv, norm in zip(self.convs, self.norms):
+            update = F.dropout(F.gelu(conv(h, edge_index)), p=self.dropout, training=self.training)
+            h = norm(h + update)
+            states.append(h)
+        embedding = torch.cat([x] + states, dim=1)
+        return self.classifier(embedding), h, embedding

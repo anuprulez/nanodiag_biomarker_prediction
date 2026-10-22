@@ -3,10 +3,14 @@ import copy
 import os
 from pathlib import Path
 import traceback
+import sys
 
 from omegaconf import OmegaConf
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from seed_inputs import validate_seed_manifest
+from model_settings import apply_model_settings
 
 
 GNN_MODELS = {"pna", "gcn", "graphsage", "gatv2", "graphtransformer"}
@@ -36,8 +40,7 @@ def model_configs(config):
     configs, owners = [], {}
     for name in names:
         name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
-        current = copy.deepcopy(config)
-        current.model_type = name
+        current = apply_model_settings(config, name)
         for field in MODEL_OUTPUTS:
             if field not in current:
                 continue
@@ -63,6 +66,7 @@ def train_one_model(config):
 
 def run_training(config_path="../config/config.yaml"):
     config = OmegaConf.load(config_path)
+    validate_seed_manifest(config)
     configs, is_list = model_configs(config)  # Validate ALL names/paths before writing files.
     results, failures = {}, {}
     for current in configs:

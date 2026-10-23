@@ -714,7 +714,7 @@ def plot_xai_nodes_raw_values(config):
     list_nodes = xai_nodes["test_gene_names"].tolist()
     df_top_signals = df_signals[list_nodes]
 
-    group_labels = ["BC"] * group_partition1 + ["Normal"] * group_partition2
+    group_labels = ["BC"] * int(config.get("n_bc_samples", 50)) + ["Normal"] * int(config.get("n_normal_samples", 30))
     df_top_signals["Group"] = group_labels
     group_colors = {"BC": "darkred", "Normal": "steelblue"}
     row_colors = df_top_signals["Group"].map(group_colors)
@@ -804,45 +804,11 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
     print("df_signals")
     print(df_signals)
-    """seed_nodes = ["cg09242307_SOX5", 
-                  "cg10990959_SOX5",
-                  "cg02147465_ZBTB20",
-                  "cg13697223_GALNTL6", 
-                  "cg06126815_PON2",
-                  "cg09962458_SIPA1L1",
-                  "cg16036046_RIT2"
-                  ]"""
-    """seed_nodes = ["cg26607031_SLC25A33",
-                  "cg18881723_SLAMF1",
-                  "cg22832271_ARID5B", 
-                  "cg04179740_C10orf54",
-                  "cg03388786_LYN",
-                  ]"""
-    """seed_nodes = [
-        "cg00394062_ELL",
-        "cg24206084_SMIM2-AS1",
-        "cg06490548_C9orf156",
-        "cg16652347_PLXNA4",
-        "cg09254210_PRKCH"
-
-    ]"""
-    seed_nodes = [
-        "cg17660211_PCED1B",
-        "cg09821790_SLC7A6",
-        "cg16399365_ZNF238",
-        "cg17705041_PCGF3",
-        "cg18262079_TJP1",
-    ]
-
+    seed_nodes = [name for name in seed_nodes if name in df_signals][:5]
     df_seed = df_signals[seed_nodes]
-    print("Seed signals")
-    print(df_seed)
-    print("Top LP signals")
-    # top_lp = "cg13985132_LOC390595"
-    top_lp = "cg13265740_C6orf115"  # "cg09255157_ARHGEF38" #"cg13265740_C6orf115"
-    df_lp = df_signals[[top_lp]]
-    print(df_lp)
-
+    if df_lp.empty or not seed_nodes:
+        return
+    df_lp = df_lp.iloc[:, :1].copy()
     df_seed = df_seed.apply(pd.to_numeric, errors="coerce")
     df_lp = df_lp.apply(pd.to_numeric, errors="coerce")
 
@@ -963,7 +929,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # 4) Groups & cosmetics
     # ------------------------------
     # Adjust these counts if your cohort sizes differ
-    group_labels = ["BC"] * group_partition1 + ["Normal"] * group_partition2
+    group_labels = ["BC"] * int(config.get("n_bc_samples", 50)) + ["Normal"] * int(config.get("n_normal_samples", 30))
     if len(group_labels) != len(df_top_signals):
         raise ValueError(
             f"Group label length ({len(group_labels)}) doesn't match data rows ({len(df_top_signals)}). "
@@ -1157,7 +1123,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
 def plot_positive_xai_nodes_raw_values(config):
     """
-    Violin plot of top 20 positive CpG features comparing BC vs Normal.
+    Violin plot of top 20 positive CpG features comparing BC patients vs Normal.
     Each half of violin uses group color; means and Δμ are annotated.
     """
     base_path = Path(config.p_plot)
@@ -1170,11 +1136,8 @@ def plot_positive_xai_nodes_raw_values(config):
     n_epo = config.n_epo
 
     # --- Load data ---
-    df_nebit_features = pd.read_csv(
-        base_path / "df_nebit_dnam_features_bc_PNA.csv", sep=","
-    )
-    df_signals = pd.read_csv(base_path / "combined_pos_neg_signals_bc.csv", sep="\t")
-    df_seed_genes = pd.read_csv(base_path / "out_gene_rankings_bc.csv", sep=" ")
+    df_signals = pd.read_csv(config.p_combined_pos_neg_signals, sep="\t")
+    df_seed_genes = pd.read_csv(config.p_out_gene_rankings, sep=" ", header=None)
 
     df_seed_genes.columns = ["names", "associations", "labels"]
     df_seed_genes = df_seed_genes[df_seed_genes["labels"] == 1]
@@ -1187,8 +1150,8 @@ def plot_positive_xai_nodes_raw_values(config):
     # --- Select top 20 features and split into groups ---
     topk_features = toshow
     df = seed_signals.iloc[:, :topk_features].copy()
-    group1 = df.iloc[:group_partition1].assign(Group="BC")
-    group2 = df.iloc[group_partition1:].assign(Group="Normal")
+    group1 = df.iloc[:int(config.get("n_bc_samples", 50))].assign(Group="BC")
+    group2 = df.iloc[int(config.get("n_bc_samples", 50)):].assign(Group="Normal")
 
     df_melted = pd.concat([group1, group2], axis=0).melt(
         id_vars="Group", var_name="CpG", value_name="Value"
@@ -1313,7 +1276,7 @@ def plot_positive_xai_nodes_raw_values(config):
     ax.tick_params(axis="y", labelsize=x_y_font)
 
     title_main = (
-        "Distribution and mean differences per feature (β-values): Normal vs BC"
+        "Distribution and mean differences per feature (β-values): BC patients vs Normal"
     )
     ax.set_title(f"{title_main}", fontsize=title_font, pad=10)
 

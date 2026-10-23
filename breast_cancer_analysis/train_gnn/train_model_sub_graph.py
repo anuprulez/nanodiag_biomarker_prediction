@@ -128,6 +128,7 @@ def val_evaluate(loader, model, criterion, device):
     model.eval()
     total_loss, total_correct, total_count = 0.0, 0, 0
     used_val_ids = []
+    val_targets, val_predictions = [], []
     with torch.no_grad():
         for batch in loader:
             batch = batch.to(device, non_blocking=True)
@@ -137,6 +138,8 @@ def val_evaluate(loader, model, criterion, device):
             # evaluating only the seed nodes of this batch
             logits = out[:seed_n]
             targets = batch.y[:seed_n].long()
+            val_targets.extend(targets.cpu().tolist())
+            val_predictions.extend(logits.argmax(-1).cpu().tolist())
             loss = criterion(logits, targets)
 
             total_loss += float(loss.detach()) * seed_n
@@ -145,7 +148,8 @@ def val_evaluate(loader, model, criterion, device):
 
     avg_loss = total_loss / total_count
     avg_acc = total_correct / total_count
-    return avg_loss, avg_acc, used_val_ids
+    macro_f1 = f1_score(val_targets, val_predictions, labels=np.arange(5), average="macro", zero_division=0)
+    return avg_loss, avg_acc, used_val_ids, float(macro_f1)
 
 
 @torch.no_grad()
@@ -265,7 +269,13 @@ def train_gnn_model(config, labels, chosen_model):
     te_acc_epo = list()
     val_loss_epo = list()
     val_acc_epo = list()
+    selection_metric = str(config.get("checkpoint_selection_metric", "accuracy"))
+    if selection_metric not in ("accuracy", "macro_f1"):
+        raise ValueError("checkpoint_selection_metric must be accuracy or macro_f1")
+    best_selection_score = -float("inf")
     best_val_acc = -float("inf")
+    best_val_macro_f1 = -float("inf")
+    val_macro_f1_epo = []
     best_state = None
     best_epoch = -1
 
@@ -291,13 +301,33 @@ def train_gnn_model(config, labels, chosen_model):
             raise ValueError(f"{split} node file does not match the predefined partition")
 
     print(f"Initialize model: {chosen_model}")
+    settings = {
+        key: config.get(key, default)
+        for key, default in (
+            ("SEED", None), ("hidden_dim", None), ("gnn_layers", 2),
+            ("dropout", None), ("feature_dropout", 0.2),
+            ("embedding_dropout", 0.2), ("weight_decay", None),
+            ("learning_rate", None), ("lr_patience", 1),
+            ("early_stopping_patience", 5), ("neighbors_spread", None),
+        )
+    }
+    print(f"Effective training settings: {settings}", flush=True)
     model = utils.choose_model(config, data, chosen_model, True)
     for name, module in model.named_modules():
         print(f"{name}: {module}")
     model = model.to(device)
 
     # loss fn
-    criterion = torch.nn.CrossEntropyLoss()
+    class_weights = None
+    weight_power = float(config.get("class_weight_power", 1.0))
+    if weight_power:
+        counts = torch.bincount(data.y[data.train_mask], minlength=config.num_classes).float()
+        if (counts == 0).any():
+            raise ValueError("Class weighting requires every class in training")
+        class_weights = (counts.sum() / (config.num_classes * counts)).pow(weight_power)
+        class_weights /= class_weights.mean()
+        class_weights = class_weights.to(device)
+    criterion = torch.nn.CrossEntropyLoss(weight=class_weights)
 
     base_lr = config.learning_rate
     weight_decay = config.weight_decay
@@ -343,10 +373,11 @@ def train_gnn_model(config, labels, chosen_model):
         # changing the random stream used for training or dropout.
         with torch.random.fork_rng(devices=[]):
             torch.random.default_generator.manual_seed(int(config.SEED))
-            val_loss, val_acc, used_val_ids = val_evaluate(
+            val_loss, val_acc, used_val_ids, val_macro_f1 = val_evaluate(
                 val_loader, model, criterion, device
             )
-        scheduler.step(val_acc)
+        selection_score = val_macro_f1 if selection_metric == "macro_f1" else val_acc
+        scheduler.step(selection_score)
         print(
             f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
@@ -357,10 +388,13 @@ def train_gnn_model(config, labels, chosen_model):
         tr_acc_epo.append(tr_acc)
         val_loss_epo.append(val_loss)
         val_acc_epo.append(val_acc)
+        val_macro_f1_epo.append(val_macro_f1)
 
-        if val_acc > best_val_acc:
+        if selection_score > best_selection_score:
+            best_selection_score = selection_score
             epochs_without_improvement = 0
             best_val_acc = val_acc
+            best_val_macro_f1 = val_macro_f1
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
@@ -373,7 +407,7 @@ def train_gnn_model(config, labels, chosen_model):
             epochs_without_improvement += 1
         print(f"Learning rate: {optimizer.param_groups[0]['lr']:.6g}")
         if epochs_without_improvement >= early_stopping_patience:
-            print(f"Early stopping: no validation accuracy improvement for {early_stopping_patience} epochs")
+            print(f"Early stopping: no validation {selection_metric} improvement for {early_stopping_patience} epochs")
             break
 
     completed_epochs = len(tr_loss_epo)
@@ -383,7 +417,8 @@ def train_gnn_model(config, labels, chosen_model):
         completed_epochs, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
     )
     print(f"Mean training loss over {completed_epochs} epochs: {np.mean(tr_loss_epo):.2f}")
-    print(f"Best validation accuracy: {best_val_acc:.4f} at epoch {best_epoch}")
+    print(f"Selected checkpoint: epoch {best_epoch}, validation accuracy={best_val_acc:.4f}, "
+          f"macro_f1={best_val_macro_f1:.4f} (selected by validation {selection_metric})")
 
     ## Restore the best trained model for downstream usages
     print(
@@ -429,6 +464,8 @@ def train_gnn_model(config, labels, chosen_model):
     metrics = {
         "best_epoch": best_epoch,
         "best_val_acc": best_val_acc,
+        "best_val_macro_f1": best_val_macro_f1,
+        "val_macro_f1": val_macro_f1_epo,
         "completed_epochs": completed_epochs,
         "te_f1_macro": te_f1_macro,
         "te_f1_weighted": te_f1_weighted,

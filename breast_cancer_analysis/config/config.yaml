@@ -1,49 +1,104 @@
+# GSE66695: 80 tumors (40 ER+ and 40 ER-) and 40 GEO-labeled normal breast samples.
+# Separate outputs and new feature dimensions; PBMC model overrides are not reused.
 SEED: 32
-n_edges: 9913451 #14251734 #14251734 # 9913451 knn_3000
-# BC: all edges 14251734 with 0.33 correlation and 10000 negatives
-n_epo: 30
-batch_size: 256
+n_edges: 9913451
 num_workers: 0
-grad_clip_norm: 1.5
 num_classes: 5
-gene_dim: 84 # Number of NedBit features + 50 BC + 30 NC
-hidden_dim: 64
-learning_rate: 3e-4
-weight_decay: 1e-3
+n_epo: 100
+gene_dim: 124
+batch_size: 64
+grad_clip_norm: 0.9563551257532924
+hidden_dim: 256
+learning_rate: 0.0016268882355913081
+weight_decay: 0.0018757300558958096
+dropout: 0.2159414126692356
+gnn_layers: 1
+feature_dropout: 0.0
+embedding_dropout: 0.0
+heads: 4
 lr_patience: 2
 early_stopping_patience: 7
-# Node partitions are created before graph and NeDBIT feature computation.
-split_ratios: [0.70, 0.15, 0.15] # train, validation, test
-keep_feature_names: "ring,NetRank,HeatDiff,InfoDiff"
-# All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
+model_overrides: {}
+split_ratios:
+- 0.7
+- 0.15
+- 0.15
+keep_feature_names: ring,NetRank,HeatDiff,InfoDiff
 umap_n_neighbors: 20
 umap_min_dist: 0.8
-umap_metric: "correlation"
-cutoff_pval: 5e-2
-dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
-heads: 4
-class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
+umap_metric: correlation
+cutoff_pval: 0.05
+class_ticks:
+- Positive (P)
+- Likely Positive (LP)
+- Weakly Negative (WN)
+- Likely Negative (LN)
+- Reliable Negative (RN)
 dpi: 300
 MAKE_HEATMAP: true
-NORMALIZE_FOR_HEATMAP: true # Per-metric colors; annotations retain original scores
-model_type: ["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICLv2", "XGBoost", "CatBoost"]
-best_trained_model: "PNA" # Scalar model selected for the separate GNN explanation workflow
-neighbors_spread: [10, 5, 5, 5] # Bounded four-hop sampling for four convolution layers
-explain_neighbors_spread: [-1, 100, 50] #[-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+NORMALIZE_FOR_HEATMAP: true
+model_type:
+- PNA
+- GCN
+- GraphSAGE
+- GATv2
+- GraphTransformer
+- TabPFN
+- TabICL
+- XGBoost
+best_trained_model: PNA
+neighbors_spread:
+- 10
+- 5
+- 5
+- 5
+explain_neighbors_spread:
+- -1
+- 100
+- 50
 explanation_nodes_ratio: 1.0
-neighbour_predictions: [0, 1, 2, 3, 4]
-src_neighbour_predictions: [0, 1, 2, 3, 4] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
-tgt_neighbour_predictions: [0, 1, 2, 3, 4] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+neighbour_predictions:
+- 0
+- 1
+- 2
+- 3
+- 4
+src_neighbour_predictions:
+- 0
+- 1
+- 2
+- 3
+- 4
+tgt_neighbour_predictions:
+- 0
+- 1
+- 2
+- 3
+- 4
 masks_for_seed: 3
-explainer_epochs: 200  # Number of explanation epochs
-graph_subtype: "bidirectional" # directional; induced
+explainer_epochs: 200
+graph_subtype: bidirectional
 show_num_neighbours: 50
-knn_neighbours: 3000
-p_base: ../data_corr_0.33_negative_10000_knn/
-p_base_files: ${p_base}base_files/
-p_generated_files: ${p_base}generated_files/
+knn_neighbours:
+- 3000
+size_negative:
+- 10000
+corr_threshold:
+- 0.33
+nedbit_header: 1
+quantile_1: 0.05
+quantile_2: 0.2
+download_raw_data: false
+download_preprocessed_data: false
+color_palette: tab10
+negative_selection_method: seurat
+correlation_method: pearson
+graph_signal_transform: beta
+p_base: ../data_corr_${corr_threshold}_knn_n_${knn_neighbours}_n_neg_${size_negative}/
+p_base_files: ${p_base}preprocessed/
+p_generated_files: ${p_base}generated/
 p_significant_edges: ${p_base_files}significant_gene_relations.tsv
-p_cross_reactive_probes: ${p_base_files}cross_reactive_probes.csv
+p_cross_reactive_probes: ${p_raw}cross_reactive_probes.csv
 p_significant_edges_with_corr: ${p_base_files}significant_gene_relations_with_corr.tsv
 p_merged_signals: ${p_base_files}merged_signals_bc.csv
 p_seed_features: ${p_base_files}seed_features.csv
@@ -74,33 +129,19 @@ p_test_loader_ids: ${p_generated_files}test_ids_bc_${model_type}.pt
 p_plot: ${p_generated_files}
 p_data: ${p_generated_files}
 p_model: ${p_generated_files}models/
-# Exact pretrained weights shared by main.py and the benchmark scripts.
-tabpfn_model_path: ${p_base_files}pretrained_models/tabpfn-v3-classifier-v3_default.ckpt
-tabicl_model_path: ${p_base_files}pretrained_models/tabicl-classifier-v2-20260212.ckpt
-# Preprocess breast cancer Illumina arrays
-# Input files
-p_arrays: ${p_base_files}GSE237036_matrix_processed.txt # Path to arrays matrix (TSV).
-p_mapper: ${p_base_files}probe_genes.csv # Path to probe-gene mapper (TSV with columns: probeID, UCSC_RefGene_Name).
-p_snp_probes: ${p_base_files}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
-p_platform: ${p_base_files}GPL21145-48548.txt # Path to platform file with columns ID, CHR (CSV).
-p_seeds: ${p_base_files}seed_probes.csv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
-# Parameters
-size_negative: 10000 # Number of negative samples to draw (highly variable probes).
-corr_threshold: 0.33 #0.33 #0.5 # Correlation threshold for gene-gene links
-
-# Parameters for assigning pre-labels
-nedbit_header: 1 # data header 0/1
-quantile_1: 0.05 # quantile threshold 1
-quantile_2: 0.2 # quantile threshold 2
-
-# Preprocessed data path
-download_raw_data: false # true: downloads raw data from Zenodo using the link from 'p_raw_data'
-p_raw_data: https://zenodo.org/records/17191564/files/bc_raw_datasets_to_preprocess.zip?download=1
-
-download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
-p_processed_data: https://zenodo.org/api/records/19050630/files-archive
-# https://zenodo.org/records/17201552/files/bc_preprocessed_to_train_p_val_corrected.zip?download=1 c_0.33_te_10000
-# https://zenodo.org/records/17199872/files/bc_preprocessed_datasets_to_train_c_0.5_te_10000.zip?download=1
-
-color_palette: "tab10" # Color scale for UMAP plots
-
+tabpfn_model_path: ../model/tabpfn-v3-classifier-v3_default.ckpt
+tabicl_model_path: ../model/tabicl-classifier-v2-20260212.ckpt
+p_arrays: ${p_raw}GSE66695_matrix_processed.txt.gz
+p_mapper: ${p_raw}probe_genes.csv
+p_snp_probes: ${p_raw}snp_7998probes.vh20151030.txt
+p_platform: ${p_raw}GPL13534_platform.csv
+# MeinteR GSE66695: 293 DMS+ and 62 DMS-; full provenance in raw/GSE66695/meinter_seed_report.json
+p_seeds: ${p_raw}seed_probes.csv
+p_raw_data: null
+p_processed_data: null
+p_raw: ../raw/
+p_preprocessing_manifest: ${p_base_files}seed_preprocessing_manifest.json
+dataset_id: GSE66695
+p_sample_metadata: ${p_raw}sample_metadata.tsv
+n_bc_samples: 80
+n_normal_samples: 40

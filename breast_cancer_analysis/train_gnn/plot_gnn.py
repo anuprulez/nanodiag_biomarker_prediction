@@ -306,8 +306,10 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
     num_features = data.num_node_features
     # Assign groups
     n_nedbit_features = len(config.keep_feature_names.split(","))
-    n_bc_features = 50
-    n_normal_features = 30
+    n_bc_features = int(config.get("n_bc_samples", 50))
+    n_normal_features = int(config.get("n_normal_samples", 30))
+    if num_features != n_nedbit_features + n_bc_features + n_normal_features:
+        raise ValueError("Feature count differs from configured NeDBIT and cohort sample counts")
     group_ids = np.zeros(num_features, dtype=int)
     group_ids[:n_nedbit_features] = 0  # Group of nedbit features
     group_ids[n_nedbit_features : n_nedbit_features + n_bc_features] = (

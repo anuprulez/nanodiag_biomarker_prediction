@@ -22,36 +22,55 @@ MODELS = ('TabPFN', 'TabICL', 'XGBoost', 'CatBoost')
 TABICL_V2 = 'tabicl-classifier-v2-20260212.ckpt'
 
 
+def default_tabular_device(name, requested=None):
+    """Foundation estimators auto-select GPU; trees retain their CPU default."""
+    if requested is not None:
+        return str(requested)
+    return 'auto' if str(name).lower() in ('tabpfn', 'tabicl', 'tabiclv2') else 'cpu'
+
+
 def make_model(name, depth, args):
+    overrides = dict(getattr(args, 'model_parameters', {}) or {})
     if name == 'XGBoost':
         from xgboost import XGBClassifier
-        return XGBClassifier(n_estimators=args.tree_iterations, max_depth=depth,
-                             learning_rate=.05, reg_lambda=10., subsample=.8,
-                             colsample_bytree=.8, objective='multi:softprob', num_class=5,
-                             tree_method='hist', device='cuda' if args.device == 'cuda' else 'cpu',
-                             eval_metric='mlogloss', early_stopping_rounds=args.patience,
-                             n_jobs=args.threads, random_state=args.seed)
+        params = dict(n_estimators=args.tree_iterations, max_depth=depth,
+                      learning_rate=.05, reg_lambda=10., subsample=.8,
+                      colsample_bytree=.8, objective='multi:softprob', num_class=5,
+                      tree_method='hist', device='cuda' if args.device == 'cuda' else 'cpu',
+                      eval_metric='mlogloss', early_stopping_rounds=args.patience,
+                      n_jobs=args.threads, random_state=args.seed)
+        params.update(overrides)
+        return XGBClassifier(**params)
     if name == 'CatBoost':
         from catboost import CatBoostClassifier
-        return CatBoostClassifier(iterations=args.tree_iterations, depth=depth,
-                                  learning_rate=.05, l2_leaf_reg=10., loss_function='MultiClass',
-                                  eval_metric='MultiClass', random_seed=args.seed,
-                                  task_type='GPU' if args.device == 'cuda' else 'CPU',
-                                  thread_count=args.threads, allow_writing_files=False, verbose=False)
+        params = dict(iterations=args.tree_iterations, depth=depth,
+                      learning_rate=.05, l2_leaf_reg=10., loss_function='MultiClass',
+                      eval_metric='MultiClass', random_seed=args.seed,
+                      task_type='GPU' if args.device == 'cuda' else 'CPU',
+                      thread_count=args.threads,
+                      allow_writing_files=False, verbose=False)
+        if 'bagging_temperature' in overrides:
+            params['bootstrap_type'] = 'Bayesian'
+        params.update(overrides)
+        return CatBoostClassifier(**params)
     if name == 'TabPFN':
         from tabpfn import TabPFNClassifier
         checkpoint = ensure_checkpoint('TabPFN', args.tabpfn_model_path)
-        return TabPFNClassifier(n_estimators=args.foundation_estimators, device=args.device,
-                                random_state=args.seed, model_path=str(checkpoint))
+        params = dict(n_estimators=args.foundation_estimators, device=args.device,
+                      random_state=args.seed, model_path=str(checkpoint))
+        params.update(overrides)
+        return TabPFNClassifier(**params)
     if name == 'TabICL':
         from tabicl import TabICLClassifier
         parameters = inspect.signature(TabICLClassifier).parameters
         if 'checkpoint_version' not in parameters:
             raise RuntimeError('Installed tabicl does not support explicit v2 checkpoints; install tabicl>=2.0')
         checkpoint = ensure_checkpoint('TabICL', args.tabicl_model_path)
-        return TabICLClassifier(n_estimators=args.foundation_estimators, device=None if args.device == 'auto' else args.device,
-                                random_state=args.seed, model_path=str(checkpoint),
-                                checkpoint_version=TABICL_V2, n_jobs=args.threads)
+        params = dict(n_estimators=args.foundation_estimators, device=None if args.device == 'auto' else args.device,
+                      random_state=args.seed, model_path=str(checkpoint),
+                      checkpoint_version=TABICL_V2, n_jobs=args.threads)
+        params.update(overrides)
+        return TabICLClassifier(**params)
     raise ValueError(name)
 
 

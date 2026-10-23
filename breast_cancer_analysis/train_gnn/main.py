@@ -3,10 +3,15 @@ import copy
 import os
 from pathlib import Path
 import traceback
+import sys
 
 from omegaconf import OmegaConf
 
 HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from seed_inputs import validate_seed_manifest
+from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
+from model_settings import apply_model_settings
 
 
 GNN_MODELS = {"pna", "gcn", "graphsage", "gatv2", "graphtransformer"}
@@ -36,8 +41,7 @@ def model_configs(config):
     configs, owners = [], {}
     for name in names:
         name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
-        current = copy.deepcopy(config)
-        current.model_type = name
+        current = apply_model_settings(config, name)
         for field in MODEL_OUTPUTS:
             if field not in current:
                 continue
@@ -61,8 +65,14 @@ def train_one_model(config):
     return train_model_sub_graph.train_gnn_model(config, labels, model_type)
 
 
-def run_training(config_path="../config/config.yaml"):
-    config = OmegaConf.load(config_path)
+def run_training(config_path="../config/config.yaml", args=None):
+    configs = preprocessing_configs(load_preprocessing_config(config_path, args))
+    results = [run_training_config(config) for config in configs]
+    return results[0] if len(results) == 1 else results
+
+
+def run_training_config(config):
+    validate_seed_manifest(config)
     configs, is_list = model_configs(config)  # Validate ALL names/paths before writing files.
     results, failures = {}, {}
     for current in configs:
@@ -107,8 +117,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
+    add_parameter_arguments(parser)
     args = parser.parse_args()
     config_path = args.config.resolve()
     # Existing configs express data/model paths relative to train_gnn.
     os.chdir(HERE)
-    run_training(config_path)
+    run_training(config_path, args)

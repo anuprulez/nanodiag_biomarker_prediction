@@ -9,7 +9,7 @@ import torch
 from sklearn.metrics import log_loss, precision_recall_fscore_support
 
 from benchmark_common import Dataset, scores, versions, write_json
-from benchmark_tabular import make_model, fit_model, predict, TABICL_V2
+from benchmark_tabular import make_model, fit_model, predict, TABICL_V2, default_tabular_device
 from pretrained_checkpoints import CHECKPOINTS, file_digest
 
 TABULAR_MODELS = {
@@ -18,11 +18,9 @@ TABULAR_MODELS = {
 }
 
 
-def train_tabular_model(config):
+def load_training_dataset(config):
     import preprocess_data
 
-    name = TABULAR_MODELS[str(config.model_type).lower()]
-    started = time.perf_counter()
     # Use the same name-aligned raw inputs as GNN preprocessing, without building
     # or sampling millions of graph edges for a model that does not consume them.
     features, labels = preprocess_data.merge_features(config)
@@ -51,6 +49,17 @@ def train_tabular_model(config):
     train, val, test = [dataset.mask(s) for s in ('train', 'val', 'test')]
     if not all(mask.any() for mask in (train, val, test)) or set(y[train]) != set(range(5)):
         raise ValueError('Need nonempty partitions and all five classes in training')
+    return dataset
+
+
+def train_tabular_model(config):
+    name = TABULAR_MODELS[str(config.model_type).lower()]
+    started = time.perf_counter()
+    dataset = load_training_dataset(config)
+    x, y = dataset.x, dataset.y
+    names = dataset.frame['name'].to_numpy()
+    ned = dataset.ned
+    train, val, test = [dataset.mask(s) for s in ('train', 'val', 'test')]
     variant = config.get('tabular_preprocessing', 'original')
     x, scaler = dataset.features(variant)
     # Export the same split tables and normalized features as graph training.
@@ -65,7 +74,8 @@ def train_tabular_model(config):
     # Defaults are estimator-specific. GNN learning rate, hops, heads, width and
     # epoch settings do not need changing when selecting a tabular estimator.
     options = SimpleNamespace(
-        seed=int(config.SEED), device=config.get('tabular_device', 'auto'),
+        model_parameters=dict(config.get("estimator_params", {})),
+        seed=int(config.SEED), device=default_tabular_device(name, config.get('tabular_device')),
         threads=int(config.get('tabular_threads', 4)),
         tree_iterations=int(config.get('tabular_iterations', 500)),
         patience=int(config.get('tabular_patience', 30)),
@@ -90,7 +100,7 @@ def train_tabular_model(config):
     model_path = Path(config.p_torch_model).with_suffix('.joblib')
     model_path.parent.mkdir(parents=True, exist_ok=True)
     artifact = dict(model=model, scaler=scaler, variant=variant, model_type=name,
-                    feature_columns=list(features.columns), nedbit_columns=ned,
+                    feature_columns=dataset.columns, nedbit_columns=ned,
                     versions=versions(), seed=options.seed,
                     tabicl_checkpoint=TABICL_V2 if name == 'TabICL' else None,
                     checkpoint_path=str(checkpoint) if checkpoint is not None else None,

@@ -1,16 +1,148 @@
-SEED: 32
+SEED: 32 # Reproducible negative ranking and train/validation/test CpG splits
 n_edges: 9913451 #14251734 #14251734 # 9913451 knn_3000
-n_epo: 100
-batch_size: 256
 num_workers: 0
-grad_clip_norm: 1.5
 num_classes: 5
+n_epo: 100
 gene_dim: 530 # Four NeDBIT features + 464 controls + 62 AML samples
-hidden_dim: 128
-learning_rate: 0.0003
-weight_decay: 0.01
+# Model hyperparameters
+batch_size: 64 #256
+grad_clip_norm: 0.9563551257532924 #1.5
+hidden_dim: 256 #128
+learning_rate: 0.0016268882355913081 #0.0003
+weight_decay: 0.0018757300558958096 #0.01
+dropout: 0.2159414126692356 #0.9
+gnn_layers: 1
+feature_dropout: 0.0 # Disable additional input regularization
+embedding_dropout: 0.0 # Disable additional embedding regularization
+heads: 4
 lr_patience: 2
 early_stopping_patience: 7
+# Per-model training settings; estimator_params holds tabular constructor options.
+# Overrides apply only to the selected model family.
+model_overrides:
+  PNA:
+    batch_size: 128
+    grad_clip_norm: 1.559559220306637
+    hidden_dim: 256
+    learning_rate: 0.0003187166581856164
+    weight_decay: 9.780526505927993e-05
+    dropout: 0.6551147851851575
+    gnn_layers: 3
+    class_weight_power: 0.0
+    feature_dropout: 0.0013856960889734316
+    embedding_dropout: 0.13713590084405378
+    neighbors_spread:
+    - 10
+    - 5
+    - 5
+    n_epo: 100
+    lr_patience: 2
+    early_stopping_patience: 7
+    checkpoint_selection_metric: macro_f1
+  GCN:
+    batch_size: 128
+    grad_clip_norm: 1.559559220306637
+    hidden_dim: 256
+    learning_rate: 0.0003187166581856164
+    weight_decay: 9.780526505927993e-05
+    dropout: 0.6551147851851575
+    gnn_layers: 3
+    feature_dropout: 0.0013856960889734316
+    embedding_dropout: 0.13713590084405378
+    class_weight_power: 1.0
+    neighbors_spread:
+    - 10
+    - 5
+    - 5
+    n_epo: 100
+    lr_patience: 2
+    early_stopping_patience: 7
+    checkpoint_selection_metric: macro_f1
+  XGBoost:
+    estimator_params:
+      n_estimators: 1800
+      max_depth: 3
+      learning_rate: 0.010767633559022497
+      min_child_weight: 11.953509420864554
+      subsample: 0.6603690282371065
+      colsample_bytree: 0.5270912534190115
+      gamma: 1.952142153759387
+      reg_alpha: 1.1867015843204665e-07
+      reg_lambda: 4.855286719798405
+      max_bin: 256
+  TabPFN:
+    estimator_params:
+      n_estimators: 4
+      softmax_temperature: 0.5565193420140864
+      balance_probabilities: false
+      average_before_softmax: false
+  GATv2:
+    batch_size: 512
+    grad_clip_norm: 2.7267140901820817
+    hidden_dim: 128
+    learning_rate: 0.0006161129090006808
+    weight_decay: 2.8768728917867453e-06
+    dropout: 0.31066761897482187
+    gnn_layers: 2
+    heads: 4
+    neighbors_spread:
+    - 10
+    - 5
+    n_epo: 100
+    lr_patience: 2
+    early_stopping_patience: 7
+    checkpoint_selection_metric: macro_f1
+    feature_dropout: 0.00998655188310933
+    embedding_dropout: 0.1768203693904547
+    class_weight_power: 1.0
+  GraphSAGE:
+    batch_size: 256
+    grad_clip_norm: 1.0858545401387742
+    hidden_dim: 64
+    learning_rate: 0.001720431153463703
+    weight_decay: 0.08026401564012696
+    dropout: 0.676278531811392
+    gnn_layers: 3
+    neighbors_spread:
+    - 10
+    - 5
+    - 5
+    n_epo: 100
+    lr_patience: 2
+    early_stopping_patience: 7
+    checkpoint_selection_metric: macro_f1
+    feature_dropout: 0.0008847714342853155
+    embedding_dropout: 0.13975087666532565
+    class_weight_power: 1.0
+  GraphTransformer:
+    batch_size: 256
+    grad_clip_norm: 1.1124608986271938
+    hidden_dim: 256
+    learning_rate: 0.00741034909950563
+    weight_decay: 0.045208354395425344
+    dropout: 0.2565615881099208
+    gnn_layers: 3
+    heads: 2
+    neighbors_spread:
+    - 10
+    - 5
+    - 5
+    n_epo: 100
+    lr_patience: 2
+    early_stopping_patience: 7
+    checkpoint_selection_metric: macro_f1
+    feature_dropout: 0.002582163618980249
+    embedding_dropout: 0.2416541926125973
+    class_weight_power: 1.0
+  TabICL:
+    estimator_params:
+      n_estimators: 8
+      softmax_temperature: 0.9940318663019178
+      outlier_threshold: 5.144728176328597
+      feat_shuffle_method: random
+      class_shuffle_method: shift
+      average_logits: true
+
 # Node partitions are created before graph and NeDBIT feature computation.
 split_ratios: [0.70, 0.15, 0.15] # train, validation, test
 keep_feature_names: "ring,NetRank,HeatDiff,InfoDiff"
@@ -19,16 +151,11 @@ umap_n_neighbors: 20
 umap_min_dist: 0.8
 umap_metric: "correlation"
 cutoff_pval: 5e-2
-dropout: 0.9
-gnn_layers: 2
-feature_dropout: 0.0 # Disable additional input regularization
-embedding_dropout: 0.0 # Disable additional embedding regularization
-heads: 4
 class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
 dpi: 300
 MAKE_HEATMAP: true
 NORMALIZE_FOR_HEATMAP: true # Per-metric colors; annotations retain original scores
-model_type: ["PNA"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICL", "XGBoost", "CatBoost"]
+model_type: ["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICL", "XGBoost"] #["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "XGBoost"]
 best_trained_model: "PNA" # Scalar model selected for the separate GNN explanation workflow
 neighbors_spread: [10, 5, 5, 5] #[25, 10] # Two residual message-passing layers for each GNN
 explain_neighbors_spread: [-1, 100, 50] #[-1, 100, 50] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
@@ -88,9 +215,9 @@ p_platform: ${p_raw}GPL13534_probe_annotation.tsv
 p_seeds: ${p_raw}aml_top200_cpg_gene_delta_beta.tsv
 # Preprocessing Parameters
 # Lists generate every corr / KNN / negative-count combination. Scalars run once.
-knn_neighbours: [500, 1500, 3000, 4500] #[500, 1500, 3000, 4500]
-size_negative: [5000, 10000, 15000] #[5000, 10000, 15000] # Number of negative samples to draw per run.
-corr_threshold: [0.2, 0.33, 0.5, 0.7] #[0.2, 0.33, 0.5, 0.7] # Correlation thresholds for gene-gene links
+knn_neighbours: [3000] #[500, 1500, 3000, 4500]
+size_negative: [10000] #[5000, 10000, 15000] # Number of negative samples to draw per run.
+corr_threshold: [0.33] #[0.2, 0.33, 0.5, 0.7] # Correlation thresholds for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1

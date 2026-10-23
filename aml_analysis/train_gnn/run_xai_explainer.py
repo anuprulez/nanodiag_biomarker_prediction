@@ -1,3 +1,11 @@
+"""Explain the selected GNN for each configured AML preprocessing combination."""
+import argparse
+import gc
+import os
+from pathlib import Path
+import random
+import sys
+
 import pandas as pd
 import numpy as np
 import torch
@@ -13,6 +21,14 @@ import gnn_network
 import plot_gnn
 import utils
 
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
+from model_settings import apply_model_settings
+from seed_inputs import validate_seed_manifest
+
+GNN_MODELS = {"pna", "gcn", "graphsage", "gatv2", "graphtransformer"}
+
 
 class LogitsOnly(nn.Module):
     def __init__(self, base):
@@ -27,10 +43,10 @@ class LogitsOnly(nn.Module):
         return out
 
 
-def load_model(model_path, data, chosen_model):
+def load_model(model_path, data, chosen_model, config):
     device = "cpu"
     model = utils.choose_model(config, data, chosen_model, False)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     return model
 
 
@@ -59,6 +75,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     """if xai_node not in nodes_with_idxs:
         raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")"""
 
+    if xai_node not in nodes_with_idxs:
+        raise ValueError(f"Node {xai_node} is absent or its label is excluded by neighbour_predictions")
     idx_global = int(nodes_with_idxs[xai_node])
 
     print(f"idx_global: {idx_global}")
@@ -70,8 +88,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         input_nodes=torch.tensor([idx_global], dtype=torch.long),
         batch_size=1,
         shuffle=False,
-        num_workers=8,
-        pin_memory=True,
+        num_workers=int(config.get("num_workers", 0)),
+        pin_memory=torch.cuda.is_available(),
         subgraph_type=config.graph_subtype,
     )
 
@@ -184,7 +202,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     print("Drawing neighbourhood with global G")
     plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config)
     plot_gnn.plot_feature_importance(
-        data, node_mask, mean_node_mask, xai_node, chosen_model, config
+        dataset, node_mask, mean_node_mask, xai_node, chosen_model, config
     )
     return s_rankings_draw
 
@@ -686,23 +704,72 @@ def get_node_names_links(n_nodes, xai_node, config):
     print(df_xai_node_links_plotted_node)
 
 
-if __name__ == "__main__":
-    config = OmegaConf.load("../config/config.yaml")
-    # Bind model-dependent paths to the scalar model selected for explanation.
-    if OmegaConf.is_list(config.model_type):
-        config.model_type = str(config.best_trained_model)
-    from model_settings import apply_model_settings
-    config = apply_model_settings(config, str(config.best_trained_model))
-    plot_local_path = config.p_plot
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = torch.load(config.p_torch_data, weights_only=False)
-    model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 8140 # 5389 #8335 #5619 #1867
+def resolve_explanation_node(data, config, node_id=None, node_name=None):
+    """Resolve a CpG-gene name separately in each dataset's node-ID table."""
+    if node_name is not None:
+        nodes = pd.read_csv(config.p_out_genes, sep=r"\s+", header=None)
+        matches = nodes.loc[nodes[1] == node_name, 0]
+        if len(matches) != 1:
+            raise ValueError(f"Expected one node named {node_name!r} in {config.p_base}; found {len(matches)}")
+        node_id = int(matches.iloc[0])
+    elif node_id is None:
+        node_id = int(config.get("xai_node_id", 8140))
+    if not 0 <= node_id < data.num_nodes:
+        raise ValueError(f"Node ID {node_id} is outside [0, {data.num_nodes}) for {config.p_base}; "
+                         "use --node-id or --node-name")
+    return node_id
+
+
+def explain_configuration(config, node_id=None, node_name=None):
+    validate_seed_manifest(config)
+    chosen_model = str(config.model_type)
+    seed = int(config.SEED)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    data = torch.load(config.p_torch_data, map_location="cpu", weights_only=False)
+    node_i = resolve_explanation_node(data, config, node_id, node_name)
+    model = load_model(config.p_torch_model, data, chosen_model, config)
     collect_pred_labels(config)
-    print(f"Creating graph with all nodes ...")
-    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
-    # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(
-        model, data, node_i, G, config.best_trained_model, config
-    )
-    get_node_names_links(p_nodes, node_i, config)
+    print("Creating graph with all nodes ...", flush=True)
+    graph = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    plotted_nodes = explain_candiate_gene(model, data, node_i, graph, chosen_model, config)
+    get_node_names_links(plotted_nodes, node_i, config)
+    return plotted_nodes
+
+
+def run_explanations(config_path=None, args=None, node_id=None, node_name=None):
+    config_path = Path(config_path or HERE.parent / "config/config.yaml").resolve()
+    configs = preprocessing_configs(load_preprocessing_config(config_path, args))
+    for index, config in enumerate(configs, 1):
+        chosen_model = str(config.best_trained_model)
+        if chosen_model.lower() not in GNN_MODELS:
+            raise ValueError("GNNExplainer requires best_trained_model to be PNA, GCN, "
+                             "GraphSAGE, GATv2 or GraphTransformer")
+        current = apply_model_settings(config, chosen_model)
+        print(f"Explaining {index}/{len(configs)}: {current.p_base} ({chosen_model})", flush=True)
+        try:
+            explain_configuration(current, node_id=node_id, node_name=node_name)
+        finally:
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
+    add_parameter_arguments(parser)
+    nodes = parser.add_mutually_exclusive_group()
+    nodes.add_argument("--node-id", type=int, help="Graph node ID (default: config xai_node_id or 8140)")
+    nodes.add_argument("--node-name", help="CpG-gene name; resolved independently in every dataset")
+    args = parser.parse_args()
+    config_path = args.config.resolve()
+    os.chdir(HERE)
+    run_explanations(config_path, args, args.node_id, args.node_name)
+
+
+if __name__ == "__main__":
+    main()

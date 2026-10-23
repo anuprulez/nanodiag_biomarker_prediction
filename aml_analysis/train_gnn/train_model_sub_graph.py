@@ -269,6 +269,10 @@ def train_gnn_model(config, labels, chosen_model):
     te_acc_epo = list()
     val_loss_epo = list()
     val_acc_epo = list()
+    selection_metric = str(config.get("checkpoint_selection_metric", "accuracy"))
+    if selection_metric not in ("accuracy", "macro_f1"):
+        raise ValueError("checkpoint_selection_metric must be accuracy or macro_f1")
+    best_selection_score = -float("inf")
     best_val_acc = -float("inf")
     best_val_macro_f1 = -float("inf")
     val_macro_f1_epo = []
@@ -372,7 +376,8 @@ def train_gnn_model(config, labels, chosen_model):
             val_loss, val_acc, used_val_ids, val_macro_f1 = val_evaluate(
                 val_loader, model, criterion, device
             )
-        scheduler.step(val_acc)
+        selection_score = val_macro_f1 if selection_metric == "macro_f1" else val_acc
+        scheduler.step(selection_score)
         print(
             f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
@@ -385,7 +390,8 @@ def train_gnn_model(config, labels, chosen_model):
         val_acc_epo.append(val_acc)
         val_macro_f1_epo.append(val_macro_f1)
 
-        if val_acc > best_val_acc:
+        if selection_score > best_selection_score:
+            best_selection_score = selection_score
             epochs_without_improvement = 0
             best_val_acc = val_acc
             best_val_macro_f1 = val_macro_f1
@@ -401,7 +407,7 @@ def train_gnn_model(config, labels, chosen_model):
             epochs_without_improvement += 1
         print(f"Learning rate: {optimizer.param_groups[0]['lr']:.6g}")
         if epochs_without_improvement >= early_stopping_patience:
-            print(f"Early stopping: no validation accuracy improvement for {early_stopping_patience} epochs")
+            print(f"Early stopping: no validation {selection_metric} improvement for {early_stopping_patience} epochs")
             break
 
     completed_epochs = len(tr_loss_epo)
@@ -412,7 +418,7 @@ def train_gnn_model(config, labels, chosen_model):
     )
     print(f"Mean training loss over {completed_epochs} epochs: {np.mean(tr_loss_epo):.2f}")
     print(f"Selected checkpoint: epoch {best_epoch}, validation accuracy={best_val_acc:.4f}, "
-          f"macro_f1={best_val_macro_f1:.4f} (selected by validation accuracy)")
+          f"macro_f1={best_val_macro_f1:.4f} (selected by validation {selection_metric})")
 
     ## Restore the best trained model for downstream usages
     print(

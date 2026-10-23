@@ -40,12 +40,12 @@ masks_for_seed: 3
 explainer_epochs: 200  # Number of explanation epochs
 graph_subtype: "bidirectional" # directional; induced
 show_num_neighbours: 50
-knn_neighbours: 3000
-p_base: ../data_corr_0.33_negative_10000_knn/
-p_base_files: ${p_base}base_files/
-p_generated_files: ${p_base}generated_files/
+p_base: ../data_corr_${corr_threshold}_knn_n_${knn_neighbours}_n_neg_${size_negative}/
+p_raw: ../raw/
+p_base_files: ${p_base}preprocessed/
+p_generated_files: ${p_base}generated/
 p_significant_edges: ${p_base_files}significant_gene_relations.tsv
-p_cross_reactive_probes: ${p_base_files}cross_reactive_probes.csv
+p_cross_reactive_probes: ${p_raw}cross_reactive_probes.csv
 p_significant_edges_with_corr: ${p_base_files}significant_gene_relations_with_corr.tsv
 p_merged_signals: ${p_base_files}merged_signals_aml.csv
 p_seed_features: ${p_base_files}seed_features.csv
@@ -81,14 +81,16 @@ tabpfn_model_path: ../../breast_cancer_analysis/data_corr_0.33_negative_10000_kn
 tabicl_model_path: ../../breast_cancer_analysis/data_corr_0.33_negative_10000_knn/base_files/pretrained_models/tabicl-classifier-v2-20260212.ckpt
 # Preprocess AML Illumina arrays
 # Input files
-p_arrays: ../data/harmonised/combined_beta_cpg_gene.tsv.gz
-p_mapper: ../data/harmonised/cpg_gene_mapping.tsv
-p_snp_probes: ${p_base_files}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
-p_platform: ../data/GPL13534_probe_annotation.tsv
-p_seeds: /data/aml_top200_cpg_gene_delta_beta.tsv
-# Parameters
-size_negative: 10000 # Number of negative samples to draw (highly variable probes).
-corr_threshold: 0.33 #0.33 #0.5 # Correlation threshold for gene-gene links
+p_arrays: ${p_raw}harmonised/combined_beta_cpg_gene.tsv.gz
+p_mapper: ${p_raw}harmonised/cpg_gene_mapping.tsv
+p_snp_probes: ${p_raw}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
+p_platform: ${p_raw}GPL13534_probe_annotation.tsv
+p_seeds: ${p_raw}aml_top200_cpg_gene_delta_beta.tsv
+# Preprocessing Parameters
+# Lists generate every corr / KNN / negative-count combination. Scalars run once.
+knn_neighbours: [500, 1500, 3000, 4500] #[500, 1500, 3000, 4500]
+size_negative: [5000, 10000, 15000] #[5000, 10000, 15000] # Number of negative samples to draw per run.
+corr_threshold: [0.2, 0.33, 0.5, 0.7] #[0.2, 0.33, 0.5, 0.7] # Correlation thresholds for gene-gene links
 
 # Parameters for assigning pre-labels
 nedbit_header: 1 # data header 0/1
@@ -108,6 +110,6 @@ color_palette: "tab10" # Color scale for UMAP plots
 negative_selection_method: seurat
 correlation_method: pearson
 graph_signal_transform: beta
-p_sample_metadata: ../data/harmonised/sample_metadata.tsv
+p_sample_metadata: ${p_raw}harmonised/sample_metadata.tsv
 
 p_preprocessing_manifest: ${p_base_files}seed_preprocessing_manifest.json

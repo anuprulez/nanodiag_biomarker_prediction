@@ -271,10 +271,6 @@ def train_gnn_model(config, labels, chosen_model):
     val_acc_epo = list()
     best_val_acc = -float("inf")
     best_val_macro_f1 = -float("inf")
-    best_selection_key = (-float("inf"), -float("inf"))
-    selection_metric = str(config.get("selection_metric", "accuracy"))
-    if selection_metric not in ("accuracy", "macro_f1"):
-        raise ValueError("selection_metric must be accuracy or macro_f1")
     val_macro_f1_epo = []
     best_state = None
     best_epoch = -1
@@ -301,6 +297,17 @@ def train_gnn_model(config, labels, chosen_model):
             raise ValueError(f"{split} node file does not match the predefined partition")
 
     print(f"Initialize model: {chosen_model}")
+    settings = {
+        key: config.get(key, default)
+        for key, default in (
+            ("SEED", None), ("hidden_dim", None), ("gnn_layers", 2),
+            ("dropout", None), ("feature_dropout", 0.2),
+            ("embedding_dropout", 0.2), ("weight_decay", None),
+            ("learning_rate", None), ("lr_patience", 1),
+            ("early_stopping_patience", 5), ("neighbors_spread", None),
+        )
+    }
+    print(f"Effective training settings: {settings}", flush=True)
     model = utils.choose_model(config, data, chosen_model, True)
     for name, module in model.named_modules():
         print(f"{name}: {module}")
@@ -308,7 +315,7 @@ def train_gnn_model(config, labels, chosen_model):
 
     # loss fn
     class_weights = None
-    weight_power = float(config.get("class_weight_power", 0.0))
+    weight_power = float(config.get("class_weight_power", 1.0))
     if weight_power:
         counts = torch.bincount(data.y[data.train_mask], minlength=config.num_classes).float()
         if (counts == 0).any():
@@ -365,13 +372,11 @@ def train_gnn_model(config, labels, chosen_model):
             val_loss, val_acc, used_val_ids, val_macro_f1 = val_evaluate(
                 val_loader, model, criterion, device
             )
-        selection_score = val_macro_f1 if selection_metric == "macro_f1" else val_acc
-        selection_key = (selection_score, val_acc if selection_metric == "macro_f1" else -val_loss)
-        scheduler.step(selection_score)
+        scheduler.step(val_acc)
         print(
             f"[Epoch {epoch+1:03d} / {n_epo:03d}] "
             f"train_loss={tr_loss:.4f} train_acc={tr_acc:.4f} | "
-            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f} val_macro_f1={val_macro_f1:.4f}"
+            f"val_loss={val_loss:.4f} val_acc={val_acc:.4f}"
         )
         print("-------------------")
         tr_loss_epo.append(tr_loss)
@@ -380,15 +385,14 @@ def train_gnn_model(config, labels, chosen_model):
         val_acc_epo.append(val_acc)
         val_macro_f1_epo.append(val_macro_f1)
 
-        if selection_key > best_selection_key:
-            best_selection_key = selection_key
-            best_val_macro_f1 = val_macro_f1
+        if val_acc > best_val_acc:
             epochs_without_improvement = 0
             best_val_acc = val_acc
+            best_val_macro_f1 = val_macro_f1
             best_state = copy.deepcopy(model.state_dict())
             best_epoch = epoch + 1
             print(
-                f"Saving epoch {best_epoch}: validation {selection_metric}={selection_score:.4f}"
+                f"Saving the model state, best epoch was {best_epoch} with val acc {val_acc:.2f}"
             )
             Path(config.p_torch_model).parent.mkdir(parents=True, exist_ok=True)
             torch.save(model.state_dict(), config.p_torch_model)  # best validation checkpoint
@@ -397,7 +401,7 @@ def train_gnn_model(config, labels, chosen_model):
             epochs_without_improvement += 1
         print(f"Learning rate: {optimizer.param_groups[0]['lr']:.6g}")
         if epochs_without_improvement >= early_stopping_patience:
-            print(f"Early stopping: no validation {selection_metric} improvement for {early_stopping_patience} epochs")
+            print(f"Early stopping: no validation accuracy improvement for {early_stopping_patience} epochs")
             break
 
     completed_epochs = len(tr_loss_epo)
@@ -407,7 +411,8 @@ def train_gnn_model(config, labels, chosen_model):
         completed_epochs, tr_loss_epo, val_loss_epo, tr_acc_epo, val_acc_epo, chosen_model, config
     )
     print(f"Mean training loss over {completed_epochs} epochs: {np.mean(tr_loss_epo):.2f}")
-    print(f"Best validation accuracy: {best_val_acc:.4f} at epoch {best_epoch}")
+    print(f"Selected checkpoint: epoch {best_epoch}, validation accuracy={best_val_acc:.4f}, "
+          f"macro_f1={best_val_macro_f1:.4f} (selected by validation accuracy)")
 
     ## Restore the best trained model for downstream usages
     print(
@@ -454,7 +459,6 @@ def train_gnn_model(config, labels, chosen_model):
         "best_epoch": best_epoch,
         "best_val_acc": best_val_acc,
         "best_val_macro_f1": best_val_macro_f1,
-        "selection_metric": selection_metric,
         "val_macro_f1": val_macro_f1_epo,
         "completed_epochs": completed_epochs,
         "te_f1_macro": te_f1_macro,

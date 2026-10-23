@@ -29,17 +29,17 @@ def detach_from_gpu(tensor):
 def choose_model(config, data, chosen_model, training=False):
     name = chosen_model.lower()
     if name == "pna":
-        if config.get("pna_variant", "original") == "residual":
-            return gnn_network.ResidualPNA(config, data)
-        return gnn_network.GPNA(config, data)
+        if config.get("pna_variant", "residual") == "residual":
+            return gnn_network.ResidualPNA(config, data, training=training)
+        return gnn_network.GPNA(config, data, training=training)
     elif name == "gcn":
-        return gnn_network.GCN(config)
+        return gnn_network.GCN(config, training=training)
     elif name == "graphsage":
-        return gnn_network.GraphSAGE(config)
+        return gnn_network.GraphSAGE(config, training=training)
     elif name == "gatv2":
-        return gnn_network.GATv2(config)
+        return gnn_network.GATv2(config, training=training)
     elif name == "graphtransformer":
-        return gnn_network.GraphTransformer(config)
+        return gnn_network.GraphTransformer(config, training=training)
     else:
         return gnn_network.GPNA(config, data, training)
 

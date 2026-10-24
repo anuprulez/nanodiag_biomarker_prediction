@@ -4,9 +4,9 @@ import utils
 
 
 def merge_features(config):
-    """
-    Merge Nedbit and DNAm features and assign labels
-    """
+    """Merge NeDBIT and DNAm features and assign labels."""
+    from artifact_layout import ensure_artifact_directories
+    ensure_artifact_directories(config)
     print("Reading Nedbit and signals features...")
     df_nebit_features = utils.read_csv(
         config.p_nedbit_features, sep=",", header="infer", engine=None

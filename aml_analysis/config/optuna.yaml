@@ -1,50 +1,283 @@
-# Search settings: each dataset configuration and model gets its own study.
-models: ["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICL", "XGBoost"]
-n_trials: 25 # Additional trials per invocation, per model and dataset
-metric: macro_f1 # macro_f1 or accuracy, always on validation nodes
+models:
+- PNA
+- GCN
+- GraphSAGE
+- GATv2
+- GraphTransformer
+- TabPFN
+- TabICL
+- XGBoost
+n_trials: 25
+metric: macro_f1
 startup_trials: 20
 pruning_warmup_epochs: 5
-# Epoch budget and patience are taken from config.yaml.
 spaces:
   GNN:
-    batch_size: {type: categorical, choices: [64, 128, 256, 512]}
-    grad_clip_norm: {type: float, low: 0.5, high: 5.0, log: true}
-    hidden_dim: {type: categorical, choices: [32, 64, 128, 256]}
-    learning_rate: {type: float, low: 0.00001, high: 0.01, log: true}
-    weight_decay: {type: float, low: 0.000001, high: 0.1, log: true}
-    dropout: {type: float, low: 0.0, high: 0.9}
-    gnn_layers: {type: int, low: 1, high: 3}
-    # Per-hop sampling templates, truncated to gnn_layers.
+    batch_size:
+      type: categorical
+      choices:
+      - 64
+      - 128
+      - 256
+      - 512
+    grad_clip_norm:
+      type: float
+      low: 0.5
+      high: 5.0
+      log: true
+    hidden_dim:
+      type: categorical
+      choices:
+      - 32
+      - 64
+      - 128
+      - 256
+    learning_rate:
+      type: float
+      low: 1.0e-05
+      high: 0.01
+      log: true
+    weight_decay:
+      type: float
+      low: 1.0e-06
+      high: 0.1
+      log: true
+    dropout:
+      type: float
+      low: 0.0
+      high: 0.9
+    gnn_layers:
+      type: int
+      low: 1
+      high: 3
     neighbors_spread:
       type: categorical
-      choices: [[10], [10, 5], [10, 5, 5]]
-    embedding_dropout: {type: float, low: 0.0, high: 0.3}
-    feature_dropout: {type: float, low: 0.0, high: 0.2}
+      choices:
+      - - 10
+      - - 10
+        - 5
+      - - 10
+        - 5
+        - 5
+    embedding_dropout:
+      type: float
+      low: 0.0
+      high: 0.3
+    feature_dropout:
+      type: float
+      low: 0.0
+      high: 0.2
   GATv2:
-    heads: {type: categorical, choices: [1, 2, 4, 8]}
+    heads:
+      type: categorical
+      choices:
+      - 1
+      - 2
+      - 4
+      - 8
   GraphTransformer:
-    heads: {type: categorical, choices: [1, 2, 4, 8]}
+    heads:
+      type: categorical
+      choices:
+      - 1
+      - 2
+      - 4
+      - 8
   XGBoost:
-    n_estimators: {type: int, low: 200, high: 2000, step: 100}
-    max_depth: {type: int, low: 3, high: 10}
-    learning_rate: {type: float, low: 0.005, high: 0.3, log: true}
-    min_child_weight: {type: float, low: 0.1, high: 30.0, log: true}
-    subsample: {type: float, low: 0.5, high: 1.0}
-    colsample_bytree: {type: float, low: 0.5, high: 1.0}
-    gamma: {type: float, low: 0.0, high: 5.0}
-    reg_alpha: {type: float, low: 0.00000001, high: 10.0, log: true}
-    reg_lambda: {type: float, low: 0.000001, high: 100.0, log: true}
-    max_bin: {type: categorical, choices: [128, 256, 512]}
-  # Optional foundation-model inference searches; enable via --models.
+    n_estimators:
+      type: int
+      low: 200
+      high: 2000
+      step: 100
+    max_depth:
+      type: int
+      low: 3
+      high: 10
+    learning_rate:
+      type: float
+      low: 0.005
+      high: 0.3
+      log: true
+    min_child_weight:
+      type: float
+      low: 0.1
+      high: 30.0
+      log: true
+    subsample:
+      type: float
+      low: 0.5
+      high: 1.0
+    colsample_bytree:
+      type: float
+      low: 0.5
+      high: 1.0
+    gamma:
+      type: float
+      low: 0.0
+      high: 5.0
+    reg_alpha:
+      type: float
+      low: 1.0e-08
+      high: 10.0
+      log: true
+    reg_lambda:
+      type: float
+      low: 1.0e-06
+      high: 100.0
+      log: true
+    max_bin:
+      type: categorical
+      choices:
+      - 128
+      - 256
+      - 512
   TabPFN:
-    n_estimators: {type: categorical, choices: [4, 8, 16, 32]}
-    softmax_temperature: {type: float, low: 0.5, high: 1.5}
-    balance_probabilities: {type: categorical, choices: [false, true]}
-    average_before_softmax: {type: categorical, choices: [false, true]}
+    n_estimators:
+      type: categorical
+      choices:
+      - 4
+      - 8
+      - 16
+      - 32
+    softmax_temperature:
+      type: float
+      low: 0.5
+      high: 1.5
+    balance_probabilities:
+      type: categorical
+      choices:
+      - false
+      - true
+    average_before_softmax:
+      type: categorical
+      choices:
+      - false
+      - true
   TabICL:
-    n_estimators: {type: categorical, choices: [4, 8, 16, 32]}
-    softmax_temperature: {type: float, low: 0.5, high: 1.5}
-    outlier_threshold: {type: float, low: 2.0, high: 8.0}
-    feat_shuffle_method: {type: categorical, choices: [latin, random]}
-    class_shuffle_method: {type: categorical, choices: [shift, none]}
-    average_logits: {type: categorical, choices: [false, true]}
+    n_estimators:
+      type: categorical
+      choices:
+      - 4
+      - 8
+      - 16
+      - 32
+    softmax_temperature:
+      type: float
+      low: 0.5
+      high: 1.5
+    outlier_threshold:
+      type: float
+      low: 2.0
+      high: 8.0
+    feat_shuffle_method:
+      type: categorical
+      choices:
+      - latin
+      - random
+    class_shuffle_method:
+      type: categorical
+      choices:
+      - shift
+      - none
+    average_logits:
+      type: categorical
+      choices:
+      - false
+      - true
+runtime_defaults:
+  n_edges: 9913451
+  num_classes: 5
+  n_epo: 100
+  batch_size: 64
+  grad_clip_norm: 0.9563551257532924
+  hidden_dim: 256
+  learning_rate: 0.0016268882355913081
+  weight_decay: 0.0018757300558958096
+  dropout: 0.2159414126692356
+  gnn_layers: 1
+  feature_dropout: 0.0
+  embedding_dropout: 0.0
+  heads: 4
+  lr_patience: 2
+  early_stopping_patience: 7
+  umap_n_neighbors: 20
+  umap_min_dist: 0.8
+  umap_metric: correlation
+  class_ticks:
+  - Positive (P)
+  - Likely Positive (LP)
+  - Weakly Negative (WN)
+  - Likely Negative (LN)
+  - Reliable Negative (RN)
+  dpi: 300
+  MAKE_HEATMAP: true
+  NORMALIZE_FOR_HEATMAP: true
+  model_type:
+  - PNA
+  - GCN
+  - GraphSAGE
+  - GATv2
+  - GraphTransformer
+  - TabPFN
+  - TabICL
+  - XGBoost
+  best_trained_model: PNA
+  neighbors_spread:
+  - 10
+  - 5
+  - 5
+  - 5
+  explain_neighbors_spread:
+  - -1
+  - 100
+  - 50
+  explanation_nodes_ratio: 1.0
+  neighbour_predictions:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  src_neighbour_predictions:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  tgt_neighbour_predictions:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  masks_for_seed: 3
+  explainer_epochs: 200
+  graph_subtype: bidirectional
+  show_num_neighbours: 50
+  p_generated_files: ${p_base}generated/
+  p_dnam_features: ${p_data}dnam_features_aml_${model_type}.csv
+  p_nedbit_dnam_features: ${p_data}df_nebit_dnam_features_aml_${model_type}.csv
+  p_nedbit_dnam_features_norm: ${p_data}df_nebit_dnam_features_norm_${model_type}.csv
+  p_test_probe_genes: ${p_data}test_probe_genes_aml_${model_type}.csv
+  p_train_probe_genes: ${p_data}train_probe_genes_aml_${model_type}.csv
+  p_val_probe_genes: ${p_data}val_probe_genes_aml_${model_type}.csv
+  p_pred_likely_pos: ${p_data}pred_likely_pos_aml_${model_type}.csv
+  p_pred_likely_pos_no_training_genes_probes: ${p_data}pred_likely_pos_no_training_genes_probes_aml_${model_type}.csv
+  p_pred_negatives: ${p_data}pred_negatives_${model_type}.csv
+  p_torch_data: ${p_model}data_aml_${model_type}.pt
+  p_torch_embed: ${p_model}embed_conv_aml_${model_type}.pt
+  p_torch_embed_batch_norm: ${p_model}embed_batch_norm_aml_${model_type}.pt
+  p_true_labels: ${p_model}true_labels_aml_${model_type}.pt
+  p_torch_model: ${p_model}best_model_aml_${model_type}.pt
+  p_pred_labels: ${p_model}pred_labels_aml_${model_type}.pt
+  p_all_class_pred_probs: ${p_model}all_class_pred_probs_aml_${model_type}.pt
+  p_best_class_pred_probs: ${p_model}best_class_pred_probs_aml_${model_type}.pt
+  p_test_loader_ids: ${p_model}test_ids_aml_${model_type}.pt
+  p_plot: ${p_generated_files}plots/
+  p_data: ${p_generated_files}data/
+  p_model: ${p_generated_files}models/
+  tabpfn_model_path: ../../breast_cancer_analysis/model/tabpfn-v3-classifier-v3_default.ckpt
+  tabicl_model_path: ../../breast_cancer_analysis/model/tabicl-classifier-v2-20260212.ckpt
+  color_palette: tab10
+  model_overrides: {}
+  artifact_layout: split_v1

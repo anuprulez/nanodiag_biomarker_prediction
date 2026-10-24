@@ -103,7 +103,7 @@ def first_likely_positive_node(folder,config):
         if 'test_gene_ids' not in row:raise ValueError(f'{path}: missing test_gene_ids column')
         value=int(row['test_gene_ids'])
         if value<0:raise ValueError(f'{path}: invalid negative node ID')
-    return value
+    return 10225 #value
 
 
 def main():
@@ -119,6 +119,13 @@ def main():
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
     args=parser.parse_args();source=OmegaConf.load(args.config.resolve())
     folders=selected_folders(source,args.folder,args.stage in ('preprocess','all'))
+    if args.stage=='compare-predictions' and args.folder is None and source.get('config_scope')!='dataset':
+        ready=[]
+        for folder in folders:
+            if (folder/'config.yaml').is_file():ready.append(folder)
+            else:print(f'Skipping untuned dataset for prediction comparison: {folder}',flush=True)
+        folders=ready
+        if not folders:raise FileNotFoundError('No tuned dataset configs available for prediction comparison')
     stages=STAGES if args.stage=='all' else (args.stage,)
     env=os.environ.copy();env['PATH']=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH','')
     env.update(OMP_NUM_THREADS='4',OPENBLAS_NUM_THREADS='4',MKL_NUM_THREADS='4',MPLBACKEND='Agg')

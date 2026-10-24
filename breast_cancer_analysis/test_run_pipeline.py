@@ -47,6 +47,13 @@ class PipelineFolderTests(unittest.TestCase):
                 if stage=='xai':self.assertEqual(command[command.index('--node-id')+1],'17')
                 if stage=='compare-predictions':self.assertTrue((folder/'evaluation').is_dir())
 
+    def test_comparison_skips_untuned_folders_but_explicit_selection_fails(self):
+        untuned=self.root/'data_corr_0.7_knn_n_3000_n_neg_10000'
+        untuned.mkdir()
+        self.assertEqual(len(self.invoke('compare-predictions')),2)
+        with self.assertRaises(FileNotFoundError):
+            self.invoke('compare-predictions',untuned)
+
     def test_specific_folder_and_preprocess_parameter_binding(self):
         folder=self.folders[1]
         commands=self.invoke('preprocess',folder)

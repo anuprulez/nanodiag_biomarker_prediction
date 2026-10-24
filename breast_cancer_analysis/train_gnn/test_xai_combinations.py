@@ -98,6 +98,18 @@ class XaiCombinationTests(unittest.TestCase):
             for key,value in model.state_dict().items():
                 self.assertTrue(torch.equal(value,restored.state_dict()[key]))
 
+    def test_model_loader_reports_stale_architecture_override(self):
+        config = OmegaConf.create({'gene_dim':4,'hidden_dim':32,'gnn_layers':1,
+                                   'dropout':0.1,'num_classes':5,'SEED':32})
+        data = Data(x=torch.randn(3,4),edge_index=torch.tensor([[0,1],[1,0]]))
+        model = xai.utils.choose_model(config,data,'PNA',False)
+        with TemporaryDirectory() as directory:
+            checkpoint=Path(directory)/'model.pt'
+            torch.save(model.state_dict(),checkpoint)
+            config.hidden_dim=16;config.gnn_layers=3
+            with self.assertRaisesRegex(RuntimeError, 'Checkpoint hidden_dim=32, gnn_layers=1'):
+                xai.load_model(checkpoint,data,'PNA',config)
+
     def test_feature_plot_receives_current_dataset(self):
         data=Data(x=torch.rand(3,4),y=torch.tensor([0,1,2]),
                   edge_index=torch.tensor([[0,1],[1,0]]),n_id=torch.arange(3))

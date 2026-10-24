@@ -3,17 +3,25 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 import numpy as np
 import pandas as pd
 from omegaconf import OmegaConf
 
 HERE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(HERE))
+from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
 
 
-def validate(config_path):
+def validate(config_path, args=None):
+    config_path = Path(config_path).resolve()
     os.chdir(HERE / 'train_gnn')
-    config = OmegaConf.load(config_path)
+    for config in preprocessing_configs(load_preprocessing_config(config_path, args)):
+        validate_config(config)
+
+
+def validate_config(config):
     nodes = pd.read_csv(config.p_out_genes, sep=r'\s+', header=None)
     manifest = pd.read_csv(config.p_split_manifest)
     labels = pd.read_csv(config.p_out_gene_rankings, sep=r'\s+', header=None)
@@ -53,7 +61,7 @@ def validate(config_path):
                   selected_features=signals.shape[1], splits=counts, cpg_leakage=False,
                   cross_split_edges=False, finite_beta_values=True)
     assert report['feature_dimension'] == config.gene_dim
-    path = Path(config.p_base) / 'preprocessing_validation.json'
+    path = Path(config.p_base_files) / 'preprocessing_validation.json'
     path.write_text(json.dumps(report, indent=2) + '\n')
     print(json.dumps(report, indent=2))
 
@@ -61,4 +69,6 @@ def validate(config_path):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=HERE / 'config/config.yaml')
-    validate(parser.parse_args().config.resolve())
+    add_parameter_arguments(parser)
+    args = parser.parse_args()
+    validate(args.config.resolve(), args)

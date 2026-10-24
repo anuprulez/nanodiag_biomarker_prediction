@@ -106,10 +106,10 @@ def run(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--matrix', type=Path, default=HERE / 'data/harmonised/combined_beta.tsv.gz')
-    parser.add_argument('--metadata', type=Path, default=HERE / 'data/harmonised/sample_metadata.tsv')
-    parser.add_argument('--annotation', type=Path, default=HERE / 'data/GPL13534_probe_annotation.tsv')
-    parser.add_argument('--output-dir', type=Path, default=HERE / 'data')
+    parser.add_argument('--matrix', type=Path, default=HERE / 'raw/harmonised/combined_beta.tsv.gz')
+    parser.add_argument('--metadata', type=Path, default=HERE / 'raw/harmonised/sample_metadata.tsv')
+    parser.add_argument('--annotation', type=Path, default=HERE / 'raw/GPL13534_probe_annotation.tsv')
+    parser.add_argument('--output-dir', type=Path, default=HERE / 'raw')
     parser.add_argument('--top-n', type=int, default=100)
     parser.add_argument('--sd-ddof', type=int, choices=[0, 1], default=1)
     run(parser.parse_args())

@@ -589,7 +589,7 @@ def plot_model_comparison(results, models, config):
         output = _as_path(config.p_plot)
         stem = f'Heatmap_avg_edges_{config.n_edges}_epochs_{config.n_epo}'
         # Save original values alongside the normalized visualization.
-        pd.DataFrame(mat, index=pd.Index(models, name='model'), columns=metric_keys).to_csv(output / f'{stem}.csv')
+        pd.DataFrame(mat, index=pd.Index(models, name='model'), columns=metric_keys).to_csv(_as_path(config.get("p_data",config.p_plot)) / f'{stem}.csv')
         path = output / f'{stem}.pdf'
         _save(fig, path, config.dpi)
         print(f'Saved heatmap -> {path}', flush=True)

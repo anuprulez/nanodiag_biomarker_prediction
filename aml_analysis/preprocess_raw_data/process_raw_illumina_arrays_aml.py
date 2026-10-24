@@ -11,6 +11,7 @@ import os
 import random
 import subprocess
 import zipfile
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -21,13 +22,18 @@ import scanpy as sc
 
 from omegaconf.omegaconf import OmegaConf
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from seed_inputs import read_seed_rows, seed_signature, write_seed_manifest
+from preprocessing_inputs import prepare_preprocessing_inputs
+from preprocessing_grid import preprocessing_configs, prepare_run_directories, add_parameter_arguments, load_preprocessing_config
+
 # ----------------------------- Helper Functions ------------------------------
 
 
 def extract_preprocessed_data(config):
     # Your Zenodo link
     url = config.p_raw_data
-    output_dir = config.get("p_base_files", config.p_base)
+    output_dir = config.p_raw
     os.makedirs(output_dir, exist_ok=True)
 
     zip_path = os.path.join(output_dir, "download.zip")
@@ -99,39 +105,39 @@ def filter_snps_xy(
     return merged.loc[keep_mask].copy()
 
 
-def select_hv_features(negative_df: pd.DataFrame, n_top: int, method: str = "seurat") -> pd.DataFrame:
-    """
-    Select highly variable 'genes' (here: probe_gene features) using Scanpy's
-    Seurat flavor by default, or variance/MAD directly on beta values.
-    negative_df is shape (n_samples, n_features).
+def select_hv_features(
+    negative_df: pd.DataFrame, n_top: int, method: str = "seurat", seed: int = 0
+) -> pd.DataFrame:
+    """Rank negatives deterministically, using SEED to break equal-score ties.
+
+    Canonical input ordering makes the result independent of matrix row order.
+    Taking a prefix of one ranking gives exact, nested negative feature sets.
     """
     if n_top < 1 or negative_df.empty:
         raise ValueError("Negative feature selection requires n_top >= 1 and nonempty data")
-    values = negative_df.to_numpy(dtype=float)
+    if n_top > negative_df.shape[1]:
+        raise ValueError(f"Requested {n_top} negatives, but only {negative_df.shape[1]} are available")
+    if not negative_df.columns.is_unique:
+        raise ValueError("Negative feature names must be unique")
+    names = sorted(negative_df.columns)
+    random.Random(f"{seed}:negative-ranking").shuffle(names)
+    ordered = negative_df.sort_index().loc[:, names].astype(float)
+    values = ordered.to_numpy(dtype=float)
     if not np.isfinite(values).all():
         raise ValueError("Impute or remove non-finite methylation values before selection")
     if method in ("variance", "mad"):
-        # Work directly on beta values; no RNA count dispersion assumptions.
-        score = (negative_df.var(axis=0) if method == "variance" else
-                 negative_df.sub(negative_df.median(axis=0), axis=1).abs().median(axis=0))
-        selected = score.sort_values(ascending=False, kind="stable").head(n_top).index
-        return negative_df.loc[:, selected]
-    if method != "seurat":
+        score = (ordered.var(axis=0) if method == "variance" else
+                 ordered.sub(ordered.median(axis=0), axis=1).abs().median(axis=0))
+    elif method == "seurat":
+        adata = sc.AnnData(ordered.to_numpy(), var=pd.DataFrame(index=names))
+        # Rank the full pool ourselves: Scanpy's top-N mask can exceed N on ties.
+        sc.pp.highly_variable_genes(adata, flavor="seurat", n_top_genes=None)
+        score = adata.var["dispersions_norm"]
+    else:
         raise ValueError(f"Unknown negative_selection_method: {method}")
-    # Scanpy expects observations (cells/samples) x variables (features)
-    adata = sc.AnnData(negative_df)
-    sc.pp.highly_variable_genes(adata, flavor="seurat", n_top_genes=n_top)
-    # Subset to HVGs
-    hvg = adata.var[adata.var["highly_variable"]]
-    # Lowest normalized dispersion among selected HVGs
-    lowest_disp = hvg["dispersions_norm"].min()
-    # Also, which gene has that lowest dispersion
-    lowest_gene = hvg["dispersions_norm"].idxmin()
-    print("Lowest dispersion among HVGs:", lowest_disp)
-    print("Gene with lowest dispersion:", lowest_gene)
-    hv_idx = adata.var["highly_variable"].fillna(False)
-    hv_names = adata.var.index[hv_idx].tolist()
-    return negative_df[hv_names]
+    selected = score.fillna(-np.inf).sort_values(ascending=False, kind="stable").head(n_top).index
+    return negative_df.loc[:, selected]
+
 
 def build_knn_correlation_edges(
     features_df: pd.DataFrame,
@@ -301,7 +307,7 @@ def partition_probe_features(
         raise ValueError("split_ratios must contain three values that sum to 1")
 
     by_probe: dict[str, list[str]] = {}
-    for feature in feature_names:
+    for feature in sorted(feature_names):
         by_probe.setdefault(feature.split("_", 1)[0], []).append(feature)
     probes = sorted(by_probe)
     rng.shuffle(probes)
@@ -327,8 +333,8 @@ def process_arrays(
     """
     Full processing pipeline. See module docstring for outputs.
     """
-    rng = random.Random(config.SEED)
-    np.random.seed(config.SEED)
+    seed = int(config.SEED)
+    print(f"Deterministic negative selection and CpG splits: SEED={seed}", flush=True)
 
     output_dir = config.get("p_base_files", config.p_base)
     os.makedirs(output_dir, exist_ok=True)
@@ -371,13 +377,10 @@ def process_arrays(
         raise ValueError("AML signals must be finite beta values in [0,1]")
     df_merged = signals.T
     print(f"Probe filters: {total} input mappings -> {len(signals)} retained", flush=True)
-    # The literature-derived seed table supplies delta beta, not p-values.
-    df_seeds = pd.read_csv(config.p_seeds, sep="\t").rename(
-        columns={"CpG_ID": "probeID", "deltaBeta_GSE50660_vs_GSE58477": "deltaBeta"})
-    if not {"probeID", "deltaBeta"} <= set(df_seeds):
-        raise ValueError("AML seeds require CpG_ID and deltaBeta_GSE50660_vs_GSE58477")
-    if not df_seeds["probeID"].is_unique or not np.isfinite(df_seeds["deltaBeta"]).all():
-        raise ValueError("Seed CpGs must be unique and delta betas finite")
+    # New ranked seeds use signed AML-minus-control delta beta; weights use abs.
+    df_seeds = pd.DataFrame(read_seed_rows(config.p_seeds)).rename(
+        columns={"CpG_ID": "probeID", "deltaBeta_AML_minus_Normal": "deltaBeta"})
+    df_seeds["deltaBeta"] = pd.to_numeric(df_seeds["deltaBeta"], errors="raise")
     available = set(name.split("_", 1)[0] for name in df_merged.columns)
     seed_report = df_seeds.copy()
     seed_report["retained_after_probe_filters"] = seed_report["probeID"].isin(available)
@@ -397,8 +400,7 @@ def process_arrays(
     all_features = df_merged.columns.tolist()
     negative_pool = [c for c in all_features if c not in positive_features]
 
-    # Shuffle negative pool (deterministic) before HVG selection
-    rng.shuffle(negative_pool)
+    # Selection owns its own seeded tie-breaking, independent of split RNGs.
     df_neg_pool = df_merged[negative_pool]
 
     # Select highly variable negatives (up to size_negative)
@@ -409,14 +411,15 @@ def process_arrays(
     df_neg_hv = select_hv_features(
         df_neg_pool, n_top=config.size_negative,
         method=config.get("negative_selection_method", "seurat"),
+        seed=seed,
     )
     print("Selected %d negative features.", df_neg_hv.shape[1])
 
     # Split before graph/NeDBIT computation. Split by probe rather than mapped
     # feature so one CpG with several gene mappings cannot cross partitions.
     ratios = list(config.split_ratios)
-    positive_splits = partition_probe_features(positive_features, ratios, rng)
-    negative_splits = partition_probe_features(df_neg_hv.columns.tolist(), ratios, rng)
+    positive_splits = partition_probe_features(positive_features, ratios, random.Random(f"{seed}:positive-split"))
+    negative_splits = partition_probe_features(df_neg_hv.columns.tolist(), ratios, random.Random(f"{seed}:negative-split"))
     manifest_rows = []
     combined_parts = []
 
@@ -674,12 +677,26 @@ def merge_split_graphs(config) -> None:
 # ----------------------------------  Main  -----------------------------------
 
 
-def main(config_path=None) -> None:
+def main(config_path=None, args=None) -> None:
     config_path = Path(config_path or Path(__file__).resolve().parents[1] / "config/config.yaml").resolve()
     # Match the training scripts' path convention, independent of caller cwd.
     os.chdir(Path(__file__).resolve().parents[1] / "train_gnn")
-    config = OmegaConf.load(config_path)
+    configs = preprocessing_configs(load_preprocessing_config(config_path, args))
+    for index, config in enumerate(configs, 1):
+        if Path(config.p_preprocessing_manifest).is_file():
+            print(f"Skipping preprocessing: {config.p_base} already exists", flush=True)
+            continue
+        prepare_run_directories(config)
+        print(f"Preprocessing {index}/{len(configs)}: {config.p_base}", flush=True)
+        preprocess_one(config)
+
+
+def preprocess_one(config) -> None:
     extract_preprocessed_data(config) if config.download_raw_data else None
+    prepare_preprocessing_inputs(config)
+    seed_source = seed_signature(config.p_seeds)
+    # An incomplete rerun must not leave a valid-looking old provenance file.
+    Path(config.p_preprocessing_manifest).unlink(missing_ok=True)
     process_arrays(config)
     manifest = pd.read_csv(config.p_split_manifest)
     for split in SPLIT_NAMES:
@@ -698,10 +715,13 @@ def main(config_path=None) -> None:
             str(config.quantile_1), str(config.quantile_2),
         )
     merge_split_graphs(config)
+    write_seed_manifest(config, seed_source)
 
 
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", default=None)
-    main(parser.parse_args().config)
+    add_parameter_arguments(parser)
+    args = parser.parse_args()
+    main(args.config, args)

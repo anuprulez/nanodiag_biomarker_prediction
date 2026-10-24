@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Export AML-equivalent prediction groups aligned by saved inference node IDs."""
 import argparse
-import shutil
 import sys
 from pathlib import Path
 import numpy as np
@@ -55,6 +54,7 @@ def extract(data,model,output,generated_dir=None):
     groups={'negative':frame.loc[frame['labels'].isin([3,4,5]) & frame['pred_labels'].isin([3,4,5])],
             'likely_positive':frame.loc[frame['labels'].isin([2,3,4,5]) & frame['pred_labels'].eq(2)]}
     for group,filename in [('negative',f'pred_negatives_{model}.csv'),('likely_positive',f'pred_likely_pos_bc_{model}.csv')]:
+        groups[group]=groups[group].sort_values('pred_probs',ascending=False,kind='stable').copy()
         groups[group].to_csv(output/filename,sep='\t',index=False)
     frame.to_csv(output/f'all_test_predictions_{model}.tsv',sep='\t',index=False)
     return groups
@@ -87,11 +87,12 @@ def comparison_groups(data,model,output,generated_dir=None):
                 raise ValueError(f'{path}: exported {column} differs from current predictions; regenerate XAI prediction exports')
         if not np.allclose(frame.pred_probs.to_numpy(float),expected.pred_probs.to_numpy(float),rtol=float(np.finfo(np.float32).eps),atol=1e-8):
             raise ValueError(f'{path}: exported probabilities differ from current predictions; regenerate XAI prediction exports')
-        groups[group]=frame
+        groups[group]=frame.sort_values('pred_probs',ascending=False,kind='stable').copy()
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    for path in paths.values():
+    for group,path in paths.items():
         destination=output/path.name
-        if destination.resolve()!=path.resolve():shutil.copy2(path,destination)
+        if destination.resolve()!=path.resolve():
+            groups[group].to_csv(destination,sep='\t',index=False)
     return groups,list(paths.values())
 
 

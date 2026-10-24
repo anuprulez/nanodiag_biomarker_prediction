@@ -1,6 +1,7 @@
 """Bind per-model AML settings without changing other model families."""
 import copy
 from omegaconf import OmegaConf
+from artifact_layout import apply_artifact_layout
 
 
 def apply_model_settings(config, model_name):
@@ -13,4 +14,4 @@ def apply_model_settings(config, model_name):
             current = OmegaConf.merge(current, values)
             current.model_type = name
             break
-    return current
+    return apply_artifact_layout(current)

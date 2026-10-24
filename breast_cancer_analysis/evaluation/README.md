@@ -198,3 +198,66 @@ tissues explicitly; the previous figures are preserved in the audit folder.
 python evaluation/audit_original_gse.py
 python evaluation/render_gse_audit.py
 ```
+
+
+### Enhanced prediction comparison
+
+Run from `breast_cancer_analysis`:
+
+```bash
+python run_pipeline.py --stage compare-predictions
+```
+
+The stage uses saved predictions and exported group selections. It processes tuned
+dataset folders, reports untuned folders as skipped, and never trains models.
+Use `--folder <dataset>` or `--models PNA XGBoost` to select existing outputs.
+
+Each dataset's `evaluation/` receives model/dataset-suffixed PNG/PDF figures:
+
+- `delta_beta_original_vs_external`: four panels with Pearson/Spearman, CpG
+  counts, direction concordance, MAE, absolute effect distributions, and
+  exploratory support rates. Both predicted-negative and likely-positive groups are included in the figures. Triangles indicate candidates meeting the criterion.
+- `delta_beta_shift_by_prediction_group`: signed cohort effect differences and
+  external absolute-effect distributions.
+- `criterion_sensitivity`: support rates across effect thresholds 0.05/0.10/0.20
+  and FDR cutoffs 0.01/0.05/0.10.
+
+Per-CpG tables include external Welch p-values, BH FDR, pointwise 95% confidence
+intervals, direction agreement, absolute effects/errors, and criterion flags.
+Summary TSV/JSON reports add effect SD, MAE, median absolute effects, fractions
+above 0.10/0.20, significance, and support rates. `criterion_sensitivity.tsv`
+exports every sensitivity denominator and numerator. `cohort_audit.json` records
+GEO sample-accession overlaps and local seed provenance.
+
+Welch tests use existing per-site means, **sample** SD (ddof=1), and valid sample
+counts. These are sufficient statistics for the unadjusted sample-level test;
+no beta data or sample identities are invented. The reference method is
+[SciPy Welch test from summary statistics](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_ind_from_stats.html).
+BH correction uses **all unique shared CpGs** in
+`evaluation/results/shared_cpg_statistics.tsv` before prediction selection,
+including unannotated probes. Untestable sites retain a family slot as p=1 and
+receive missing reported p/FDR/CI. The universe is checked against the plotted
+external table; it must be regenerated using `evaluation/evaluate_datasets.py`
+if absent. A custom full universe can be supplied directly to
+`evaluation/compare_predictions.py --external-universe <table>`.
+
+The exploratory criterion is absolute external delta ≥0.10, FDR <0.05, and
+consistent nonzero direction. Rates use finite matched unique CpGs as denominator;
+missing significance is not counted as support. Effect summaries use strict
+>0.10 and >0.20. Direction agreement compares exact signs, with zero-zero counting
+as agreement; support always requires nonzero effects. Thresholds are defaults
+for this analysis, not a prospectively registered replication protocol.
+
+Current external cases are GSE226569 and controls are GSE101961: **disease and
+study are confounded**. No batch, demographic, cell-composition or tumour-purity
+adjustment is possible from these summary statistics. Nominal FDR and confidence
+intervals cannot correct this design problem. Different GSM accessions do not
+prove distinct patients. Reports therefore use “exploratory cross-study support”
+and do not claim independent replication. GSE66695 is discovery and cannot also
+be independent external validation. A separate same-study cohort such as
+GSE69914 requires additional acquisition, sample/overlap review and QC.
+
+LP/negative classes depend on graph/methylation selection; groups may share CpGs.
+The descriptive comparison does not isolate GNN benefit or support an independent
+between-group significance test. Comparable NIAPU and Random Forest held-out
+predictions are not supplied; no baseline replication superiority is claimed.

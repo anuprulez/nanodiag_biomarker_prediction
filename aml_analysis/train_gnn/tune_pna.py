@@ -209,6 +209,8 @@ def main():
     frame.to_csv(args.output/'test_predictions_PNA.csv',index=False)
     shutil.copy2(winner/'best_model.pt',args.output/'best_model_PNA.pt')
     shutil.copy2(winner/'config.yaml',args.output/'selected_config.yaml')
+    from artifact_layout import migrate_generated
+    migrate_generated(args.output)
     print('Selected',selected['trial'],'validation',selected['validation_macro_f1'],'test',metrics,flush=True)
 
 

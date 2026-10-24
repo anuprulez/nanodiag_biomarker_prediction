@@ -47,7 +47,22 @@ class LogitsOnly(nn.Module):
 def load_model(model_path, data, chosen_model, config):
     device = "cpu"
     model = utils.choose_model(config, data, chosen_model, False)
-    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
+    state = torch.load(model_path, map_location=device, weights_only=True)
+    try:
+        model.load_state_dict(state)
+    except RuntimeError as error:
+        architecture = ''
+        if 'encoder.0.weight' in state:
+            layers = {key.split('.')[1] for key in state if key.startswith('convs.')}
+            architecture = (f" Checkpoint hidden_dim={state['encoder.0.weight'].shape[0]}, "
+                            f"gnn_layers={len(layers)}; configured hidden_dim={config.get('hidden_dim')}, "
+                            f"gnn_layers={config.get('gnn_layers')}.")
+        raise RuntimeError(
+            f"XAI checkpoint/config mismatch for {chosen_model}: {model_path}.{architecture} "
+            f"Check model_overrides.{chosen_model} in the dataset config against the saved training settings. "
+            "Strict checkpoint loading is required; retraining is not needed to explain a compatible saved model."
+        ) from error
+    model.eval()
     return model
 
 
@@ -208,236 +223,6 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     return s_rankings_draw
 
 
-'''def compute_rankings(
-    xai_node,
-    values,
-    edge_sel_idx,
-    local_to_name,
-    ei_sub,
-    predictions_sub,
-    neighbour_predictions,
-    num_nodes_target,
-    config
-):
-    """
-    Compute rankings of links over iterations of explanations
-    """
-    explained_name = xai_node
-    candidates = {explained_name: {}}
-    candidate_predictions = {}
-    seen_genes = set()
-
-    for k_i in range(len(edge_sel_idx)):
-        e_idx = int(edge_sel_idx[k_i])
-        src_loc = int(ei_sub[0, e_idx].item())
-        trg_loc = int(ei_sub[1, e_idx].item())
-
-        src_name = local_to_name[src_loc]
-        trg_name = local_to_name[trg_loc]
-
-        src_pred = int(predictions_sub[src_loc].item())
-        trg_pred = int(predictions_sub[trg_loc].item())
-
-        if src_name != explained_name:
-            seen_genes.add(src_name)
-        if trg_name != explained_name:
-            seen_genes.add(trg_name)
-
-        # Your original logic considered [0,1] as P/LP
-        if src_pred in config.src_neighbour_predictions:
-            candidates[explained_name][src_name] = candidates[explained_name].get(
-                src_name, 0.0
-            ) + float(values[k_i].item())
-            candidate_predictions[src_name] = src_pred
-        if trg_pred in config.tgt_neighbour_predictions:
-            candidates[explained_name][trg_name] = candidates[explained_name].get(
-                trg_name, 0.0
-            ) + float(values[k_i].item())
-            candidate_predictions[src_name] = trg_pred
-
-        if len(seen_genes) >= num_nodes_target:
-            break
-
-    ranking = {}
-    for cand_name, score in candidates[explained_name].items():
-        if cand_name not in ranking:
-            ranking[cand_name] = [1, float(score)]
-        else:
-            ranking[cand_name][0] += 1
-            ranking[cand_name][1] += float(score)
-
-    sorted_ranking = sorted(
-        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
-    )
-    print(f"Sorted rankings: {sorted_ranking}")
-    return sorted_ranking
-
-
-def compute_rankings(
-    xai_node,
-    values,
-    edge_sel_idx,
-    local_to_name,
-    ei_sub,
-    predictions_sub,
-    neighbour_predictions,
-    num_nodes_target,
-    config
-):
-
-    explained_name = xai_node
-    candidates = {explained_name: {}}
-    candidate_predictions = {}
-    seen_genes = set()
-
-    # NEW: include BOTH positive + likely positive
-    allowed_preds = (
-        set(config.src_neighbour_predictions)
-        | set(config.tgt_neighbour_predictions)
-    )
-
-    for k_i in range(len(edge_sel_idx)):
-        e_idx = int(edge_sel_idx[k_i])
-        src_loc = int(ei_sub[0, e_idx].item())
-        trg_loc = int(ei_sub[1, e_idx].item())
-
-        src_name = local_to_name[src_loc]
-        trg_name = local_to_name[trg_loc]
-
-        src_pred = int(predictions_sub[src_loc].item())
-        trg_pred = int(predictions_sub[trg_loc].item())
-
-        if src_name != explained_name:
-            seen_genes.add(src_name)
-        if trg_name != explained_name:
-            seen_genes.add(trg_name)
-
-        # NEW Logic: keep edges if node is positive OR likely positive
-        if (src_pred in allowed_preds) or (src_name == explained_name):
-            candidates[explained_name][src_name] = \
-                candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
-            candidate_predictions[src_name] = src_pred
-
-        if (trg_pred in allowed_preds) or (trg_name == explained_name):
-            candidates[explained_name][trg_name] = \
-                candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
-            candidate_predictions[trg_name] = trg_pred
-
-        if len(seen_genes) >= num_nodes_target:
-            break
-
-    ranking = {k: [1, v] for k, v in candidates[explained_name].items()}
-    sorted_ranking = sorted(
-        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
-    )
-
-    print(f"Sorted rankings: {sorted_ranking}")
-    return sorted_ranking
-
-def compute_rankings(
-    xai_node,
-    values,
-    edge_sel_idx,
-    local_to_name,
-    ei_sub,
-    predictions_sub,
-    neighbour_predictions,
-    num_nodes_target,
-    config
-):
-    """
-    Compute rankings of links over iterations of explanations
-    and then select 10 class-2 + 10 class-1 neighbours.
-    """
-    explained_name = xai_node
-    candidates = {explained_name: {}}
-    candidate_predictions = {}
-    seen_genes = set()
-
-    # allow both positive + likely positive
-    allowed_preds = (
-        set(config.src_neighbour_predictions)
-        | set(config.tgt_neighbour_predictions)
-    )
-
-    for k_i in range(len(edge_sel_idx)):
-        e_idx = int(edge_sel_idx[k_i])
-        src_loc = int(ei_sub[0, e_idx].item())
-        trg_loc = int(ei_sub[1, e_idx].item())
-
-        src_name = local_to_name[src_loc]
-        trg_name = local_to_name[trg_loc]
-
-        src_pred = int(predictions_sub[src_loc].item())
-        trg_pred = int(predictions_sub[trg_loc].item())
-
-        if src_name != explained_name:
-            seen_genes.add(src_name)
-        if trg_name != explained_name:
-            seen_genes.add(trg_name)
-
-        # include node if prediction in allowed_preds or it's the center
-        if (src_pred in allowed_preds) or (src_name == explained_name):
-            candidates[explained_name][src_name] = \
-                candidates[explained_name].get(src_name, 0.0) + float(values[k_i].item())
-            candidate_predictions[src_name] = src_pred
-
-        if (trg_pred in allowed_preds) or (trg_name == explained_name):
-            candidates[explained_name][trg_name] = \
-                candidates[explained_name].get(trg_name, 0.0) + float(values[k_i].item())
-            candidate_predictions[trg_name] = trg_pred   # <-- fix bug: trg_name
-
-        if len(seen_genes) >= num_nodes_target:
-            break
-
-    # aggregate counts + scores
-    ranking = {}
-    for cand_name, score in candidates[explained_name].items():
-        if cand_name not in ranking:
-            ranking[cand_name] = [1, float(score)]
-        else:
-            ranking[cand_name][0] += 1
-            ranking[cand_name][1] += float(score)
-
-    # sort by (#hits, score)
-    sorted_all = sorted(
-        ranking, key=lambda c: (ranking[c][0], ranking[c][1]), reverse=True
-    )
-
-    # which class id is "positive" and "likely positive"?
-    pos_cls = getattr(config, "positive_class", 0)         # class = 1
-    lp_cls  = getattr(config, "likely_positive_class", 1)  # class = 2
-
-    # now keep 10 from class 2 and 10 from class 1
-    class0_nodes = []
-    class1_nodes = []
-
-    for n in sorted_all:
-        if n == explained_name:
-            continue
-        pred = int(candidate_predictions.get(n, -1))
-
-        if pred == pos_cls and len(class0_nodes) < 10:
-            class0_nodes.append(n)
-        elif pred == lp_cls and len(class1_nodes) < 10:
-            class1_nodes.append(n)
-
-        if len(class0_nodes) >= 10 and len(class1_nodes) >= 10:
-            break
-
-    print(f"Selected {pos_cls} {len(class0_nodes)} class {lp_cls} nodes: {len(class1_nodes)}")
-    print(f"Class {pos_cls} nodes: {class0_nodes}")
-
-    # final list: center + 10 class2 + 10 class1
-    final_ranking = [explained_name] + class0_nodes + class1_nodes
-
-    print(
-        f"Final ranking (center + {len(class1_nodes)} class {lp_cls} "
-        f"+ {len(class0_nodes)} class {pos_cls}): {final_ranking}"
-    )
-    return final_ranking'''
-
-
 def compute_rankings(
     xai_node,
     edge_mask,
@@ -589,8 +374,11 @@ def collect_pred_labels(config):
 
     pred_negatives = df_labels[
         (df_labels["labels"].isin([2, 3, 4, 5]))
-        & (df_labels["pred_labels"].isin([4, 5]))
+        & (df_labels["pred_labels"].eq(5))
     ]
+
+    pred_negatives = pred_negatives.sort_values('pred_probs', ascending=False, kind='stable').copy()
+    pred_likely_pos = pred_likely_pos.sort_values('pred_probs', ascending=False, kind='stable').copy()
 
     pred_negatives.to_csv(config.p_pred_negatives, sep="\t", index=None)
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
@@ -640,7 +428,7 @@ def collect_pred_labels(config):
     ]
 
     print("Pred likely pos with no training genes/probes")
-    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
+    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False, kind="stable")
 
     print("Before filtering cross-reactive probes")
     print(pred_likely_pos)

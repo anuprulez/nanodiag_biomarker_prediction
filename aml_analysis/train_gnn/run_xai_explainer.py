@@ -26,6 +26,7 @@ sys.path.insert(0, str(HERE.parent))
 from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
 from model_settings import apply_model_settings
 from seed_inputs import validate_seed_manifest
+from dataset_configs import downstream_configs
 
 GNN_MODELS = {"pna", "gcn", "graphsage", "gatv2", "graphtransformer"}
 
@@ -574,22 +575,9 @@ def prioritise_center_and_positive_nodes(center_node, ranking, positive_nodes):
 
 def collect_pred_labels(config):
     print("Collecting datasets ...")
-    df_test_probe_genes = pd.read_csv(config.p_test_probe_genes, sep=",")
-    df_test_probe_genes.columns = ["test_gene_ids", "test_gene_names"]
-    df_labels = df_test_probe_genes
-    print("Test dataframe reconstructed")
-    print(df_labels)
-    true_labels = torch.load(config.p_true_labels, weights_only=False)
-    pred_labels = torch.load(config.p_pred_labels, weights_only=False)
-    pred_probs = torch.load(config.p_best_class_pred_probs, weights_only=False)
-    true_labels = [int(item) + 1 for item in true_labels]
-    pred_labels = [int(item) + 1 for item in pred_labels]
-
-    df_labels["labels"] = true_labels
-    df_labels["pred_labels"] = pred_labels
-    df_labels["pred_probs"] = pred_probs
-
-    print(df_labels)
+    from evaluation.extract_predictions import extract
+    extract(config.p_base,str(config.model_type),config.p_data,generated_dir=config.p_generated_files)
+    df_labels = pd.read_csv(Path(config.p_data)/f'all_test_predictions_{config.model_type}.tsv',sep='\t')
 
     pred_pos = df_labels[
         (df_labels["labels"].isin([1])) & (df_labels["pred_labels"].isin([1]))
@@ -600,9 +588,12 @@ def collect_pred_labels(config):
     ]
 
     pred_negatives = df_labels[
-        (df_labels["labels"].isin([3, 4, 5]))
-        & (df_labels["pred_labels"].isin([3, 4, 5]))
+        (df_labels["labels"].isin([2, 3, 4, 5]))
+        & (df_labels["pred_labels"].eq(5))
     ]
+
+    pred_negatives = pred_negatives.sort_values('pred_probs', ascending=False, kind='stable').copy()
+    pred_likely_pos = pred_likely_pos.sort_values('pred_probs', ascending=False, kind='stable').copy()
 
     pred_negatives.to_csv(config.p_pred_negatives, sep="\t", index=None)
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
@@ -652,7 +643,7 @@ def collect_pred_labels(config):
     ]
 
     print("Pred likely pos with no training genes/probes")
-    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
+    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False, kind="stable")
 
     print("Before filtering cross-reactive probes")
     print(pred_likely_pos)
@@ -742,16 +733,22 @@ def explain_configuration(config, node_id=None, node_name=None):
 
 def run_explanations(config_path=None, args=None, node_id=None, node_name=None):
     config_path = Path(config_path or HERE.parent / "config/config.yaml").resolve()
-    configs = preprocessing_configs(load_preprocessing_config(config_path, args))
+    configs = downstream_configs(config_path, args)
     for index, config in enumerate(configs, 1):
-        chosen_model = str(config.best_trained_model)
+        chosen_model = str(getattr(args,'model',None) or config.best_trained_model)
         if chosen_model.lower() not in GNN_MODELS:
             raise ValueError("GNNExplainer requires best_trained_model to be PNA, GCN, "
                              "GraphSAGE, GATv2 or GraphTransformer")
         current = apply_model_settings(config, chosen_model)
+        for field in ('p_data','p_plot','p_model'):
+            if field in current:Path(current[field]).mkdir(parents=True,exist_ok=True)
+        selected_node=node_id
+        if getattr(args,'first_likely_positive',False):
+            from run_pipeline import first_likely_positive_node
+            selected_node=first_likely_positive_node(Path(current.p_base),config)
         print(f"Explaining {index}/{len(configs)}: {current.p_base} ({chosen_model})", flush=True)
         try:
-            explain_configuration(current, node_id=node_id, node_name=node_name)
+            explain_configuration(current, node_id=selected_node, node_name=node_name)
         finally:
             gc.collect()
             if torch.cuda.is_available():
@@ -761,6 +758,8 @@ def run_explanations(config_path=None, args=None, node_id=None, node_name=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
+    parser.add_argument("--model", choices=["PNA","GCN","GraphSAGE","GATv2","GraphTransformer"])
+    parser.add_argument("--first-likely-positive", action="store_true", help="Use the first test_gene_ids from the PNA likely-positive table")
     add_parameter_arguments(parser)
     nodes = parser.add_mutually_exclusive_group()
     nodes.add_argument("--node-id", type=int, help="Graph node ID (default: config xai_node_id or 8140)")

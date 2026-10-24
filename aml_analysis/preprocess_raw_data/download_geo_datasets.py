@@ -25,7 +25,7 @@ def validate(path):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data-dir', type=Path, default=BASE / 'data/raw')
+    parser.add_argument('--data-dir', type=Path, default=BASE / 'raw/raw')
     parser.add_argument('--force', action='store_true')
     args = parser.parse_args()
     args.data_dir.mkdir(parents=True, exist_ok=True)

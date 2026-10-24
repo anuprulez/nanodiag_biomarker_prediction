@@ -85,8 +85,8 @@ def harmonise(data_dir, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data-dir', type=Path, default=BASE / 'data/raw')
-    parser.add_argument('--output-dir', type=Path, default=BASE / 'data/harmonised')
+    parser.add_argument('--data-dir', type=Path, default=BASE / 'raw/raw')
+    parser.add_argument('--output-dir', type=Path, default=BASE / 'raw/harmonised')
     args = parser.parse_args()
     harmonise(args.data_dir, args.output_dir)
 

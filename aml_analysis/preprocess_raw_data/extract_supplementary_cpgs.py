@@ -7,8 +7,8 @@ import xml.etree.ElementTree as ET
 import zipfile
 
 BASE = Path(__file__).resolve().parents[1]
-SOURCE = BASE / 'data/41375_2021_1316_MOESM3_ESM.xlsx'
-OUTPUT = BASE / 'data/aml_cpg_gene_delta_beta.tsv'
+SOURCE = BASE / 'raw/41375_2021_1316_MOESM3_ESM.xlsx'
+OUTPUT = BASE / 'raw/aml_cpg_gene_delta_beta.tsv'
 NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 
 

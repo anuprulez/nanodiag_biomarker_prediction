@@ -42,6 +42,10 @@ conda env create -f env.yml
 - Run `aml_analysis/train_gnn/run_xai_explainer.py` for explainable AI subgraph analysis
 
 
+### Model benchmarks
+
+Select `tabpfn`, `tabiclv2`, `xgboost`, `catboost`, or a GNN with `model_type` in the existing config and run `main.py` in the same conda environment. Compare all nine architectures on the same fixed splits using the [benchmark scripts and instructions](breast_cancer_analysis/train_gnn/BENCHMARKS.md). The workflow produces validation-selected results, per-node predictions, and a combined CSV/Markdown report.
+
 ### Preprint
 
 [Prioritizing DNA methylation biomarkers using graph neural networks and explainable AI](https://www.biorxiv.org/content/10.64898/2026.01.26.701692v1.abstract)

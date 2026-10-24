@@ -22,7 +22,7 @@ class OptunaTuningTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.config = OmegaConf.load(HERE.parent / 'config/config.yaml')
+        self.config = OmegaConf.merge(OmegaConf.create(OmegaConf.to_container(OmegaConf.load(HERE.parent / 'config/optuna.yaml').runtime_defaults,resolve=False)), OmegaConf.load(HERE.parent / 'config/config.yaml'))
         # Production PNA winners must not override the tiny test epoch budget.
         self.config.model_overrides.pop('PNA', None)
         self.config.p_base = str(self.root) + '/'
@@ -167,7 +167,8 @@ class OptunaTuningTests(unittest.TestCase):
             self.assertIn('embedding_dropout', parameters)
             self.assertIn('neighbors_spread', parameters)
             current = trial_config(self.config, parameters, name)
-            expected = json.loads(parameters['neighbors_spread'])[:current.gnn_layers]
+            hops = json.loads(parameters['neighbors_spread'])
+            expected = (hops + [hops[-1]] * current.gnn_layers)[:current.gnn_layers]
             self.assertEqual(list(current.neighbors_spread), expected)
             self.assertEqual(current.feature_dropout, parameters['feature_dropout'])
             self.assertEqual(current.embedding_dropout, parameters['embedding_dropout'])

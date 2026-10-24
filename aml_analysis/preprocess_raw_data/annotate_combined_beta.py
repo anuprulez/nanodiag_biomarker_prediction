@@ -122,9 +122,9 @@ def run(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--platform', type=Path, default=BASE / 'data/GPL13534_family.soft.gz')
-    parser.add_argument('--annotation-cache', type=Path, default=BASE / 'data/GPL13534_probe_annotation.tsv')
-    parser.add_argument('--input', type=Path, default=BASE / 'data/harmonised/combined_beta.tsv.gz')
-    parser.add_argument('--output', type=Path, default=BASE / 'data/harmonised/combined_beta_cpg_gene.tsv.gz')
+    parser.add_argument('--platform', type=Path, default=BASE / 'raw/GPL13534_family.soft.gz')
+    parser.add_argument('--annotation-cache', type=Path, default=BASE / 'raw/GPL13534_probe_annotation.tsv')
+    parser.add_argument('--input', type=Path, default=BASE / 'raw/harmonised/combined_beta.tsv.gz')
+    parser.add_argument('--output', type=Path, default=BASE / 'raw/harmonised/combined_beta_cpg_gene.tsv.gz')
     parser.add_argument('--apply', action='store_true', help='Write annotated matrix after assessment')
     run(parser.parse_args())

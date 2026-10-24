@@ -83,6 +83,24 @@ class EvaluationTests(unittest.TestCase):
         write_results(h,c,{n.split('_')[0]:{'genes':['GENE','OTHER']} for n in names},out)
         return data,matrix,out
 
+    def test_prediction_group_exports_are_sorted_without_reordering_inference(self):
+        import extract_predictions as exporter
+        frame=pd.DataFrame({'test_gene_ids':[0,1,2,3,4,5],
+                            'test_gene_names':[f'cg{i:08d}_GENE' for i in range(6)],
+                            'labels':[3,3,3,3,3,3], 'pred_labels':[3,2,4,2,5,2],
+                            'pred_probs':[.6,.5,.9,.95,.9,.7]})
+        with tempfile.TemporaryDirectory() as temporary:
+            output=Path(temporary)
+            with patch.object(exporter,'prediction_frame',return_value=frame):
+                groups=exporter.extract(output,'PNA',output)
+            self.assertEqual(groups['negative'].test_gene_ids.tolist(),[2,4,0])
+            self.assertEqual(groups['likely_positive'].test_gene_ids.tolist(),[3,5,1])
+            for name in ['pred_negatives_PNA.csv','pred_likely_pos_bc_PNA.csv']:
+                saved=pd.read_csv(output/name,sep='\t')
+                self.assertTrue(saved.pred_probs.is_monotonic_decreasing)
+            original=pd.read_csv(output/'all_test_predictions_PNA.tsv',sep='\t')
+            self.assertEqual(original.test_gene_ids.tolist(),frame.test_gene_ids.tolist())
+
     def test_inference_alignment_and_group_rules(self):
         with tempfile.TemporaryDirectory() as d:
             root=Path(d);data,matrix,external=self.fixture(root)
@@ -180,6 +198,12 @@ class EvaluationTests(unittest.TestCase):
             self.assertEqual(report['training_series'],'GSE66695')
             self.assertEqual(report['cohort_platforms']['GSE66695'],'GPL13534 (450K)')
             self.assertTrue(all(row['common_unique_cpgs']==2 for row in report['groups']))
-            self.assertEqual(len(list(out.glob('*.png'))),2)
+            self.assertEqual(len(list(out.glob('*.png'))),3)
+            self.assertEqual(report['external_inference']['FDR_family_size'],4)
+            self.assertTrue(report['cohort_audit']['disease_study_confounding'])
+            candidates=pd.read_csv(next(out.glob('likely_positive_common_unique_cpgs*.tsv')),sep='\t')
+            self.assertTrue({'External_p_value','External_FDR','External_CI95_low','External_CI95_high',
+                             'Direction_concordant','Meets_exploratory_criterion'} <= set(candidates))
+            self.assertTrue(all('mean_absolute_error' in row for row in report['groups']))
 
 if __name__=='__main__':unittest.main()

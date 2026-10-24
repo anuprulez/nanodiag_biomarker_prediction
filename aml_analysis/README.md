@@ -80,67 +80,90 @@ coverage and a SHA256 check confirming unchanged beta-value text. Gene symbols
 may differ from symbols in the literature's supplementary table because the
 annotation sources differ. Use the mapping table to join by original CpG ID.
 
-## AML graph preprocessing and training
+## AML graph preprocessing, tuning and model stages
 
-`preprocess_raw_data/process_raw_illumina_arrays_aml.py` and `train_gnn/` mirror
-the breast cancer implementation. Run with the existing conda environment:
+From `aml_analysis`, with `nanodiag_biomarker_gnn` active:
 
 ```bash
-conda activate nanodiag_biomarker_gnn
-python /home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/aml_analysis/run_pipeline.py --config /home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/aml_analysis/config/config_corr_0.33.yaml
+python run_pipeline.py --stage preprocess
+python run_pipeline.py --stage tune --trials 50
+python run_pipeline.py --stage train
+python run_pipeline.py --stage xai
+python run_pipeline.py --stage compare-predictions
 ```
 
-Use `--stage preprocess` or `--stage train` to rerun a single stage. The runner
-sets paths relative to this analysis, limits compute threads, and saves logs to
-`logs/preprocess.log` and `logs/train.log`. NeDBIT and APU executables must be on
-the selected Python environment's PATH. The preprocessing script also accepts
-`--config` directly, as does `train_gnn/main.py`.
+Without `--folder`, stages select all dataset folders. Preprocessing also creates
+combinations configured in `config/config.yaml`. To select one folder, append:
 
-Preprocessing consumes the already expanded annotated beta matrix, validates
-sample metadata and applies the breast cancer workflow's SNP, cross-reactive
-and X/Y probe filters using the AML platform annotation. All gene mappings of
-a CpG stay in one partition. It selects 10,000 highly variable non-seed features
-using the same Scanpy Seurat method, constructs mutual Pearson kNN graphs
-(k=3000, beta correlation >0.33) separately in train/validation/test partitions
-(70%/15%/15%), calculates NeDBIT features and propagates seed labels with APU.
-Unsupported components are handled with the existing breast cancer logic.
+```bash
+--folder data_corr_0.33_knn_n_3000_n_neg_10000
+```
 
-The active seed source is `/data/aml_top200_cpg_gene_delta_beta.tsv`, containing
-142 unique, gene-annotated CpGs after removal of the 58 unannotated selections.
-Both AML configs use this absolute path. Preprocessing reads
-`deltaBeta_AML_minus_Normal` (AML minus control) and uses its absolute magnitude
-as the seed weight. Seed matching remains by CpG ID; all retained matrix gene
-mappings for each seed CpG are marked as seed features. No p-values are invented.
-`preprocessed/seed_qc_aml.tsv` records retention after the platform probe filters.
+`--dry-run` prints commands without changing files or running stages. `--stage all`
+runs all five stages in order. `--models PNA GCN` selects models for tuning,
+training or comparisons. XAI selects the first `test_gene_ids` from
+`generated/data/pred_likely_pos_aml_PNA.csv`; missing groups are reconstructed from
+saved predictions. Empty likely-positive groups produce a clear error.
 
-After preprocessing completes, it writes `seed_preprocessing_manifest.json`
-with the seed-file SHA256, row count and delta column. Training checks this
-against the current seed file before loading any model. After changing seeds,
-rerun preprocessing before training; existing 37-seed artifacts cannot be reused.
-A preprocessing job started before this code change continues with its previously
-loaded seeds and does not satisfy the new manifest check.
+Configuration is separated by stage:
 
-Training uses four NeDBIT features plus 526 sample beta values (530 inputs).
-The default model list matches breast cancer: PNA, GCN, GraphSAGE, GATv2,
-GraphTransformer, TabPFN, TabICL v2, XGBoost and CatBoost. Each model gets its own
-artifacts, predictions and metrics; GNNs use up to 30 epochs with validation-based
-checkpointing/early stopping. TabPFN/TabICL reuse the exact pretrained checkpoints
-already downloaded under the breast cancer analysis; these are generic pretrained
-weights, not fitted breast cancer models. Fitted AML models are saved separately.
-The XAI feature-importance groups follow AML sample metadata (464 controls first,
-then 62 AML samples).
+- `config/config.yaml`: AML preprocessing inputs, seeds, filters, 530 input
+  dimensions, splits and the existing 48 correlation/kNN/negative-count combinations.
+- `config/optuna.yaml`: AML search spaces and `runtime_defaults` for training,
+  XAI, plots and output templates.
+- `<dataset>/preprocessing_config.yaml`: that folder's fixed preprocessing context.
+- `<dataset>/config.yaml`: created after tuning, with only completed model winners,
+  seed provenance and normal training artifact paths. Training, XAI and comparisons
+  use this config. Tuning never writes model settings into the shared preprocessing config.
 
-Outputs go under the configured `p_base` (for `config_corr_0.33.yaml`,
-`data_corr_0.33_knn_n_3000_n_neg_10000/`): graph/signals/labels/split manifest in
-`preprocessed/`; models, evaluation artifacts and plots in `generated/`.
-The standalone `preprocess_raw_data/validate_aml_outputs.py --config ...` checks
-actual output alignment, dimensions, class coverage and absence of cross-split
-CpGs/edges, writing `preprocessing_validation.json`.
+The existing completed AML studies have been exported into
+`data_corr_0.33_knn_n_3000_n_neg_10000/config.yaml` for all eight tuned models.
+Other folders receive their configs when tuning completes. A missing config
+requires tuning first; no settings are borrowed from another dataset.
 
-The model predicts five propagated biomarker-priority classes for CpG-gene nodes;
-it does not classify patients as healthy versus AML. Published seeds were selected
-using these cohorts; this run is not independent biological validation of those
-seeds. See the cohort-confounding limitations above.
+```text
+<dataset>/
+  preprocessing_config.yaml
+  config.yaml
+  preprocessed/
+  generated/
+    data/       # features, prediction tables, metrics JSON/CSV
+    plots/      # PDF, PNG and other figures
+    models/     # fitted models, graph tensors and all .pt files
+    optuna/     # independent study databases, trials and winner exports
+  evaluation/   # comparison tables, plots, reports and extracted groups
+  logs/         # one log per pipeline stage
+```
+
+Existing flat generated artifacts are migrated without overwriting destinations.
+Moves are recorded in `artifact_migration.json`; the old dataset config is backed
+up as `config.before_artifact_layout.yaml`. Completed preprocessing manifests are
+skipped; incomplete existing folders can be rebuilt. NeDBIT/APU executables must
+remain on the selected Python environment's PATH.
+
+AML inputs and seed semantics are retained: the harmonised, annotated beta matrix
+and aligned sample metadata, 464 controls plus 62 AML samples, four NeDBIT features,
+and `raw/aml_top200_cpg_gene_delta_beta.tsv` with 142 gene-annotated seed CpGs.
+Seed weights use `deltaBeta_AML_minus_Normal`; manifests reject stale seed inputs.
+The original preprocessing/model config and search config are backed up in
+`config/config.before_stage_split.yaml` and `config/optuna.before_stage_split.yaml`.
+Generic TabPFN/TabICL checkpoints are shared from `../breast_cancer_analysis/model/`;
+fitted AML models remain separate.
+
+All mappings of each CpG stay in one partition. AML sample grouping follows its
+metadata. External comparisons continue using GSE40279 healthy blood and GSE62298
+AML, and calculate AML-minus-healthy beta differences. No BC seed identities,
+cohort dimensions or evaluation datasets are substituted.
+
+The model predicts five propagated priority classes for CpG-gene nodes; it does
+not classify patients. The cohort-confounding limitations above remain applicable.
+
+Standalone training, XAI and comparison runners accept `--config <dataset>/config.yaml`.
+Existing completed Optuna studies can be exported without additional trials:
+
+```bash
+python train_gnn/tune_models.py --export-existing --corr-threshold 0.33 --knn-neighbours 3000 --size-negative 10000
+```
 
 ## Top 100 hypermethylated and 100 hypomethylated CpGs
 
@@ -317,3 +340,31 @@ python train_gnn/run_xai_explainer.py \
 This script uses GNNExplainer and supports PNA, GCN, GraphSAGE, GATv2 and
 GraphTransformer. It reports an error if `best_trained_model` selects a tabular
 estimator.
+
+Prediction comparisons preserve existing XAI-exported group CSVs and record their
+source paths/hashes. They do not reapply a separate default selection rule to
+existing exports. Folder arguments resolve relative to `aml_analysis` regardless
+of shell cwd; training binds outputs to the selected dataset and rejects escapes.
+The training entry point also accepts `--folder`.
+
+### Compare dataset overlap
+
+```bash
+python run_pipeline.py --stage compare_data_overlap
+```
+
+Generates three comparisons:
+
+- Vary `n_neighbours`, fixing `corr=0.33` and `num_negatives=10000`.
+- Vary `num_negatives`, fixing `corr=0.33` and `n_neighbours=3000`.
+- Vary `corr`, fixing `n_neighbours=3000` and `num_negatives=10000`.
+
+Writes one PNG per comparison containing separate train, test, and validation bar charts to
+`evaluation/data_overlap/`, along with `membership_regions.csv` and
+`pairwise_overlap.csv` (intersection, union, and Jaccard similarity).
+Each bar represents an exclusive membership region across parameter settings;
+percentages use the union of distinct probe–gene IDs for that split.
+IDs come from final retained nodes in `preprocessed/out_genes_aml_*.csv` and are
+matched by probe–gene name, rather than local numeric ID.
+Missing split files are reported in `skipped_datasets.csv`.
+This stage runs explicitly and does not require tuned model configs.

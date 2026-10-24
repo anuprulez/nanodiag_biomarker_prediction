@@ -13,6 +13,8 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 from scipy.stats import pearsonr, spearmanr
+from replication_metrics import (external_inference, annotate_candidates, agreement_metrics,
+                                 sensitivity_table, cohort_audit, validation_plots, sensitivity_plot)
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -22,8 +24,8 @@ DEFAULT_DATA = ROOT / 'data_corr_0.33_knn_n_3000_n_neg_10000'
 EXTERNAL_DELTA = 'Delta_beta_BC_minus_healthy'
 EXTERNAL_STATS = ['Healthy_GSE101961_mean_beta', 'Healthy_GSE101961_SD', 'Healthy_GSE101961_n',
                   'BC_GSE226569_mean_beta', 'BC_GSE226569_SD', 'BC_GSE226569_n', EXTERNAL_DELTA]
-GROUPS = [('negative', 'Predicted negative', 'pred_negatives_PNA.csv', '#4c72b0'),
-          ('likely_positive', 'Predicted likely positive', 'pred_likely_pos_bc_PNA.csv', '#dd8452')]
+GROUPS = [('likely_positive', 'Predicted likely positive', 'pred_likely_pos_bc_PNA.csv', '#dd8452'),
+          ('negative', 'Predicted negative', 'pred_negatives_PNA.csv', '#4c72b0')]
 
 
 # Match plot_aggregations.py: talk context, deep blue/orange, 24/16/14 pt text.
@@ -169,6 +171,7 @@ def main():
     parser.add_argument('--data', type=Path, help='Dataset folder; defaults to the tuned dataset config')
     parser.add_argument('--external', type=Path, default=HERE / 'results/cpg_gene_beta_comparison.tsv')
     parser.add_argument('--config', type=Path, default=ROOT / 'config/config.yaml', help='Dataset config, or preprocessing config used to discover tuned dataset configs')
+    parser.add_argument('--external-universe', type=Path, help='Full shared-CpG statistics for BH; defaults to shared_cpg_statistics.tsv beside --external')
     parser.add_argument('--matrix', type=Path, help='Override the original training matrix specified by config')
     parser.add_argument('--model', choices=['PNA','GCN','GraphSAGE','GATv2','GraphTransformer','TabPFN','TabICL','XGBoost','CatBoost'])
     parser.add_argument('--generated-dir', type=Path, help='Override model artifact directory; selected improved PNA is detected automatically')
@@ -209,10 +212,10 @@ def main():
     original_tissue = 'PBMCs in BC patients and normal controls' if original_is_pbmc else 'breast tumors and normal breast tissue'
     original_platform = 'GPL23976 (EPIC 850K)' if original_is_pbmc else 'GPL16304 (450K)' if training_series == 'GSE69914' else 'GPL13534 (450K)'
     interpretation = ('Exploratory cross-tissue comparison, not matched-tissue replication of a PBMC biomarker signature'
-                      if original_is_pbmc else 'Exploratory comparison of independent breast-tissue cohorts; matching platform does not remove study effects')
+                      if original_is_pbmc else 'Exploratory cross-study breast-tissue comparison; disease and study are confounded and patient independence is unverified')
     limitations = ('PBMC training effects are compared with breast tissue effects on a different array platform. '
                    if original_is_pbmc else 'Breast tissue effects are compared across separate studies and processing protocols. ')
-    limitations += 'Tissue composition, study, processing and tumor purity can change effect direction and size. No batch, demographic or cell-composition adjustment. Propagated priority classes are not ground-truth differential methylation labels; internal classification accuracy does not establish biological replication.'
+    limitations += 'External cases and controls come from different studies: disease and batch are confounded. Nominal Welch p-values and BH FDR cannot resolve this confounding; confidence intervals are unadjusted pointwise intervals. Candidate thresholds are exploratory, not prospectively registered. Patient-level independence and all external use in tuning remain unverified. Tissue composition, study, processing and tumor purity can change effect direction and size. No batch, demographic or cell-composition adjustment. Propagated priority classes are not ground-truth differential methylation labels; internal classification accuracy does not establish biological replication.'
     global GROUPS
     GROUPS = [(g,l,f.replace('PNA',args.model),c) for g,l,f,c in GROUPS]
     suffix = args.model + '_' + args.data.name.removeprefix('data_')
@@ -243,9 +246,30 @@ def main():
     internal = internal_statistics(predictions, signal_path, args.matrix)
     external_pairs = pd.read_csv(args.external, sep='\t', dtype={'CpG_ID': str, 'Gene': str})
     external = collapse_external(external_pairs)
+    universe_path = args.external_universe or args.external.parent / 'shared_cpg_statistics.tsv'
+    if not universe_path.is_file():
+        raise FileNotFoundError(f'{universe_path}: full shared-CpG universe required for FDR; run evaluation/evaluate_datasets.py')
+    universe = pd.read_csv(universe_path, sep='\t', dtype={'CpG_ID': str})
+    inferred = external_inference(universe)
+    inputs.append(universe_path)
+    inference_columns = ['External_p_value','External_FDR','External_CI95_low','External_CI95_high','External_testable']
+    # Ensure the inferential universe describes the exact effect table being plotted.
+    check = external.merge(universe[['CpG_ID'] + EXTERNAL_STATS], on='CpG_ID', how='left',
+                           validate='one_to_one', suffixes=('_plot','_universe'), indicator=True)
+    if not check['_merge'].eq('both').all():
+        raise ValueError('External comparison CpGs absent from FDR universe')
+    for field in EXTERNAL_STATS:
+        if not np.allclose(check[field+'_plot'], check[field+'_universe'], equal_nan=True, atol=1e-10):
+            raise ValueError(f'External comparison differs from FDR universe: {field}')
+    external = external.merge(inferred[['CpG_ID'] + inference_columns], on='CpG_ID', validate='one_to_one')
+    audit, audit_paths = cohort_audit(args.matrix, training_series, ROOT, HERE/'raw')
+    inputs.extend(audit_paths)
+    output_path(output, 'cohort_audit.json', suffix).write_text(json.dumps(audit, indent=2)+'\n')
+    inferred[['CpG_ID', EXTERNAL_DELTA] + inference_columns].to_csv(
+        output_path(output, 'external_differential_methylation_universe.tsv', suffix), sep='\t', index=False)
     matched, plot_data, summary = {}, {}, []
     for (group, label, filename, color), frame in zip(GROUPS, predictions):
-        joined = match_predictions(frame, external, internal)
+        joined = annotate_candidates(match_predictions(frame, external, internal))
         joined.to_csv(output_path(output, f'{group}_all_predictions.tsv', suffix), sep='\t', index=False)
         common = joined.loc[joined['Matched_external_CpG']].copy()
         common.to_csv(output_path(output, f'{group}_common_cpg_gene_matches.tsv', suffix), sep='\t', index=False)
@@ -255,7 +279,7 @@ def main():
         # Per-CpG tables should not retain one arbitrary gene's prediction score.
         columns = ['prediction_group', 'CpG_ID', 'Predicted_genes', 'External_genes',
                    'Internal_healthy_mean_beta', 'Internal_BC_mean_beta',
-                   'Internal_delta_beta_BC_minus_healthy', 'Internal_healthy_n', 'Internal_BC_n'] + EXTERNAL_STATS + ['External_minus_internal_delta_beta']
+                   'Internal_delta_beta_BC_minus_healthy', 'Internal_healthy_n', 'Internal_BC_n'] + EXTERNAL_STATS + ['External_minus_internal_delta_beta'] + inference_columns + ['Direction_concordant', 'Internal_absolute_delta_beta', 'External_absolute_delta_beta', 'Absolute_delta_error', 'External_significant', 'Meets_exploratory_criterion']
         unique = unique[columns].sort_values('CpG_ID')
         unique.to_csv(output_path(output, f'{group}_common_unique_cpgs.tsv', suffix), sep='\t', index=False)
         finite = np.isfinite(unique[['Internal_delta_beta_BC_minus_healthy', EXTERNAL_DELTA]].to_numpy()).all(axis=1)
@@ -277,46 +301,23 @@ def main():
                    same_direction_fraction=float(np.mean(np.sign(x) == np.sign(y))),
                    pearson_r=float(pearsonr(x,y).statistic) if varied else None,
                    spearman_r=float(spearmanr(x,y).statistic) if varied else None)
+        row.update(agreement_metrics(valid))
         summary.append(row)
         matched[group], plot_data[group] = unique, valid
     pd.DataFrame(summary).to_csv(output_path(output, 'summary.tsv', suffix), sep='\t', index=False)
     overlap = sorted(set(matched['negative']['CpG_ID']) & set(matched['likely_positive']['CpG_ID']))
     pd.DataFrame({'CpG_ID': overlap}).to_csv(output_path(output, 'cpgs_in_both_prediction_groups.tsv', suffix), sep='\t', index=False)
     set_plot_style()
-    fig, axes = plt.subplots(2, 2, figsize=(17, 14), constrained_layout=True)
-    scatter_values = np.concatenate([df[['Internal_delta_beta_BC_minus_healthy', EXTERNAL_DELTA]].to_numpy().ravel() for df in plot_data.values()])
-    limit = min(1.02, max(0.15, float(np.abs(scatter_values).max()) * 1.12))
+    sensitivity = sensitivity_table(plot_data)
+    sensitivity.to_csv(output_path(output, 'criterion_sensitivity.tsv', suffix), sep='\t', index=False)
+    plot_groups = GROUPS
+    save_plot(validation_plots(plot_data,summary,plot_groups,original_axis), output, 'delta_beta_original_vs_external', suffix)
+    save_plot(sensitivity_plot(sensitivity,plot_groups), output, 'criterion_sensitivity', suffix)
     rng = np.random.default_rng(32)
-    for column, ((group, label, filename, color), row) in enumerate(zip(GROUPS, summary)):
-        frame = plot_data[group]
-        x = frame['Internal_delta_beta_BC_minus_healthy'].to_numpy()
-        y = frame[EXTERNAL_DELTA].to_numpy()
-        ax = axes[0, column]
-        ax.scatter(x, y, s=24, alpha=0.6, color=color, edgecolors='none', rasterized=True)
-        ax.plot([-limit,limit],[-limit,limit],ls='--',lw=2,color='#555555',label='Equal effect')
-        ax.axhline(0,color='#BBBBBB',lw=.7); ax.axvline(0,color='#BBBBBB',lw=.7)
-        ax.set(xlim=(-limit,limit),ylim=(-limit,limit),xlabel=f'{original_axis} Δβ (case − control)',
-               ylabel='Breast tissue Δβ (tumor − normal)',title=f'{label}\n{len(frame):,} common CpGs')
-        ax.set_aspect('equal',adjustable='box')
-        correlation = f"Pearson r = {row['pearson_r']:.3f}" if row['pearson_r'] is not None else 'Pearson r undefined'
-        ax.text(.04,.96,correlation,transform=ax.transAxes,va='top',fontsize=ANNOTATION_FONT,
-                bbox={'facecolor':'white','edgecolor':'none','alpha':.85,'pad':4})
-        ax = axes[1,column]
-        ax.boxplot([x,y],positions=[1,2],widths=.45,showfliers=False,patch_artist=True,
-                   boxprops={'facecolor':color,'edgecolor':color,'alpha':.3,'linewidth':1.5},
-                   medianprops={'color':'black','linewidth':1.8},
-                   whiskerprops={'color':color,'linewidth':1.4},capprops={'color':color,'linewidth':1.4})
-        for position, values in [(1,x),(2,y)]:
-            ax.scatter(position+rng.uniform(-.14,.14,len(values)),values,s=13,alpha=.3,color=color,edgecolors='none',rasterized=True)
-        ax.axhline(0,color='#BBBBBB',lw=.8)
-        ax.set(xticks=[1,2],xticklabels=['PBMCs' if original_is_pbmc else 'Original breast','External breast'],ylabel='Δβ (case − control)',
-               title='Effects at matched CpGs',ylim=(-limit,limit))
-    fig.suptitle(f'{args.model}: {original_axis} versus external breast tissue\n' + ('Exploratory comparison across different tissues' if original_is_pbmc else 'Exploratory comparison across independent studies'),fontsize=TITLE_FONT)
-    save_plot(fig,output,'delta_beta_original_vs_external',suffix)
     fig, axes = plt.subplots(1,2,figsize=(17,6.5),constrained_layout=True)
     for ax,column,title in [(axes[0],'External_minus_internal_delta_beta','Change in effect across cohorts'),
                             (axes[1],EXTERNAL_DELTA,'Absolute breast tissue methylation effect')]:
-        for position,(group,label,filename,color) in enumerate(GROUPS,1):
+        for position,(group,label,filename,color) in enumerate(plot_groups,1):
             values=plot_data[group][column].to_numpy()
             if column==EXTERNAL_DELTA:
                 values=np.abs(values)
@@ -326,10 +327,19 @@ def main():
             box['boxes'][0].set(facecolor=color,edgecolor=color,linewidth=1.5,alpha=.3)
             ax.scatter(position+rng.uniform(-.15,.15,len(values)),values,color=color,alpha=.35,s=14,edgecolors='none',rasterized=True)
         ax.axhline(0,color='#999999',lw=.8)
-        ax.set(xticks=[1,2],xticklabels=['Predicted\nnegative','Predicted\nlikely positive'],title=title,
+        ax.set(xticks=[1,2],xticklabels=[label.replace('Predicted ', 'Predicted\n') for _,label,_,_ in plot_groups],title=title,
                ylabel=f'External Δβ − {original_axis} Δβ' if column!='Delta_beta_BC_minus_healthy' else '|Breast tissue Δβ|')
     save_plot(fig,output,'delta_beta_shift_by_prediction_group',suffix)
-    report=dict(prediction_group_source='exported_csv' if group_sources else 'reconstructed_from_tensors',
+    report=dict(external_inference={'method':'Two-sided Welch t-test from sample mean, sample SD (ddof=1), per-CpG n',
+                'FDR_method':'Benjamini-Hochberg before candidate selection; untestable sites retained as p=1 in family',
+                'FDR_universe':str(universe_path.resolve()), 'FDR_family_size':len(universe),
+                'testable_CpGs':int(inferred.External_testable.sum()), 'CI':'95% pointwise Welch interval; no covariate or batch adjustment',
+                'criterion':'abs(external delta)>=0.10 AND BH FDR<0.05 AND consistent nonzero direction',
+                'threshold_status':'Exploratory defaults selected for this analysis; not prospectively registered',
+                'sensitivity':'effect thresholds 0.05,0.10,0.20; FDR cutoffs 0.01,0.05,0.10',
+                'method_reference':'https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_ind_from_stats.html'},
+                cohort_audit=audit,
+                prediction_group_source='exported_csv' if group_sources else 'reconstructed_from_tensors',
                 prediction_group_source_files=[str(path.resolve()) for path in group_sources], model=args.model, model_artifact_directory=str(generated), data_directory=str(args.data), output_suffix=suffix, delta_definition='mean beta in BC minus mean beta in healthy controls',
                 delta_shift_definition='external delta beta minus original delta beta',
                 original_samples={'healthy':int(internal['Internal_healthy_n'].iloc[0]),'BC':int(internal['Internal_BC_n'].iloc[0])},
@@ -359,8 +369,22 @@ def main():
     for (group,label,filename,color),row in zip(GROUPS,summary):
         r=f"{row['pearson_r']:.4f}" if row['pearson_r'] is not None else 'undefined'
         lines.append(f"| {label} | {row['predicted_features']} | {row['predicted_unique_cpgs']} | {row['common_unique_cpgs']} | {r} | {row['external_median_absolute_delta_beta']:.4f} |")
-    lines += ['',f'Common CpGs assigned to both prediction groups: {len(overlap)}. Such CpGs remain in both group panels; the groups are not assumed independent.',
+    lines += ['', '### Complementary reproducibility metrics', '',
+              '| Group | Spearman | Direction agreement | MAE | Median original / external absolute Δβ | External absolute Δβ > 0.10 / > 0.20 | FDR < 0.05 | Exploratory criterion |',
+              '|---|---:|---:|---:|---|---|---:|---:|']
+    for row in summary:
+        spearman = f"{row['spearman_r']:.3f}" if row['spearman_r'] is not None else 'undefined'
+        lines.append(f"| {row['prediction_group']} | {spearman} | {row['same_direction_fraction']:.1%} | {row['mean_absolute_error']:.4f} | {row['internal_median_absolute_delta_beta']:.4f} / {row['external_median_absolute_delta_beta']:.4f} | {row['external_absolute_delta_gt_0.10_fraction']:.1%} / {row['external_absolute_delta_gt_0.20_fraction']:.1%} | {row['external_significant_fraction']:.1%} | {row['exploratory_criterion_count']}/{row['plotted_unique_cpgs']} ({row['exploratory_criterion_fraction']:.1%}) |")
+    lines += ['', 'Welch tests use saved sample means, sample SDs, and per-CpG counts, sufficient for the unadjusted test and pointwise 95% confidence intervals. BH uses the full shared CpG universe before selecting predictions. Untestable sites remain in the family as p=1; missing inference is not counted as support.',
+              'Support criterion: |external Δβ| ≥ 0.10, BH FDR < 0.05, consistent nonzero direction. These are exploratory defaults, with sensitivity plots at effect thresholds 0.05/0.10/0.20 and FDR 0.01/0.05/0.10.',
+              'Higher Pearson correlation can reflect a wider effect range. SD, direction concordance, and MAE quantify complementary properties; no correlation value alone establishes biological relevance.',
+              'Direction concordance uses exact signs, including zero-zero matches; the support criterion requires nonzero effects. Effect-threshold summaries use strict > cutoffs, whereas the support criterion uses ≥.',
+              'The denominator is finite matched unique CpGs per prediction group. Group selections depend on graph/methylation-derived labels; overlapping CpGs and correlated sites preclude an independent LP-versus-negative test. Stronger descriptive effects do not establish GNN improvement over selection.',
+              'The existing external data do not supply a same-study case/control replication cohort. GSE66695 is discovery; reusing it would leak discovery data. GSE69914 could provide a separate future same-study analysis after input/QC and patient-overlap review.',
+              'No NIAPU/Random Forest external ranking comparison is claimed: comparable held-out prediction outputs are not supplied. --models can compare existing saved models without retraining.',
+              '',f'Common CpGs assigned to both prediction groups: {len(overlap)}. Such CpGs remain in both group panels; the groups are not assumed independent.',
               '', f'Plots: `delta_beta_original_vs_external_{suffix}.png` and `delta_beta_shift_by_prediction_group_{suffix}.png`, with PDF versions.',
+              'Additional outputs: criterion_sensitivity PNG/PDF/TSV, per-CpG external p/FDR/95% CI, full external test universe, and cohort_audit JSON.',
               'Tables retain all extracted features, all matching CpG-gene rows, unique matched CpGs, and unmatched predictions (Matched_external_CpG=false).',
               '',report['limitations'],'',
               f'Regenerate from breast_cancer_analysis with `python evaluation/compare_predictions.py --model {args.model} --data {args.data}`.']

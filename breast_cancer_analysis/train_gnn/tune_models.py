@@ -20,6 +20,8 @@ sys.path.insert(0, str(HERE.parent))
 from preprocessing_grid import add_parameter_arguments, load_preprocessing_config, preprocessing_configs
 from model_settings import apply_model_settings
 from seed_inputs import validate_seed_manifest
+from dataset_configs import tuning_source, write_tuned_dataset
+from artifact_layout import apply_artifact_layout
 
 GNN_MODELS = ('PNA', 'GCN', 'GraphSAGE', 'GATv2', 'GraphTransformer')
 MODELS = GNN_MODELS + ('XGBoost', 'CatBoost', 'TabPFN', 'TabICL')
@@ -196,7 +198,7 @@ def input_fingerprint(config, search):
               'p_combined_pos_neg_signals', 'p_split_manifest', 'p_seeds')
     payload = dict(inputs={key: sha256(config[key]) for key in fields},
                    config=OmegaConf.to_container(config, resolve=True),
-                   search=OmegaConf.to_container(search, resolve=True), versions=versions(), optuna_version=optuna.__version__)
+                   search=OmegaConf.to_container(OmegaConf.masked_copy(search, [key for key in search if key != 'runtime_defaults']), resolve=True), versions=versions(), optuna_version=optuna.__version__)
     # Adding more trials does not change the objective or search space.
     payload['search'].pop('n_trials', None)
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -242,7 +244,9 @@ def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None)
     # Intermediate feature exports are isolated from ordinary model artifacts.
     prepared = copy.deepcopy(base)
     prepared.p_generated_files = str(directory / 'prepared') + '/'
-    Path(prepared.p_generated_files).mkdir(exist_ok=True)
+    apply_artifact_layout(prepared)
+    for key in ('p_generated_files','p_data','p_model','p_plot'):
+        Path(prepared[key]).mkdir(parents=True,exist_ok=True)
     if name in GNN_MODELS:
         import torch
         import preprocess_data
@@ -282,10 +286,12 @@ def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None)
     # Export absolute input paths and a dedicated final-training output directory.
     final = directory / 'final'
     best_config.p_generated_files = str(final) + '/'
+    apply_artifact_layout(best_config)
     resolved = OmegaConf.create(OmegaConf.to_container(best_config, resolve=True))
     for key, value in list(resolved.items()):
         if key.startswith('p_') and isinstance(value, str) and value:
             resolved[key] = str(Path(value).resolve()) + ('/' if value.endswith('/') else '')
+    resolved.config_scope = 'model_export'
     OmegaConf.save(resolved, directory / 'best_config.yaml')
     extension = 'pt' if name in GNN_MODELS else 'joblib'
     shutil.copy2(directory / f'trial_{winner.number:05d}' / f'model.{extension}', directory / f'best_model.{extension}')
@@ -304,13 +310,15 @@ def main():
     parser.add_argument('--config', type=Path, default=HERE.parent / 'config/config.yaml')
     parser.add_argument('--search-space', type=Path, default=HERE.parent / 'config/optuna.yaml')
     parser.add_argument('--models', nargs='+', choices=MODELS)
+    parser.add_argument('--export-existing', action='store_true', help='Create dataset configs from completed studies without running trials')
     parser.add_argument('--study-tag', help='Separate study group under generated/optuna/')
     parser.add_argument('--trials', type=int, help='Additional trials per model and dataset')
     parser.add_argument('--timeout', type=float, help='Seconds per model and dataset')
     add_parameter_arguments(parser)
     args = parser.parse_args()
-    config = load_preprocessing_config(args.config.resolve(), args)
+    config_path = args.config.resolve()
     search = OmegaConf.load(args.search_space.resolve())
+    config = tuning_source(config_path, search, args)
     if search.metric not in ('macro_f1', 'accuracy'):
         parser.error('metric must be macro_f1 or accuracy')
     n_trials = args.trials if args.trials is not None else int(search.n_trials)
@@ -323,7 +331,16 @@ def main():
     for current in preprocessing_configs(config):
         validate_seed_manifest(current)
         for name in dict.fromkeys(models):
-            optimize_model(current, search, name, n_trials, args.timeout, args.study_tag)
+            if args.export_existing:
+                directory = Path(current.p_generated_files) / 'optuna'
+                if args.study_tag: directory /= args.study_tag
+                directory /= name
+                previous = OmegaConf.load(directory / 'best_config.yaml')
+                if Path(previous.p_arrays).resolve() != Path(current.p_arrays).resolve() or previous.gene_dim != current.gene_dim:
+                    raise ValueError(f'{directory}: completed study is for a different cohort')
+            else:
+                directory = optimize_model(current, search, name, n_trials, args.timeout, args.study_tag)
+            write_tuned_dataset(current, directory)
 
 
 if __name__ == '__main__':

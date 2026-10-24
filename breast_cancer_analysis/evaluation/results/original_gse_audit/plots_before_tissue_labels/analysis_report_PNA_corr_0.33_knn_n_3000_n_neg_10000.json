@@ -1,0 +1,83 @@
+{
+  "model": "PNA",
+  "model_artifact_directory": "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved",
+  "data_directory": "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000",
+  "output_suffix": "PNA_corr_0.33_knn_n_3000_n_neg_10000",
+  "delta_definition": "mean beta in BC minus mean beta in healthy controls",
+  "delta_shift_definition": "external delta beta minus original delta beta",
+  "original_samples": {
+    "healthy": 30,
+    "BC": 50
+  },
+  "external_cohorts": {
+    "healthy": "GSE101961",
+    "BC": "GSE226569"
+  },
+  "plot_style": {
+    "reference": "train_gnn/plot_aggregations.py",
+    "theme": "whitegrid",
+    "context": "talk",
+    "title_font": 24,
+    "axis_tick_font": 16,
+    "annotation_font": 14,
+    "negative_color": "#4c72b0",
+    "likely_positive_color": "#dd8452",
+    "png_dpi": 300
+  },
+  "match_key": "CpG_ID only; gene annotations retained separately",
+  "plotting_unit": "unique CpG within each prediction group; no duplicated points for multiple genes",
+  "cpgs_in_both_prediction_groups": 0,
+  "groups": [
+    {
+      "prediction_group": "negative",
+      "predicted_features": 926,
+      "predicted_unique_cpgs": 859,
+      "common_features": 241,
+      "common_unique_cpgs": 227,
+      "plotted_unique_cpgs": 227,
+      "excluded_missing_delta": 0,
+      "internal_mean_delta_beta": 0.005481557065256978,
+      "external_mean_delta_beta": -0.03603098002148593,
+      "mean_external_minus_internal_delta_beta": -0.04151253708674291,
+      "median_external_minus_internal_delta_beta": -0.05577465761406662,
+      "internal_median_absolute_delta_beta": 0.015470384120000014,
+      "external_median_absolute_delta_beta": 0.0877755204044,
+      "same_direction_fraction": 0.2775330396475771,
+      "pearson_r": -0.3631149174242267,
+      "spearman_r": -0.38771854590669497
+    },
+    {
+      "prediction_group": "likely_positive",
+      "predicted_features": 524,
+      "predicted_unique_cpgs": 499,
+      "common_features": 128,
+      "common_unique_cpgs": 123,
+      "plotted_unique_cpgs": 123,
+      "excluded_missing_delta": 0,
+      "internal_mean_delta_beta": -0.033139257720867225,
+      "external_mean_delta_beta": 0.005924749039781507,
+      "mean_external_minus_internal_delta_beta": 0.03906400676064872,
+      "median_external_minus_internal_delta_beta": 0.03932529276889999,
+      "internal_median_absolute_delta_beta": 0.0357136581266666,
+      "external_median_absolute_delta_beta": 0.0773182385997,
+      "same_direction_fraction": 0.4634146341463415,
+      "pearson_r": 0.0704317298767907,
+      "spearman_r": 0.07064915969096233
+    }
+  ],
+  "input_sha256": {
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/cpg_gene_beta_comparison.tsv": "e2e30accc6978e1986c92dbaacfca6c534b8e2806f60b28d952833cdb122eb24",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/raw/GSE237036_matrix_processed.txt": "db3e57118077b31bd261e4d92c1c447f41c7303fff5c030898a6268677b05ae2",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/preprocessed/combined_pos_neg_signals_bc.csv": "324ebef00e202b92e15d479901a872e3ef2cab6e37969b9aac994ad8da90b61c",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved/test_ids_bc_PNA.pt": "6e5bc4b77b61fbe45e4a15f3e442b41553cce83f9a55c2cc09ee00bb395c3d63",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved/true_labels_bc_PNA.pt": "b15f9812830b7b4bcd26ba852538c374c8a321a3c17a3bb585dbd974325405e6",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved/pred_labels_bc_PNA.pt": "a88c25f38d1b62007090a718d76beaaa59abcd6d305849f0f8f19718d9f952e2",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved/best_class_pred_probs_bc_PNA.pt": "835d5a47c13a94e749d92f7993c03a2419dee6465c22b26cc82ea54545eb2bee",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/preprocessed/out_genes_bc.csv": "1b8789a49b6f626d85786a8b5b058e0b1fd8e13a2ed6528a5cb4a83441882c26",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pna_accuracy_improved/test_probe_genes_bc_PNA.csv": "7177f4e3b85a45e945dce2550bf2b0f8f2e408322632f9f440e492dd835e8f10",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/prediction_comparison/extracted_PNA_corr_0.33_knn_n_3000_n_neg_10000/pred_negatives_PNA.csv": "404eeadc691100433156576981fd82ea7abe415a9be8f8829beb243903da0466",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/prediction_comparison/extracted_PNA_corr_0.33_knn_n_3000_n_neg_10000/pred_likely_pos_bc_PNA.csv": "120c5246d04ccac30f7059511453e2bf5606d4bdbaaba4162c082b78f319a680"
+  },
+  "sample_order_check": "Exported beta values checked against original matrix; BC_ and NC_ identifiers define groups",
+  "limitations": "Descriptive cross-study effects; no adjustment for batch, age, sex or cell composition; predicted classes are model outputs, not external ground truth."
+}

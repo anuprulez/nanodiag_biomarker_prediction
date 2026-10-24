@@ -18,7 +18,8 @@ import run_xai_explainer as xai
 
 class XaiCombinationTests(unittest.TestCase):
     def config(self):
-        config = OmegaConf.load(xai.HERE.parent / 'config/config.yaml')
+        config = OmegaConf.merge(OmegaConf.create(OmegaConf.to_container(OmegaConf.load(xai.HERE.parent / 'config/optuna.yaml').runtime_defaults,resolve=False)), OmegaConf.load(xai.HERE.parent / 'config/config.yaml'))
+        config.pop('config_scope',None)  # Legacy full-config grid compatibility fixture.
         config.corr_threshold = [0.2, 0.33, 0.5, 0.7]
         config.knn_neighbours = [500, 1500, 3000, 4500]
         config.size_negative = [5000, 10000, 15000]
@@ -26,6 +27,19 @@ class XaiCombinationTests(unittest.TestCase):
         config.best_trained_model = 'GCN'
         config.model_overrides.GCN = {'hidden_dim': 64}
         return config
+
+    def test_tuned_dataset_config_keeps_its_path_and_model_settings(self):
+        with TemporaryDirectory() as directory:
+            path=Path(directory)/'config.yaml'
+            OmegaConf.save(OmegaConf.create({'config_scope':'dataset','p_base':directory+'/',
+                'best_trained_model':'PNA','model_type':['PNA'],'hidden_dim':32,
+                'model_overrides':{'PNA':{'hidden_dim':128}}}),path)
+            with patch.object(xai,'explain_configuration') as explain:
+                xai.run_explanations(path,node_id=7)
+            current=explain.call_args.args[0]
+            self.assertEqual(current.p_base,directory+'/')
+            self.assertEqual(current.hidden_dim,128)
+            self.assertEqual(current.model_type,'PNA')
 
     def test_all_48_combinations_bind_model_and_paths(self):
         config = self.config()
@@ -55,7 +69,7 @@ class XaiCombinationTests(unittest.TestCase):
             with patch.object(xai, 'explain_configuration') as explain, contextlib.redirect_stdout(io.StringIO()):
                 xai.run_explanations(source, args, node_id=7)
             explain.assert_called_once()
-            self.assertEqual(explain.call_args.args[0].p_base, '../data_corr_0.5_knn_n_1500_n_neg_5000/')
+            self.assertEqual(Path(explain.call_args.args[0].p_base),xai.HERE.parent/'data_corr_0.5_knn_n_1500_n_neg_5000')
             self.assertEqual(explain.call_args.kwargs['node_id'], 7)
 
     def test_name_resolution_uses_each_datasets_ids_and_checks_bounds(self):

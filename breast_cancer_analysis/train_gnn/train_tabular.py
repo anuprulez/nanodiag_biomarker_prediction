@@ -138,7 +138,7 @@ def train_tabular_model(config):
         val_acc=[validation['accuracy']], te_loss=[float(log_loss(y[test], test_probs, labels=np.arange(5)))],
         te_acc=[test_scores['accuracy']], versions=versions(), seconds=time.perf_counter() - started,
     )
-    output = Path(config.p_plot)
+    output = Path(config.p_data)
     output.mkdir(parents=True, exist_ok=True)
     write_json(output / f'all_metrics_{config.model_type}.json', metrics)
     predictions = pd.DataFrame({'node_id': ids, 'name': names[test], 'true': y[test], 'predicted': test_predictions})

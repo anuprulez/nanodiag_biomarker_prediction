@@ -10,6 +10,7 @@ from omegaconf import OmegaConf
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 from seed_inputs import validate_seed_manifest
+from dataset_configs import downstream_configs
 from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
 from model_settings import apply_model_settings
 
@@ -42,6 +43,11 @@ def model_configs(config):
     for name in names:
         name = "TabICL" if name.lower() in {"tabicl", "tabiclv2"} else name
         current = apply_model_settings(config, name)
+        if current.get('config_scope')=='dataset':
+            dataset_root=Path(current.p_base).resolve()
+            for field in (*MODEL_OUTPUTS,'p_generated_files','p_plot','p_data','p_model'):
+                if field in current and not Path(str(current[field])).expanduser().resolve().is_relative_to(dataset_root):
+                    raise ValueError(f'{name}.{field} points outside the selected dataset folder: {current[field]}')
         for field in MODEL_OUTPUTS:
             if field not in current:
                 continue
@@ -66,7 +72,13 @@ def train_one_model(config):
 
 
 def run_training(config_path="../config/config.yaml", args=None):
-    configs = preprocessing_configs(load_preprocessing_config(config_path, args))
+    configs = downstream_configs(config_path, args)
+    if args is not None and getattr(args,'models',None):
+        for config in configs:
+            names=list(args.models)
+            if config.get('config_scope')=='dataset' and any(name not in config.model_type for name in names):
+                raise ValueError('Requested model has no tuned parameters in this dataset config')
+            config.model_type=names
     results = [run_training_config(config) for config in configs]
     return results[0] if len(results) == 1 else results
 
@@ -81,7 +93,8 @@ def run_training_config(config):
         for field in MODEL_OUTPUTS:
             if field in current:
                 Path(str(current[field])).expanduser().parent.mkdir(parents=True, exist_ok=True)
-        Path(current.p_plot).mkdir(parents=True, exist_ok=True)
+        for field in ('p_plot','p_data','p_model'):
+            Path(current[field]).mkdir(parents=True, exist_ok=True)
         try:
             # Reset randomness so list order cannot change model initialization/sampling.
             import random
@@ -93,11 +106,14 @@ def run_training_config(config):
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(int(current.SEED))
             results[name] = train_one_model(current)
+            if current.get('artifact_layout')=='split_v1':
+                from evaluation.extract_predictions import extract
+                extract(current.p_base,name,current.p_data,generated_dir=current.p_generated_files)
         except Exception as error:
             if not is_list:
                 raise
             failures[name] = f"{type(error).__name__}: {error}"
-            log = Path(current.p_plot) / f"training_error_{name}.log"
+            log = Path(current.p_data) / f"training_error_{name}.log"
             log.write_text(traceback.format_exc())
             print(f"{name} FAILED: {error}; see {log}", flush=True)
         finally:
@@ -117,6 +133,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
+    parser.add_argument("--models", nargs="+", help="Train only these tuned models")
+    parser.add_argument("--folder", type=Path, help="Dataset folder relative to breast_cancer_analysis, or an absolute path")
     add_parameter_arguments(parser)
     args = parser.parse_args()
     config_path = args.config.resolve()

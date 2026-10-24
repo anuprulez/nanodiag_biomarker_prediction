@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from artifact_layout import artifact_file
 from typing import Dict, Union
 
 import numpy as np
@@ -81,7 +84,7 @@ def plot_radar(config):
 
     agg_models_perf = dict()
     for model in models:
-        filename = f"{config.p_plot}all_metrics_{model}.json"
+        filename = f"{config.p_data}all_metrics_{model}.json"
         with open(filename, "r") as f:
             agg_models_perf[model] = json.load(f)
     print(agg_models_perf)
@@ -184,7 +187,7 @@ def plot_radar_runs_multiple(config):
         # Collect all runs for this model
         for item in range(n_runs):
             run_id = item + 1
-            file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
+            file_path = str(artifact_file(Path(p_base)/"runs"/str(run_id),f"all_metrics_{model}.json"))
             with open(file_path, "r") as f:
                 values = json.load(f)
                 metrics_list.append(
@@ -491,7 +494,7 @@ def plot_radar_runs(config):
         # Collect all runs for this model
         for item in range(n_runs):
             run_id = item + 1
-            file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
+            file_path = str(artifact_file(Path(p_base)/"runs"/str(run_id),f"all_metrics_{model}.json"))
             with open(file_path, "r") as f:
                 values = json.load(f)
                 metrics_list.append(
@@ -585,7 +588,7 @@ def plot_mean_std_loss_acc(config):
 
     for item in range(n_runs):
         run_id = item + 1
-        file_path = f"{config.get('p_generated_files', config.p_base)}runs/{run_id}/all_metrics_{chosen_model}.json"
+        file_path = str(artifact_file(Path(config.get("p_generated_files", config.p_base))/"runs"/str(run_id),f"all_metrics_{chosen_model}.json"))
         with open(file_path) as f:
             metrics_list.append(json.load(f))
     print(metrics_list)
@@ -705,7 +708,7 @@ def plot_xai_nodes_raw_values(config):
     # topk = 50
     cmap = "cividis"  # cividis viridis  inferno
     # path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"
-    path_pred_LP = config.get("p_generated_files", config.p_base) + f"pred_negatives_{chosen_model}.csv"
+    path_pred_LP = config.p_data + f"pred_negatives_{chosen_model}.csv"
     path_signals = config.p_combined_pos_neg_signals
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     df_signals = pd.read_csv(path_signals, sep="\t")
@@ -785,6 +788,7 @@ def _find_run_file(base, run_id, chosen_model):
     """Try a few plausible filenames/locations for each run; return first that exists."""
     candidates = [
         # os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_bc_{chosen_model}.csv"),
+        os.path.join(base, f"runs/{run_id}/data/pred_negatives_{chosen_model}.csv"),
         os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
     ]
     for p in candidates:
@@ -949,7 +953,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
     )
     df_top_signals.to_csv(
-        plot_local_path
+        _as_path(config.p_data)
         / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv"
     )
 
@@ -1168,7 +1172,7 @@ def plot_positive_xai_nodes_raw_values(config):
         df_melted["CpG"], categories=list(df.columns), ordered=True
     )
     df_melted.to_csv(
-        base_path
+        _as_path(config.p_data)
         / f"data_for_violin_top_positive_genes_edges_{n_edges}_links_{n_epo}_epochs_bc.csv"
     )
 
@@ -1288,10 +1292,18 @@ def plot_positive_xai_nodes_raw_values(config):
 
 
 if __name__ == "__main__":
-    config = OmegaConf.load("../config/config.yaml")
-    plot_xai_nodes_raw_values_averaged_runs(config)
-    # plot_positive_xai_nodes_raw_values(config)
-    # plot_radar_runs_multiple(config)
-    # plot_radar_runs(config)
-    # plot_mean_std_loss_acc(config)
-    # plot_xai_nodes_raw_values(config)
+    import argparse
+    import os
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root))
+    from dataset_configs import downstream_configs
+    from model_settings import apply_model_settings
+    parser = argparse.ArgumentParser(description="Plot XAI outputs using each dataset's tuned config")
+    parser.add_argument('--config', type=Path, default=root/'config/config.yaml')
+    args = parser.parse_args()
+    config_path = args.config.resolve()
+    os.chdir(root/'train_gnn')
+    for config in downstream_configs(config_path):
+        current = apply_model_settings(config, str(config.best_trained_model))
+        plot_xai_nodes_raw_values_averaged_runs(current)

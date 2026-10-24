@@ -1,0 +1,16 @@
+# Install directly in the existing nanodiag_biomarker_gnn conda environment:
+# python -m pip install -r requirements-benchmark.txt
+# TabPFN v3 needs PyTorch >=2.5; use requirements-sampling.txt for matching PyG extensions.
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.5.1+cu121
+torchvision==0.20.1+cu121
+torchaudio==2.5.1+cu121
+numpy==1.26.4
+scikit-learn==1.3.2
+pandas>=2.1,<3
+scipy>=1.11,<2
+joblib>=1.3,<2
+xgboost==2.0.2
+catboost==1.2.10
+tabpfn==8.0.0
+tabicl==2.2.0

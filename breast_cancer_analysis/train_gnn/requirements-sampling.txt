@@ -1,0 +1,7 @@
+# Sampling backend for nanodiag_biomarker_gnn: PyTorch 2.5.1, CUDA 12.1.
+# Install with: python -m pip install -r requirements-sampling.txt
+# Other PyTorch/CUDA versions require a matching wheel index and package build.
+--find-links https://data.pyg.org/whl/torch-2.5.0+cu121.html
+--only-binary=:all:
+pyg-lib==0.4.0+pt25cu121
+torch-scatter==2.1.2+pt25cu121

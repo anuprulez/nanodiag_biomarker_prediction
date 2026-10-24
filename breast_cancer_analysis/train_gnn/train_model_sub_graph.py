@@ -482,7 +482,7 @@ def train_gnn_model(config, labels, chosen_model):
 
     print(f"All metrics: {metrics}")
     utils.save_accuracy_scores(
-        metrics, Path(config.p_plot) / f"all_metrics_{chosen_model}.json"
+        metrics, Path(config.p_data) / f"all_metrics_{chosen_model}.json"
     )
     print("Plotting metrics and UMAP plots for final embeddings")
     plot_gnn.plot_node_embed(

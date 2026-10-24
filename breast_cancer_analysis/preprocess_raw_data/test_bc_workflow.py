@@ -16,9 +16,9 @@ class BreastCancerWorkflowTests(unittest.TestCase):
         runs = preprocessing_configs(config)
         self.assertEqual(len(runs), 8)
         self.assertEqual(len({c.p_base_files for c in runs}), 8)
-        self.assertEqual(len({c.p_generated_files for c in runs}), 8)
+        self.assertEqual(len({str(Path(c.p_base)/'generated') for c in runs}), 8)
         self.assertEqual(len({c.p_seeds for c in runs}), 1)
-        self.assertTrue(all(c.gene_dim == 84 for c in runs))
+        self.assertTrue(all(c.gene_dim == config.gene_dim for c in runs))
 
     def test_bc_seed_schema_and_stale_manifest_rejection(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -67,8 +67,8 @@ class PnaPromotionTests(unittest.TestCase):
             result=subprocess.run(command,capture_output=True,text=True,env=env)
             self.assertEqual(result.returncode,0,result.stdout+result.stderr)
             output=gen/'pna_accuracy_improved'
-            self.assertTrue((output/'selection_frozen_before_test.json').is_file())
-            self.assertTrue((output/'Heatmap_PNA_improved.pdf').is_file())
+            self.assertTrue((output/'data/selection_frozen_before_test.json').is_file())
+            self.assertTrue((output/'plots/Heatmap_PNA_improved.pdf').is_file())
             updated=OmegaConf.load(source)
             self.assertEqual(updated.model_overrides.GCN.hidden_dim,16)
             self.assertEqual(updated.model_overrides.PNA.hidden_dim,32)

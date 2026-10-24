@@ -20,6 +20,8 @@ HERE=Path(__file__).resolve().parent
 sys.path.insert(0,str(HERE.parent))
 from preprocessing_grid import preprocessing_configs
 from seed_inputs import validate_seed_manifest
+from dataset_configs import downstream_configs
+from artifact_layout import artifact_file,apply_artifact_layout,migrate_generated
 from utils import choose_model
 from train_model_sub_graph import val_evaluate, test_evaluate, validate_predefined_splits
 from tune_models import seed_all
@@ -42,6 +44,10 @@ def main():
     args=parser.parse_args();study=args.study.resolve();config_path=args.config.resolve()
     os.chdir(HERE)
     source=OmegaConf.load(config_path)
+    if source.get('config_scope')=='preprocessing':
+        configs=downstream_configs(config_path)
+        if len(configs)!=1:raise ValueError('Choose one dataset config for PNA installation')
+        source=configs[0];config_path=Path(source.p_base)/'config.yaml'
     best=OmegaConf.load(study/'best_config.yaml')
     winner=json.loads((study/'best_params.json').read_text())
     baseline_root=study.parents[2]
@@ -50,11 +56,11 @@ def main():
     if output.exists() and any(output.iterdir()):raise ValueError('Output exists; do not repeat test evaluation or overwrite results')
     validate_seed_manifest(best)
     if best.model_type!='PNA' or winner['validation_metric']!='accuracy':raise ValueError('Expected accuracy-selected PNA')
-    original=json.loads((baseline_root/'all_metrics_PNA.json').read_text())
+    original=json.loads(artifact_file(baseline_root,'all_metrics_PNA.json').read_text())
     if winner['validation_score']<=original['best_val_acc']:raise ValueError('No validation-accuracy improvement; keep current model')
-    graph=study/'prepared/data_bc_PNA.pt'
+    graph=artifact_file(study/'prepared','data_bc_PNA.pt')
     data=torch.load(graph,map_location='cpu',weights_only=False)
-    baseline=torch.load(baseline_root/'data_bc_PNA.pt',map_location='cpu',weights_only=False)
+    baseline=torch.load(artifact_file(baseline_root,'data_bc_PNA.pt'),map_location='cpu',weights_only=False)
     for field in ('x','y','edge_index','train_mask','val_mask','test_mask'):
         if not torch.equal(getattr(data,field),getattr(baseline,field)):
             raise ValueError(f'Search and original model data differ: {field}')
@@ -106,12 +112,12 @@ def main():
                            ('embed_conv',embed),('embed_batch_norm',embed_bn)]:
         torch.save(values,output/f'{prefix}_bc_PNA.pt')
     for split in ('train','val','test'):
-        shutil.copy2(study/f'prepared/{split}_probe_genes_bc_PNA.csv',output/f'{split}_probe_genes_bc_PNA.csv')
+        shutil.copy2(artifact_file(study/'prepared',f'{split}_probe_genes_bc_PNA.csv'),output/f'{split}_probe_genes_bc_PNA.csv')
     shutil.copy2(graph,output/'data_bc_PNA.pt')
     (output/'models').mkdir(exist_ok=True)
     shutil.copy2(study/'best_model.pt',output/'models/best_model_bc_PNA.pt')
     (output/'all_metrics_PNA.json').write_text(json.dumps(metrics,indent=2)+'\n')
-    baseline_table=pd.read_csv(baseline_root/'Heatmap_avg_edges_9913451_epochs_100.csv')
+    baseline_table=pd.read_csv(artifact_file(baseline_root,'Heatmap_avg_edges_9913451_epochs_100.csv'))
     new_row={column:metrics[column] if column not in ('model','te_acc') else ('PNA_improved' if column=='model' else acc)
              for column in baseline_table.columns}
     comparison=pd.concat([baseline_table,pd.DataFrame([new_row])],ignore_index=True)
@@ -133,13 +139,15 @@ def main():
             value=final_config[key]
             old=str(study/'final')+'/'
             if value.startswith(old):final_config[key]=str(output)+'/'+value[len(old):]
+    final_config.artifact_layout='split_v1'
+    final_config.p_generated_files=str(output)+'/'
+    apply_artifact_layout(final_config)
     OmegaConf.save(final_config,output/'selected_config.yaml')
     if args.install:
         shutil.copy2(config_path,output/'config_before_pna_improvement.yaml')
         source.model_overrides.PNA=OmegaConf.create(settings)
-        text=config_path.read_text();start=text.index('model_overrides:');end=text.index('\nsplit_ratios:',start)
-        block=OmegaConf.to_yaml(OmegaConf.create({'model_overrides':OmegaConf.to_container(source.model_overrides,resolve=False)})).rstrip()
-        config_path.write_text(text[:start]+block+text[end:])
+        temporary=config_path.with_suffix('.yaml.part')
+        OmegaConf.save(source,temporary);temporary.replace(config_path)
         from model_settings import apply_model_settings
         current=apply_model_settings(OmegaConf.load(config_path),'PNA')
         for key,value in settings.items():
@@ -160,6 +168,7 @@ def main():
            'Original artifacts are preserved. This folder contains the selected model, graph, predictions, split tables, metrics, runnable config and comparison heatmap.',
            'See the adjacent Optuna study for trial histories and best parameters.','',report['limitations']]
     (output/'REPORT.md').write_text('\n'.join(lines)+'\n')
+    migrate_generated(output)
     print(json.dumps(report,indent=2))
 
 if __name__=='__main__':main()

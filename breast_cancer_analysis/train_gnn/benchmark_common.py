@@ -26,7 +26,7 @@ def sha256(path):
 def dataset_file(directory, name):
     """Resolve inputs/artifacts in either a flat dataset or the organized layout."""
     directory = Path(directory)
-    for folder in (directory, directory / 'preprocessed', directory / 'generated', directory / 'base_files', directory / 'generated_files'):
+    for folder in (directory, directory / 'preprocessed', directory / 'generated' / 'data', directory / 'generated' / 'models', directory / 'generated', directory / 'base_files', directory / 'generated_files'):
         candidate = folder / name
         if candidate.is_file():
             return candidate

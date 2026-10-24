@@ -1,0 +1,97 @@
+{
+  "model": "PNA",
+  "model_artifact_directory": "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated",
+  "data_directory": "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000",
+  "output_suffix": "PNA_corr_0.33_knn_n_3000_n_neg_10000",
+  "delta_definition": "mean beta in BC minus mean beta in healthy controls",
+  "delta_shift_definition": "external delta beta minus original delta beta",
+  "original_samples": {
+    "healthy": 40,
+    "BC": 80
+  },
+  "external_cohorts": {
+    "healthy": "GSE101961",
+    "BC": "GSE226569"
+  },
+  "training_series": "GSE66695",
+  "cohort_tissues": {
+    "GSE66695": "breast tumors and normal breast tissue",
+    "GSE226569": "FFPE breast tumors",
+    "GSE101961": "normal breast tissue from cancer-free women"
+  },
+  "cohort_platforms": {
+    "GSE66695": "GPL13534 (450K)",
+    "GSE226569": "GPL13534 (450K)",
+    "GSE101961": "GPL13534 (450K)"
+  },
+  "interpretation": "Exploratory comparison of independent breast-tissue cohorts; matching platform does not remove study effects",
+  "plot_style": {
+    "reference": "train_gnn/plot_aggregations.py",
+    "theme": "whitegrid",
+    "context": "talk",
+    "title_font": 24,
+    "axis_tick_font": 16,
+    "annotation_font": 14,
+    "negative_color": "#4c72b0",
+    "likely_positive_color": "#dd8452",
+    "png_dpi": 300
+  },
+  "match_key": "CpG_ID only; gene annotations retained separately",
+  "plotting_unit": "unique CpG within each prediction group; no duplicated points for multiple genes",
+  "cpgs_in_both_prediction_groups": 2,
+  "groups": [
+    {
+      "prediction_group": "negative",
+      "predicted_features": 959,
+      "predicted_unique_cpgs": 832,
+      "common_features": 357,
+      "common_unique_cpgs": 307,
+      "common_cpg_fraction": 0.36899038461538464,
+      "plotted_unique_cpgs": 307,
+      "excluded_missing_delta": 0,
+      "internal_mean_delta_beta": 0.017295559428212544,
+      "external_mean_delta_beta": 0.028681622313103127,
+      "mean_external_minus_internal_delta_beta": 0.011386062884890582,
+      "median_external_minus_internal_delta_beta": 0.009325556147500011,
+      "internal_median_absolute_delta_beta": 0.1149923799999999,
+      "external_median_absolute_delta_beta": 0.116474025719,
+      "same_direction_fraction": 0.9511400651465798,
+      "pearson_r": 0.8954809807778896,
+      "spearman_r": 0.9012242148858359
+    },
+    {
+      "prediction_group": "likely_positive",
+      "predicted_features": 510,
+      "predicted_unique_cpgs": 480,
+      "common_features": 262,
+      "common_unique_cpgs": 240,
+      "common_cpg_fraction": 0.5,
+      "plotted_unique_cpgs": 240,
+      "excluded_missing_delta": 0,
+      "internal_mean_delta_beta": -0.13062887922526042,
+      "external_mean_delta_beta": -0.16879524776748506,
+      "mean_external_minus_internal_delta_beta": -0.038166368542224674,
+      "median_external_minus_internal_delta_beta": -0.029369289998499998,
+      "internal_median_absolute_delta_beta": 0.15464146568750003,
+      "external_median_absolute_delta_beta": 0.209410041006,
+      "same_direction_fraction": 0.9791666666666666,
+      "pearson_r": 0.7948135545726265,
+      "spearman_r": 0.5846507751870691
+    }
+  ],
+  "input_sha256": {
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/cpg_gene_beta_comparison.tsv": "e2e30accc6978e1986c92dbaacfca6c534b8e2806f60b28d952833cdb122eb24",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/raw/GSE66695_matrix_processed.txt.gz": "8cac54121836d8c3c6bd107ae9a9ff078ab2bf9f5d20b9a8014a5e10dcb51dc6",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/preprocessed/combined_pos_neg_signals_bc.csv": "601022a25b7b5a9b3e3427aefd492e09ecd132bbfba299c9cb9bfb29090963a2",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/test_ids_bc_PNA.pt": "c65ef8045457149d802922841e065a08203600fad5d5c8c00d455e017f72c5de",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/true_labels_bc_PNA.pt": "7861b9a45dd08f7af8ca8402126913a4b4cf490788f66270eec83ca2c95a9921",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/pred_labels_bc_PNA.pt": "7052b5cd1c60ae13f7a9e989ead9262b083afc1bbca60e7c90303dd4ffbd7122",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/best_class_pred_probs_bc_PNA.pt": "13be94fb4c05f59e68f44a958ac195382ca0a3a08028c3901c97455c2acc8bf9",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/preprocessed/out_genes_bc.csv": "ae5053f52d398e1949fae807b0ec71b74b0f7fea54dd8bc504369b74c80b4c4d",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/data_corr_0.33_knn_n_3000_n_neg_10000/generated/test_probe_genes_bc_PNA.csv": "8ba24a2166640299155317278e0204ac431c9a53f3bcc5ef6ff85f85488c4259",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/prediction_comparison/extracted_PNA_corr_0.33_knn_n_3000_n_neg_10000/pred_negatives_PNA.csv": "6686dc6e3767ed9874ef611fb96a6f3797e83bbf8ca88f0745f66f5ae006a0a4",
+    "/home/ubuntu/data/anup/nanodiag-biomarker/test-train/nanodiag_biomarker_prediction/breast_cancer_analysis/evaluation/results/prediction_comparison/extracted_PNA_corr_0.33_knn_n_3000_n_neg_10000/pred_likely_pos_bc_PNA.csv": "07dc64bd10a2eafc2485f78d36bd57a30815bf544e5f658895e879bb98c41a21"
+  },
+  "sample_order_check": "Exported beta values checked against original matrix; BC_ and NC_ identifiers define groups",
+  "limitations": "Breast tissue effects are compared across separate studies and processing protocols. Tissue composition, study, processing and tumor purity can change effect direction and size. No batch, demographic or cell-composition adjustment. Propagated priority classes are not ground-truth differential methylation labels; internal classification accuracy does not establish biological replication."
+}

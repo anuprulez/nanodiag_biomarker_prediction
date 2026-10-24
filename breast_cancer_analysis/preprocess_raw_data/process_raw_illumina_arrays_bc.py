@@ -713,7 +713,7 @@ def main(config_path=None, args=None) -> None:
     os.chdir(Path(__file__).resolve().parents[1] / "train_gnn")
     configs = preprocessing_configs(load_preprocessing_config(config_path, args))
     for index, config in enumerate(configs, 1):
-        if Path(config.p_base).is_dir():
+        if Path(config.p_preprocessing_manifest).is_file():
             print(f"Skipping preprocessing: {config.p_base} already exists", flush=True)
             continue
         prepare_run_directories(config)

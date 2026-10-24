@@ -1,88 +1,18 @@
-# GSE66695: 80 tumors (40 ER+ and 40 ER-) and 40 GEO-labeled normal breast samples.
-# Separate outputs and new feature dimensions; PBMC model overrides are not reused.
+# Preprocessing only. Model/search/XAI defaults live in optuna.yaml runtime_defaults.
+# Tuning creates <dataset>/config.yaml for training, XAI and prediction comparison.
 SEED: 32
-n_edges: 9913451
 num_workers: 0
-num_classes: 5
-n_epo: 100
 gene_dim: 124
-batch_size: 64
-grad_clip_norm: 0.9563551257532924
-hidden_dim: 256
-learning_rate: 0.0016268882355913081
-weight_decay: 0.0018757300558958096
-dropout: 0.2159414126692356
-gnn_layers: 1
-feature_dropout: 0.0
-embedding_dropout: 0.0
-heads: 4
-lr_patience: 2
-early_stopping_patience: 7
-model_overrides: {}
 split_ratios:
 - 0.7
 - 0.15
 - 0.15
 keep_feature_names: ring,NetRank,HeatDiff,InfoDiff
-umap_n_neighbors: 20
-umap_min_dist: 0.8
-umap_metric: correlation
 cutoff_pval: 0.05
-class_ticks:
-- Positive (P)
-- Likely Positive (LP)
-- Weakly Negative (WN)
-- Likely Negative (LN)
-- Reliable Negative (RN)
-dpi: 300
-MAKE_HEATMAP: true
-NORMALIZE_FOR_HEATMAP: true
-model_type:
-- PNA
-- GCN
-- GraphSAGE
-- GATv2
-- GraphTransformer
-- TabPFN
-- TabICL
-- XGBoost
-best_trained_model: PNA
-neighbors_spread:
-- 10
-- 5
-- 5
-- 5
-explain_neighbors_spread:
-- -1
-- 100
-- 50
-explanation_nodes_ratio: 1.0
-neighbour_predictions:
-- 0
-- 1
-- 2
-- 3
-- 4
-src_neighbour_predictions:
-- 0
-- 1
-- 2
-- 3
-- 4
-tgt_neighbour_predictions:
-- 0
-- 1
-- 2
-- 3
-- 4
-masks_for_seed: 3
-explainer_epochs: 200
-graph_subtype: bidirectional
-show_num_neighbours: 50
 knn_neighbours:
-- 3000
+- 500
 size_negative:
-- 10000
+- 5000
 corr_threshold:
 - 0.33
 nedbit_header: 1
@@ -90,13 +20,11 @@ quantile_1: 0.05
 quantile_2: 0.2
 download_raw_data: false
 download_preprocessed_data: false
-color_palette: tab10
 negative_selection_method: seurat
 correlation_method: pearson
 graph_signal_transform: beta
 p_base: ../data_corr_${corr_threshold}_knn_n_${knn_neighbours}_n_neg_${size_negative}/
 p_base_files: ${p_base}preprocessed/
-p_generated_files: ${p_base}generated/
 p_significant_edges: ${p_base_files}significant_gene_relations.tsv
 p_cross_reactive_probes: ${p_raw}cross_reactive_probes.csv
 p_significant_edges_with_corr: ${p_base_files}significant_gene_relations_with_corr.tsv
@@ -108,34 +36,10 @@ p_out_gene_rankings: ${p_base_files}out_gene_rankings_bc.csv
 p_nedbit_features: ${p_base_files}nedbit_features_bc.csv
 p_split_manifest: ${p_base_files}node_split_manifest_bc.csv
 p_combined_pos_neg_signals: ${p_base_files}combined_pos_neg_signals_bc.csv
-p_dnam_features: ${p_generated_files}dnam_features_bc_${model_type}.csv
-p_nedbit_dnam_features: ${p_generated_files}df_nebit_dnam_features_bc_${model_type}.csv
-p_nedbit_dnam_features_norm: ${p_generated_files}df_nebit_dnam_features_norm_${model_type}.csv
-p_test_probe_genes: ${p_generated_files}test_probe_genes_bc_${model_type}.csv
-p_train_probe_genes: ${p_generated_files}train_probe_genes_bc_${model_type}.csv
-p_val_probe_genes: ${p_generated_files}val_probe_genes_bc_${model_type}.csv
-p_pred_likely_pos: ${p_generated_files}pred_likely_pos_bc_${model_type}.csv
-p_pred_likely_pos_no_training_genes_probes: ${p_generated_files}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
-p_pred_negatives: ${p_generated_files}pred_negatives_${model_type}.csv
-p_torch_data: ${p_generated_files}data_bc_${model_type}.pt
-p_torch_embed: ${p_generated_files}embed_conv_bc_${model_type}.pt
-p_torch_embed_batch_norm: ${p_generated_files}embed_batch_norm_bc_${model_type}.pt
-p_true_labels: ${p_generated_files}true_labels_bc_${model_type}.pt
-p_torch_model: ${p_model}best_model_bc_${model_type}.pt
-p_pred_labels: ${p_generated_files}pred_labels_bc_${model_type}.pt
-p_all_class_pred_probs: ${p_generated_files}all_class_pred_probs_bc_${model_type}.pt
-p_best_class_pred_probs: ${p_generated_files}best_class_pred_probs_bc_${model_type}.pt
-p_test_loader_ids: ${p_generated_files}test_ids_bc_${model_type}.pt
-p_plot: ${p_generated_files}
-p_data: ${p_generated_files}
-p_model: ${p_generated_files}models/
-tabpfn_model_path: ../model/tabpfn-v3-classifier-v3_default.ckpt
-tabicl_model_path: ../model/tabicl-classifier-v2-20260212.ckpt
 p_arrays: ${p_raw}GSE66695_matrix_processed.txt.gz
 p_mapper: ${p_raw}probe_genes.csv
 p_snp_probes: ${p_raw}snp_7998probes.vh20151030.txt
 p_platform: ${p_raw}GPL13534_platform.csv
-# MeinteR GSE66695: 293 DMS+ and 62 DMS-; full provenance in raw/GSE66695/meinter_seed_report.json
 p_seeds: ${p_raw}seed_probes.csv
 p_raw_data: null
 p_processed_data: null
@@ -145,3 +49,4 @@ dataset_id: GSE66695
 p_sample_metadata: ${p_raw}sample_metadata.tsv
 n_bc_samples: 80
 n_normal_samples: 40
+config_scope: preprocessing

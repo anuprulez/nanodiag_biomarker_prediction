@@ -58,7 +58,7 @@ class Gse69914PreparationTests(unittest.TestCase):
     def test_dataset_root_keeps_old_and_new_preprocessing_outputs_separate(self):
         old=OmegaConf.create({'corr_threshold':.33,'knn_neighbours':3000,'size_negative':10000})
         new=OmegaConf.merge(old,{'p_dataset_root':'../datasets/GSE69914/'})
-        self.assertEqual(preprocessing_configs(old)[0].p_base,'../data_corr_0.33_knn_n_3000_n_neg_10000/')
-        self.assertEqual(preprocessing_configs(new)[0].p_base,'../datasets/GSE69914/data_corr_0.33_knn_n_3000_n_neg_10000/')
+        self.assertEqual(Path(preprocessing_configs(old)[0].p_base),Path(__file__).resolve().parents[1]/'data_corr_0.33_knn_n_3000_n_neg_10000')
+        self.assertEqual(Path(preprocessing_configs(new)[0].p_base),Path(__file__).resolve().parents[1]/'datasets/GSE69914/data_corr_0.33_knn_n_3000_n_neg_10000')
 
 if __name__=='__main__':unittest.main()

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Compare model-predicted CpGs' BC-minus-healthy effects across two cohorts."""
 import argparse
+import sys
 import hashlib
 import json
 from pathlib import Path
@@ -15,6 +16,8 @@ from scipy.stats import pearsonr, spearmanr
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
+sys.path.insert(0,str(ROOT))
+from artifact_layout import artifact_file
 DEFAULT_DATA = ROOT / 'data_corr_0.33_knn_n_3000_n_neg_10000'
 EXTERNAL_DELTA = 'Delta_beta_BC_minus_healthy'
 EXTERNAL_STATS = ['Healthy_GSE101961_mean_beta', 'Healthy_GSE101961_SD', 'Healthy_GSE101961_n',
@@ -152,19 +155,55 @@ def save_plot(fig, output, name, suffix):
     plt.close(fig)
 
 
+
+def configured_matrix(config_path):
+    """Resolve input paths using the same train_gnn base as pipeline entry points."""
+    from omegaconf import OmegaConf
+    config = OmegaConf.load(config_path)
+    path = Path(config.p_arrays).expanduser()
+    return (path if path.is_absolute() else ROOT / 'train_gnn' / path).resolve()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--data', type=Path, default=DEFAULT_DATA)
+    parser.add_argument('--data', type=Path, help='Dataset folder; defaults to the tuned dataset config')
     parser.add_argument('--external', type=Path, default=HERE / 'results/cpg_gene_beta_comparison.tsv')
-    parser.add_argument('--matrix', type=Path, default=ROOT / 'raw/GSE237036_matrix_processed.txt')
-    parser.add_argument('--model', default='PNA', choices=['PNA','GCN','GraphSAGE','GATv2','GraphTransformer','TabPFN','TabICL','XGBoost','CatBoost'])
+    parser.add_argument('--config', type=Path, default=ROOT / 'config/config.yaml', help='Dataset config, or preprocessing config used to discover tuned dataset configs')
+    parser.add_argument('--matrix', type=Path, help='Override the original training matrix specified by config')
+    parser.add_argument('--model', choices=['PNA','GCN','GraphSAGE','GATv2','GraphTransformer','TabPFN','TabICL','XGBoost','CatBoost'])
     parser.add_argument('--generated-dir', type=Path, help='Override model artifact directory; selected improved PNA is detected automatically')
-    parser.add_argument('--output', type=Path, default=HERE / 'results/prediction_comparison')
+    parser.add_argument('--output', type=Path, help='Default: <dataset>/evaluation/')
     args = parser.parse_args()
+    if args.data is None or args.matrix is None:
+        import sys
+        sys.path.insert(0, str(ROOT))
+        from dataset_configs import downstream_configs
+        config_path = args.config
+        if args.data is not None and (args.data / 'config.yaml').is_file():
+            config_path = args.data / 'config.yaml'
+        configurations = downstream_configs(config_path)
+        if len(configurations) != 1:
+            parser.error('Multiple datasets selected; use evaluation/run_comparisons.py or --config <dataset>/config.yaml')
+        selected = configurations[0]
+        if args.model is None: args.model = str(selected.best_trained_model)
+        if args.generated_dir is None and selected.get('config_scope')=='dataset':
+            from train_gnn.model_settings import apply_model_settings
+            current = apply_model_settings(selected,args.model)
+            args.generated_dir = Path(current.p_generated_files)
+        if args.data is None:
+            args.data = Path(selected.p_base)
+            if not args.data.is_absolute(): args.data = ROOT / 'train_gnn' / args.data
+        if args.matrix is None:
+            args.matrix = Path(selected.p_arrays)
+            if not args.matrix.is_absolute(): args.matrix = ROOT / 'train_gnn' / args.matrix
+    if args.model is None: args.model = 'PNA'
+    args.matrix = args.matrix.resolve()
+    if not args.matrix.is_file():
+        parser.error(f'Training matrix does not exist: {args.matrix}. Check --config or pass --matrix.')
     args.data = args.data.resolve()
     import re
     match = re.search(r'GSE\d+', args.matrix.name)
-    training_series = match.group(0) if match else 'GSE237036'
+    training_series = match.group(0) if match else 'unknown'
     original_is_pbmc = training_series == 'GSE237036'
     original_axis = 'PBMC' if original_is_pbmc else 'Original breast tissue'
     original_tissue = 'PBMCs in BC patients and normal controls' if original_is_pbmc else 'breast tumors and normal breast tissue'
@@ -177,22 +216,23 @@ def main():
     global GROUPS
     GROUPS = [(g,l,f.replace('PNA',args.model),c) for g,l,f,c in GROUPS]
     suffix = args.model + '_' + args.data.name.removeprefix('data_')
-    output = args.output.resolve()
+    output = args.output.resolve() if args.output else args.data / 'evaluation'
     output.mkdir(parents=True, exist_ok=True)
     signal_path = args.data / 'preprocessed/combined_pos_neg_signals_bc.csv'
     generated = args.generated_dir.resolve() if args.generated_dir else args.data / 'generated'
     improved = args.data / 'generated/pna_accuracy_improved'
-    if args.generated_dir is None and args.model == 'PNA' and (improved / 'improvement_report.json').is_file():
+    if args.generated_dir is None and args.model == 'PNA' and artifact_file(improved,'improvement_report.json').is_file():
         generated = improved
     inputs = [args.external, args.matrix, signal_path]
-    # Rebuild groups from saved inference IDs, avoiding assumptions about test order.
-    from extract_predictions import extract
+    # Preserve XAI-exported group selections and validate them against inference IDs.
+    from extract_predictions import comparison_groups
     extracted = output / ('extracted_' + suffix)
-    extract(args.data, args.model, extracted, generated_dir=generated)
+    _, group_sources = comparison_groups(args.data, args.model, extracted, generated_dir=generated)
+    inputs.extend(group_sources)
     for prefix in ['test_ids','true_labels','pred_labels','best_class_pred_probs']:
-        inputs.append(generated / f'{prefix}_bc_{args.model}.pt')
+        inputs.append(artifact_file(generated,f'{prefix}_bc_{args.model}.pt'))
     inputs += [args.data / 'preprocessed/out_genes_bc.csv',
-               generated / f'test_probe_genes_bc_{args.model}.csv']
+               artifact_file(generated,f'test_probe_genes_bc_{args.model}.csv')]
     predictions = []
     for group, label, filename, color in GROUPS:
         path = extracted / filename
@@ -289,7 +329,8 @@ def main():
         ax.set(xticks=[1,2],xticklabels=['Predicted\nnegative','Predicted\nlikely positive'],title=title,
                ylabel=f'External Δβ − {original_axis} Δβ' if column!='Delta_beta_BC_minus_healthy' else '|Breast tissue Δβ|')
     save_plot(fig,output,'delta_beta_shift_by_prediction_group',suffix)
-    report=dict(model=args.model, model_artifact_directory=str(generated), data_directory=str(args.data), output_suffix=suffix, delta_definition='mean beta in BC minus mean beta in healthy controls',
+    report=dict(prediction_group_source='exported_csv' if group_sources else 'reconstructed_from_tensors',
+                prediction_group_source_files=[str(path.resolve()) for path in group_sources], model=args.model, model_artifact_directory=str(generated), data_directory=str(args.data), output_suffix=suffix, delta_definition='mean beta in BC minus mean beta in healthy controls',
                 delta_shift_definition='external delta beta minus original delta beta',
                 original_samples={'healthy':int(internal['Internal_healthy_n'].iloc[0]),'BC':int(internal['Internal_BC_n'].iloc[0])},
                 external_cohorts={'healthy':'GSE101961','BC':'GSE226569'},

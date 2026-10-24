@@ -1,0 +1,56 @@
+{
+  "shared_cpgs": 276046,
+  "shared_gene_annotated_cpgs": 206489,
+  "shared_unannotated_cpgs": 69557,
+  "cpg_gene_rows": 227589,
+  "healthy_only_cpgs": 206374,
+  "bc_only_cpgs": 0,
+  "datasets": {
+    "GSE101961": {
+      "samples": 121,
+      "rows": 485511,
+      "non_cpg_rows": 3091,
+      "missing_values": 0,
+      "all_missing_cpgs": 0,
+      "cpgs": 482420,
+      "sources": [
+        {
+          "file": "GSE101961_series_matrix.txt.gz",
+          "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE101nnn/GSE101961/matrix/GSE101961_series_matrix.txt.gz",
+          "sha256": "8b68aa70ad8386837f4309b0632b3456eab2d7453f8cdff21c46388a1c5407ad",
+          "bytes": 213759010
+        }
+      ]
+    },
+    "GSE226569": {
+      "samples": 694,
+      "rows": 276046,
+      "non_cpg_rows": 0,
+      "missing_values": 0,
+      "all_missing_cpgs": 0,
+      "cpgs": 276046,
+      "sources": [
+        {
+          "file": "GSE226569_series_matrix.txt.gz",
+          "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE226nnn/GSE226569/matrix/GSE226569_series_matrix.txt.gz",
+          "sha256": "4bbad7e7658b60c0ffe92fc76577712e978d16562980159390ca50f46e0f8363",
+          "bytes": 27738
+        },
+        {
+          "file": "GSE226569_Methy_ProcessedMatrix.csv.gz",
+          "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE226nnn/GSE226569/suppl/GSE226569_Methy_ProcessedMatrix.csv.gz",
+          "sha256": "7a6f3a108e208d694427799d35414a37ad50451146eecb75fd4f907a1892f28a",
+          "bytes": 1620531025
+        }
+      ]
+    }
+  },
+  "delta": "mean(GSE226569) - mean(GSE101961)",
+  "SD": "sample standard deviation, denominator n-1",
+  "missing_policy": "omit missing per CpG; report valid n; no imputation; undefined values blank",
+  "tumor_matrix": "supplementary processed beta columns; DetectionPvalue columns excluded without p-value filtering",
+  "matching": "exact shared CpG IDs; common GPL13534 gene map expands unique CpG-gene pairs",
+  "annotation_url": "https://ftp.ncbi.nlm.nih.gov/geo/platforms/GPL13nnn/GPL13534/soft/GPL13534_family.soft.gz",
+  "annotation_sha256": "ed608f3cc3098f51cfe4f4e46f36789ae4532f8704774609c434c88eb3e95cf7",
+  "limitations": "Descriptive cross-study breast tissue comparison. Disease and study are confounded; tumor samples are FFPE. No adjustment for batch, age, race, tumor purity or cell composition. Probe gene associations are legacy platform annotations, not confirmed regulatory targets."
+}

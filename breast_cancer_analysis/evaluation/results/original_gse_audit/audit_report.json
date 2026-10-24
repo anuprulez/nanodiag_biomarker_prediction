@@ -1,0 +1,67 @@
+{
+  "plotted_cpgs_independently_recomputed": 350,
+  "samples_per_cohort": {
+    "GSE237036": 80,
+    "GSE226569": 694,
+    "GSE101961": 121
+  },
+  "maximum_absolute_error": {
+    "Internal_BC_mean_beta_absolute_error": 1.1102230246251565e-16,
+    "Internal_healthy_mean_beta_absolute_error": 1.1102230246251565e-16,
+    "Internal_delta_beta_BC_minus_healthy_absolute_error": 9.8879238130678e-17,
+    "BC_GSE226569_mean_beta_absolute_error": 4.961586697049825e-13,
+    "Healthy_GSE101961_mean_beta_absolute_error": 4.958811139488262e-13,
+    "Delta_beta_BC_minus_healthy_absolute_error": 4.993089275373563e-13
+  },
+  "all_plotted_values_match_original_sources_within_1e_10": true,
+  "sample_group_checks": [
+    "All 80 local column names map case-insensitively to original GEO descriptions; BC/NC labels agree with source_name and disease annotations"
+  ],
+  "groups": [
+    {
+      "prediction_group": "likely_positive",
+      "plotted_cpgs": 123,
+      "pearson_r": 0.07043172987694228,
+      "same_direction_fraction": 0.4634146341463415,
+      "median_abs_pbmc_delta": 0.0357136581266666,
+      "median_abs_breast_tissue_delta": 0.07731823859968057,
+      "CpGs_with_at_least_one_tumor_detection_p_gt_0_01": 0
+    },
+    {
+      "prediction_group": "negative",
+      "plotted_cpgs": 227,
+      "pearson_r": -0.36311491742416624,
+      "same_direction_fraction": 0.2775330396475771,
+      "median_abs_pbmc_delta": 0.015470384120000014,
+      "median_abs_breast_tissue_delta": 0.08777552040436239,
+      "CpGs_with_at_least_one_tumor_detection_p_gt_0_01": 0
+    }
+  ],
+  "source_sha256": {
+    "GSE237036_matrix_processed.txt.gz": "dc18ec1680e6fdf0632c70c2af225a41aac1cfb23546ac93cd85528dad9cd902",
+    "GSE226569_Methy_ProcessedMatrix.csv.gz": "7a6f3a108e208d694427799d35414a37ad50451146eecb75fd4f907a1892f28a",
+    "GSE101961_series_matrix.txt.gz": "8b68aa70ad8386837f4309b0632b3456eab2d7453f8cdff21c46388a1c5407ad"
+  },
+  "finding": "Original GSE237036 is PBMC (GPL23976, EPIC 850K), while GSE226569 and GSE101961 are breast tissue (GPL13534, 450K). This is a cross-tissue descriptive comparison, not matched-tissue replication.",
+  "maximum_per_sample_error_GEO_vs_local_training_matrix": 1.1102230246251565e-16,
+  "training_sample_betas_checked": 28000,
+  "matched_gene_rows_independently_verified": 369,
+  "coverage": [
+    {
+      "prediction_group": "negative",
+      "predicted_unique_cpgs": 859,
+      "plotted_common_cpgs": 227,
+      "coverage_fraction": 0.26426076833527357,
+      "absent_from_control_beta_matrix": 396,
+      "present_in_control_but_absent_from_tumor_beta_matrix": 236
+    },
+    {
+      "prediction_group": "likely_positive",
+      "predicted_unique_cpgs": 499,
+      "plotted_common_cpgs": 123,
+      "coverage_fraction": 0.24649298597194388,
+      "absent_from_control_beta_matrix": 303,
+      "present_in_control_but_absent_from_tumor_beta_matrix": 73
+    }
+  ]
+}

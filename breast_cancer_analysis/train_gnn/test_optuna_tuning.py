@@ -22,7 +22,7 @@ class OptunaTuningTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
         self.root = Path(self.temporary.name)
-        self.config = OmegaConf.load(HERE.parent / 'config/config.yaml')
+        self.config = OmegaConf.merge(OmegaConf.create(OmegaConf.to_container(OmegaConf.load(HERE.parent / 'config/optuna.yaml').runtime_defaults,resolve=False)), OmegaConf.load(HERE.parent / 'config/config.yaml'))
         # Production PNA winners must not override the tiny test epoch budget.
         self.config.model_overrides.pop('PNA', None)
         self.config.p_base = str(self.root) + '/'

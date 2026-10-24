@@ -6,10 +6,13 @@ import math
 from omegaconf import OmegaConf
 
 PARAMETERS = ('corr_threshold', 'knn_neighbours', 'size_negative')
+ANALYSIS_ROOT = Path(__file__).resolve().parent
 
 
 def preprocessing_configs(config):
     """Accept scalars or lists; lists select a Cartesian parameter sweep."""
+    if config.get("config_scope") in ("dataset", "dataset_preprocessing"):
+        return [OmegaConf.create(OmegaConf.to_container(config, resolve=False))]
     values = []
     for key in PARAMETERS:
         value = config[key]
@@ -34,15 +37,19 @@ def preprocessing_configs(config):
         current.corr_threshold = float(corr)
         current.knn_neighbours = int(knn)
         current.size_negative = int(negative)
-        dataset_root = str(current.get('p_dataset_root', '..')).rstrip('/')
-        current.p_base = f'{dataset_root}/data_corr_{corr:g}_knn_n_{int(knn)}_n_neg_{int(negative)}/'
+        dataset_root = Path(str(current.get('p_dataset_root', ANALYSIS_ROOT))).expanduser()
+        if not dataset_root.is_absolute():
+            dataset_root = ANALYSIS_ROOT / 'train_gnn' / dataset_root
+        dataset_root = dataset_root.resolve()
+        current.p_base = str(dataset_root / f'data_corr_{corr:g}_knn_n_{int(knn)}_n_neg_{int(negative)}') + '/'
         runs.append(current)
     return runs
 
 
 def prepare_run_directories(config):
     for key in ('p_base_files', 'p_generated_files'):
-        Path(config[key]).mkdir(parents=True, exist_ok=True)
+        if key in config:
+            Path(config[key]).mkdir(parents=True, exist_ok=True)
 
 
 def add_parameter_arguments(parser):

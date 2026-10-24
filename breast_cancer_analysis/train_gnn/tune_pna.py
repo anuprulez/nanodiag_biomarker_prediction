@@ -137,7 +137,8 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
     from preprocessing_grid import preprocessing_configs
     from seed_inputs import validate_seed_manifest
-    configs = preprocessing_configs(OmegaConf.load(args.config))
+    from dataset_configs import downstream_configs
+    configs = downstream_configs(args.config)
     if len(configs) != 1:
         raise ValueError('Use a scalar preprocessing config for the standalone PNA search')
     config = configs[0]
@@ -215,6 +216,8 @@ def main():
     frame.to_csv(args.output/'test_predictions_PNA.csv',index=False)
     shutil.copy2(winner/'best_model.pt',args.output/'best_model_PNA.pt')
     shutil.copy2(winner/'config.yaml',args.output/'selected_config.yaml')
+    from artifact_layout import migrate_generated
+    migrate_generated(args.output)
     print('Selected',selected['trial'],'validation',selected['validation_macro_f1'],'test',metrics,flush=True)
 
 

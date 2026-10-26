@@ -40,6 +40,12 @@ class PipelineFolderTests(unittest.TestCase):
 
     def test_no_folder_selects_all_existing_for_all_downstream_stages(self):
         for stage in ['tune','train','xai','compare-predictions']:
+            # Training is mocked, so supply its expected prediction table for XAI.
+            if stage=='xai':
+                for folder in self.folders:
+                    target=folder/'generated/data'/('pred_likely_pos_' + ('aml' if 'aml' in pipeline.SCRIPTS['preprocess'] else 'bc') + '_PNA.csv')
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    target.write_text('test_gene_ids\ttest_gene_names\n17\tcg00000001_GENE\n')
             commands=self.invoke(stage)
             self.assertEqual(len(commands),2,stage)
             for command,folder in zip(commands,self.folders):
@@ -62,6 +68,51 @@ class PipelineFolderTests(unittest.TestCase):
         (folder/'preprocessed/seed_preprocessing_manifest.json').write_text('{}')
         self.assertEqual(self.invoke('preprocess',folder),[])
         self.assertEqual(len(self.invoke('preprocess',self.folders[1])),2)
+
+    def test_batch_preprocessing_restarts_completed_folders_and_clears_logs(self):
+        for folder in self.folders:
+            preprocessed=folder/'preprocessed';preprocessed.mkdir()
+            (preprocessed/'seed_preprocessing_manifest.json').write_text('{}')
+            (preprocessed/'stale.csv').write_text('old')
+            logs=folder/'logs';logs.mkdir()
+            (logs/'preprocess.log').write_text('old preprocessing log')
+            (logs/'train.log').write_text('keep other stage log')
+        commands=self.invoke('preprocess')
+        self.assertEqual(len(commands),4)
+        for folder in self.folders:
+            self.assertFalse((folder/'preprocessed/stale.csv').exists())
+            self.assertFalse((folder/'preprocessed/seed_preprocessing_manifest.json').exists())
+            self.assertEqual((folder/'logs/preprocess.log').read_text(),'')
+            self.assertEqual((folder/'logs/train.log').read_text(),'keep other stage log')
+
+    def test_batch_tuning_requests_new_studies(self):
+        self.assertTrue(all('--fresh' in command for command in self.invoke('tune')))
+        self.assertNotIn('--fresh', self.invoke('tune',self.folders[0])[0])
+
+    def test_log_is_cleared_before_stage_preparation_failure(self):
+        folder=self.folders[0];logs=folder/'logs';logs.mkdir()
+        (logs/'train.log').write_text('stale success')
+        (folder/'config.yaml').unlink()
+        with self.assertRaises(FileNotFoundError):self.invoke('train',folder)
+        self.assertEqual((logs/'train.log').read_text(),'')
+
+    def test_batch_comparison_removes_previous_results(self):
+        for folder in self.folders:
+            output=folder/'evaluation';output.mkdir()
+            (output/'old_report.json').write_text('old')
+        self.invoke('compare-predictions')
+        for folder in self.folders:
+            self.assertTrue((folder/'evaluation').is_dir())
+            self.assertFalse((folder/'evaluation/old_report.json').exists())
+
+    def test_batch_dry_run_preserves_logs_and_completed_outputs(self):
+        folder=self.folders[0];output=folder/'preprocessed';output.mkdir()
+        marker=output/'seed_preprocessing_manifest.json';marker.write_text('{}')
+        logs=folder/'logs';logs.mkdir();log=logs/'preprocess.log';log.write_text('keep')
+        with patch.object(pipeline.sys,'argv',['run_pipeline.py','--stage','preprocess','--config',str(self.source),'--dry-run']),patch.object(pipeline.subprocess,'run') as execute:
+            pipeline.main()
+        execute.assert_not_called()
+        self.assertEqual(log.read_text(),'keep');self.assertEqual(marker.read_text(),'{}')
 
     def test_all_stage_order(self):
         commands=self.invoke('all',self.folders[0])

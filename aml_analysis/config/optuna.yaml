@@ -54,10 +54,19 @@ spaces:
       type: categorical
       choices:
       - - 10
-      - - 10
         - 5
-      - - 10
         - 5
+      - - 20
+        - 10
+        - 5
+      - - 40
+        - 10
+        - 5
+      - - 40
+        - 40
+        - 40
+      - - 10
+        - 10
         - 5
     embedding_dropout:
       type: float

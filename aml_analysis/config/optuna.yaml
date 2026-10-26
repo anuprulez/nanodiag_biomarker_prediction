@@ -10,7 +10,7 @@ models:
 n_trials: 25
 metric: macro_f1
 startup_trials: 20
-pruning_warmup_epochs: 5
+pruning_warmup_epochs: 10
 spaces:
   GNN:
     batch_size:
@@ -22,7 +22,7 @@ spaces:
       - 512
     grad_clip_norm:
       type: float
-      low: 0.5
+      low: 0.1
       high: 5.0
       log: true
     hidden_dim:
@@ -54,17 +54,11 @@ spaces:
       type: categorical
       choices:
       - - 10
+      - - 10
+        - 5
+      - - 10
         - 5
         - 5
-      - - 20
-        - 10
-        - 5
-      - - 40
-        - 10
-        - 5
-      - - 40
-        - 40
-        - 40
       - - 10
         - 10
         - 5
@@ -75,7 +69,7 @@ spaces:
     feature_dropout:
       type: float
       low: 0.0
-      high: 0.2
+      high: 0.3
   GATv2:
     heads:
       type: categorical

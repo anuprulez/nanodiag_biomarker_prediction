@@ -10,7 +10,7 @@ models:
 n_trials: 25
 metric: macro_f1
 startup_trials: 20
-pruning_warmup_epochs: 5
+pruning_warmup_epochs: 10
 spaces:
   GNN:
     batch_size:
@@ -22,7 +22,7 @@ spaces:
       - 512
     grad_clip_norm:
       type: float
-      low: 0.5
+      low: 0.1
       high: 5.0
       log: true
     hidden_dim:
@@ -34,18 +34,18 @@ spaces:
       - 256
     learning_rate:
       type: float
-      low: 5.0e-05
-      high: 0.006
+      low: 1.0e-05
+      high: 0.01
       log: true
     weight_decay:
       type: float
-      low: 1.0e-06
-      high: 0.05
+      low: 1.0e-07
+      high: 0.1
       log: true
     dropout:
       type: float
       low: 0.0
-      high: 0.65
+      high: 0.9
     gnn_layers:
       type: int
       low: 1
@@ -54,28 +54,26 @@ spaces:
       type: categorical
       choices:
       - - 10
-      - - 40
       - - 10
         - 5
       - - 10
         - 5
         - 5
-      - - 5
+      - - 10
+        - 10
         - 5
-      - - 20
-        - 10
-      - - 40
-        - 10
-      - - 80
-        - 20
     embedding_dropout:
       type: float
       low: 0.0
-      high: 0.25
+      high: 0.3
     feature_dropout:
       type: float
       low: 0.0
-      high: 0.2
+      high: 0.3
+    class_weight_power:
+      type: float
+      low: 0.0
+      high: 1.5
   GATv2:
     heads:
       type: categorical
@@ -207,8 +205,8 @@ runtime_defaults:
   feature_dropout: 0.0
   embedding_dropout: 0.0
   heads: 4
-  lr_patience: 2
-  early_stopping_patience: 7
+  lr_patience: 3
+  early_stopping_patience: 10
   umap_n_neighbors: 20
   umap_min_dist: 0.8
   umap_metric: correlation
@@ -288,5 +286,5 @@ runtime_defaults:
   p_model: ${p_generated_files}models/
   tabpfn_model_path: ../model/tabpfn-v3-classifier-v3_default.ckpt
   tabicl_model_path: ../model/tabicl-classifier-v2-20260212.ckpt
-  model_overrides: {}
   artifact_layout: split_v1
+  model_overrides: {}

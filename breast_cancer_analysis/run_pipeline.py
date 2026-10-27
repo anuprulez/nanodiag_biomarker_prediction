@@ -12,6 +12,7 @@ from omegaconf import OmegaConf
 from preprocessing_grid import preprocessing_configs
 from artifact_layout import LAYOUT,apply_artifact_layout,migrate_generated
 from dataset_configs import resolve_dataset_folder,bind_dataset_paths
+from stage_reset import reset_stage_outputs
 
 HERE=Path(__file__).resolve().parent
 PATTERN=re.compile(r'^data_corr_([0-9.eE+-]+)_knn_n_(\d+)_n_neg_(\d+)$')
@@ -103,7 +104,7 @@ def first_likely_positive_node(folder,config):
         if 'test_gene_ids' not in row:raise ValueError(f'{path}: missing test_gene_ids column')
         value=int(row['test_gene_ids'])
         if value<0:raise ValueError(f'{path}: invalid negative node ID')
-    return 10225 #value
+    return value
 
 
 def main():
@@ -126,26 +127,35 @@ def main():
             else:print(f'Skipping untuned dataset for prediction comparison: {folder}',flush=True)
         folders=ready
         if not folders:raise FileNotFoundError('No tuned dataset configs available for prediction comparison')
+    fresh=args.folder is None and source.get('config_scope')!='dataset'
     stages=STAGES if args.stage=='all' else (args.stage,)
     env=os.environ.copy();env['PATH']=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH','')
     env.update(OMP_NUM_THREADS='4',OPENBLAS_NUM_THREADS='4',MKL_NUM_THREADS='4',MPLBACKEND='Agg')
     for folder in folders:
         for stage in stages:
+            # Clear this stage's log before config validation, cleanup or XAI lookup.
+            if not args.dry_run:
+                logs=folder/'logs';logs.mkdir(parents=True,exist_ok=True)
+                (logs/f'{stage}.log').write_text('')
             extra=[]
             if stage in ('preprocess','tune'):
                 current=preprocessing_for_folder(source,folder)
                 config_path=folder/'preprocessing_config.yaml'
-                if stage=='preprocess' and Path(current.p_preprocessing_manifest).is_file():
+                if stage=='preprocess' and not fresh and Path(current.p_preprocessing_manifest).is_file():
                     print(f'Skipping completed preprocessing: {folder}',flush=True);continue
                 if not args.dry_run:
                     folder.mkdir(parents=True,exist_ok=True)
+                    if fresh:reset_stage_outputs(folder,stage,current,args.models)
                     temporary=config_path.with_suffix('.yaml.part');OmegaConf.save(current,temporary);temporary.replace(config_path)
                 if stage=='tune':
+                    if fresh:extra.append('--fresh')
                     for option,value in [('--study-tag',args.study_tag),('--search-space',args.search_space.resolve() if args.search_space else None),('--trials',args.trials),('--timeout',args.timeout)]:
                         if value is not None:extra.extend([option,str(value)])
                     if args.models:extra+=['--models',*args.models]
             else:
-                current=prepare_dataset(folder,args.dry_run);config_path=folder/'config.yaml'
+                current=prepare_dataset(folder,True);config_path=folder/'config.yaml'
+                if fresh and not args.dry_run:reset_stage_outputs(folder,stage,current,args.models)
+                if not args.dry_run:current=prepare_dataset(folder)
                 if stage=='train' and args.models:extra+=['--models',*args.models]
                 if stage=='xai':
                     if args.dry_run:

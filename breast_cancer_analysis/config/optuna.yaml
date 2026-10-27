@@ -8,44 +8,44 @@ models:
 - TabICL
 - XGBoost
 n_trials: 25
-metric: macro_f1
-startup_trials: 20
-pruning_warmup_epochs: 10
+metric: accuracy
+startup_trials: 8
+pruning_warmup_epochs: 201
 spaces:
   GNN:
     batch_size:
-      type: categorical
-      choices:
-      - 64
-      - 128
-      - 256
-      - 512
-    grad_clip_norm:
-      type: float
-      low: 0.1
-      high: 5.0
-      log: true
-    hidden_dim:
       type: categorical
       choices:
       - 32
       - 64
       - 128
       - 256
+      - 512
+    grad_clip_norm:
+      type: float
+      low: 0.5
+      high: 5.0
+      log: true
+    hidden_dim:
+      type: categorical
+      choices:
+      - 64
+      - 128
+      - 256
     learning_rate:
       type: float
-      low: 1.0e-05
-      high: 0.01
+      low: 5.0e-05
+      high: 0.005
       log: true
     weight_decay:
       type: float
       low: 1.0e-07
-      high: 0.1
+      high: 0.05
       log: true
     dropout:
       type: float
       low: 0.0
-      high: 0.9
+      high: 0.75
     gnn_layers:
       type: int
       low: 1
@@ -53,23 +53,31 @@ spaces:
     neighbors_spread:
       type: categorical
       choices:
+      - - 2
+      - - 5
       - - 10
-      - - 10
+      - - 5
         - 5
       - - 10
         - 5
-        - 5
       - - 10
+        - 5
+        - 5
+      - - 20
+        - 5
+        - 5
+      - - 25
         - 10
         - 5
+      - - 40
     embedding_dropout:
       type: float
       low: 0.0
-      high: 0.3
+      high: 0.25
     feature_dropout:
       type: float
       low: 0.0
-      high: 0.3
+      high: 0.05
     class_weight_power:
       type: float
       low: 0.0
@@ -194,19 +202,9 @@ spaces:
 runtime_defaults:
   n_edges: 9913451
   num_classes: 5
-  n_epo: 100
-  batch_size: 64
-  grad_clip_norm: 0.9563551257532924
-  hidden_dim: 256
-  learning_rate: 0.0016268882355913081
-  weight_decay: 0.0018757300558958096
-  dropout: 0.2159414126692356
-  gnn_layers: 1
-  feature_dropout: 0.0
-  embedding_dropout: 0.0
-  heads: 4
-  lr_patience: 3
-  early_stopping_patience: 10
+  n_epo: 200
+  lr_patience: 7
+  early_stopping_patience: 30
   umap_n_neighbors: 20
   umap_min_dist: 0.8
   umap_metric: correlation
@@ -229,11 +227,6 @@ runtime_defaults:
   - TabICL
   - XGBoost
   best_trained_model: PNA
-  neighbors_spread:
-  - 10
-  - 5
-  - 5
-  - 5
   explain_neighbors_spread:
   - -1
   - 100
@@ -261,30 +254,30 @@ runtime_defaults:
   explainer_epochs: 200
   graph_subtype: bidirectional
   show_num_neighbours: 50
-  color_palette: tab10
   p_generated_files: ${p_base}generated/
-  p_dnam_features: ${p_data}dnam_features_bc_${model_type}.csv
-  p_nedbit_dnam_features: ${p_data}df_nebit_dnam_features_bc_${model_type}.csv
+  p_dnam_features: ${p_data}dnam_features_aml_${model_type}.csv
+  p_nedbit_dnam_features: ${p_data}df_nebit_dnam_features_aml_${model_type}.csv
   p_nedbit_dnam_features_norm: ${p_data}df_nebit_dnam_features_norm_${model_type}.csv
-  p_test_probe_genes: ${p_data}test_probe_genes_bc_${model_type}.csv
-  p_train_probe_genes: ${p_data}train_probe_genes_bc_${model_type}.csv
-  p_val_probe_genes: ${p_data}val_probe_genes_bc_${model_type}.csv
-  p_pred_likely_pos: ${p_data}pred_likely_pos_bc_${model_type}.csv
-  p_pred_likely_pos_no_training_genes_probes: ${p_data}pred_likely_pos_no_training_genes_probes_bc_${model_type}.csv
+  p_test_probe_genes: ${p_data}test_probe_genes_aml_${model_type}.csv
+  p_train_probe_genes: ${p_data}train_probe_genes_aml_${model_type}.csv
+  p_val_probe_genes: ${p_data}val_probe_genes_aml_${model_type}.csv
+  p_pred_likely_pos: ${p_data}pred_likely_pos_aml_${model_type}.csv
+  p_pred_likely_pos_no_training_genes_probes: ${p_data}pred_likely_pos_no_training_genes_probes_aml_${model_type}.csv
   p_pred_negatives: ${p_data}pred_negatives_${model_type}.csv
-  p_torch_data: ${p_model}data_bc_${model_type}.pt
-  p_torch_embed: ${p_model}embed_conv_bc_${model_type}.pt
-  p_torch_embed_batch_norm: ${p_model}embed_batch_norm_bc_${model_type}.pt
-  p_true_labels: ${p_model}true_labels_bc_${model_type}.pt
-  p_torch_model: ${p_model}best_model_bc_${model_type}.pt
-  p_pred_labels: ${p_model}pred_labels_bc_${model_type}.pt
-  p_all_class_pred_probs: ${p_model}all_class_pred_probs_bc_${model_type}.pt
-  p_best_class_pred_probs: ${p_model}best_class_pred_probs_bc_${model_type}.pt
-  p_test_loader_ids: ${p_model}test_ids_bc_${model_type}.pt
+  p_torch_data: ${p_model}data_aml_${model_type}.pt
+  p_torch_embed: ${p_model}embed_conv_aml_${model_type}.pt
+  p_torch_embed_batch_norm: ${p_model}embed_batch_norm_aml_${model_type}.pt
+  p_true_labels: ${p_model}true_labels_aml_${model_type}.pt
+  p_torch_model: ${p_model}best_model_aml_${model_type}.pt
+  p_pred_labels: ${p_model}pred_labels_aml_${model_type}.pt
+  p_all_class_pred_probs: ${p_model}all_class_pred_probs_aml_${model_type}.pt
+  p_best_class_pred_probs: ${p_model}best_class_pred_probs_aml_${model_type}.pt
+  p_test_loader_ids: ${p_model}test_ids_aml_${model_type}.pt
   p_plot: ${p_generated_files}plots/
   p_data: ${p_generated_files}data/
   p_model: ${p_generated_files}models/
-  tabpfn_model_path: ../model/tabpfn-v3-classifier-v3_default.ckpt
-  tabicl_model_path: ../model/tabicl-classifier-v2-20260212.ckpt
-  artifact_layout: split_v1
+  tabpfn_model_path: ../../breast_cancer_analysis/model/tabpfn-v3-classifier-v3_default.ckpt
+  tabicl_model_path: ../../breast_cancer_analysis/model/tabicl-classifier-v2-20260212.ckpt
+  color_palette: tab10
   model_overrides: {}
+  artifact_layout: split_v1

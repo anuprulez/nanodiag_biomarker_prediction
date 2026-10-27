@@ -13,6 +13,8 @@ from __future__ import annotations
 import os
 import random
 import subprocess
+import shutil
+import tempfile
 import zipfile
 import sys
 from collections.abc import Sequence
@@ -629,18 +631,26 @@ def assign_initial_labels(
     if not np.isfinite(features.iloc[:, 2:].to_numpy(dtype=float)).all():
         raise ValueError("APU features must be finite")
     print("propagating labels ...")
-    result = subprocess.run(
-        [
-            "apu-label-propagation",
-            nedbit_path,
-            header,
-            output_gene_ranking_path,
-            q1,
-            q2,
-        ],
-        capture_output=True,
-        text=True,
-    )
+    # NIAPU 1.2's last-pivot recursive quicksort can exhaust the stack on
+    # repeated similarities. Use the same algorithm with libc qsort instead.
+    compiler = shutil.which("cc") or shutil.which("gcc")
+    if compiler is None:
+        raise RuntimeError("APU requires a C compiler (cc or gcc) to build the bundled sort fix")
+    source = Path(__file__).resolve().parent / "native" / "apu_label_propagation.c"
+    with tempfile.TemporaryDirectory(prefix="nanodiag-apu-") as build_dir:
+        executable = str(Path(build_dir) / "apu-label-propagation")
+        build = subprocess.run(
+            [compiler, "-O2", str(source), "-lm", "-o", executable],
+            capture_output=True, text=True,
+        )
+        if build.returncode:
+            raise RuntimeError(f"Could not build patched APU: {build.stderr}")
+        result = subprocess.run(
+            [executable, str(nedbit_path), str(header), str(output_gene_ranking_path),
+             str(q1), str(q2)],
+            capture_output=True,
+            text=True,
+        )
     print(result.stdout)
     if result.stderr:
         print("Error:", result.stderr)

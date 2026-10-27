@@ -1,208 +1,61 @@
-models:
-- PNA
-- GCN
-- GraphSAGE
-- GATv2
-- GraphTransformer
-- TabPFN
-- TabICL
-- XGBoost
-n_trials: 25
-metric: macro_f1
+# Search settings: each dataset configuration and model gets its own study.
+models: ["PNA", "GCN", "GraphSAGE", "GATv2", "GraphTransformer", "TabPFN", "TabICL", "XGBoost"]
+n_trials: 25 # Additional trials per invocation, per model and dataset
+metric: macro_f1 # macro_f1 or accuracy, always on validation nodes
 startup_trials: 20
-pruning_warmup_epochs: 10
+pruning_warmup_epochs: 5
+# Epoch budget and patience are taken from config.yaml.
 spaces:
   GNN:
-    batch_size:
-      type: categorical
-      choices:
-      - 64
-      - 128
-      - 256
-      - 512
-    grad_clip_norm:
-      type: float
-      low: 0.1
-      high: 5.0
-      log: true
-    hidden_dim:
-      type: categorical
-      choices:
-      - 32
-      - 64
-      - 128
-      - 256
-    learning_rate:
-      type: float
-      low: 1.0e-05
-      high: 0.01
-      log: true
-    weight_decay:
-      type: float
-      low: 1.0e-06
-      high: 0.1
-      log: true
-    dropout:
-      type: float
-      low: 0.0
-      high: 0.9
-    gnn_layers:
-      type: int
-      low: 1
-      high: 3
+    batch_size: {type: categorical, choices: [64, 128, 256, 512]}
+    grad_clip_norm: {type: float, low: 0.5, high: 5.0, log: true}
+    hidden_dim: {type: categorical, choices: [32, 64, 128, 256]}
+    learning_rate: {type: float, low: 0.00001, high: 0.01, log: true}
+    weight_decay: {type: float, low: 0.000001, high: 0.1, log: true}
+    dropout: {type: float, low: 0.0, high: 0.9}
+    gnn_layers: {type: int, low: 1, high: 3}
+    # Per-hop sampling templates, truncated to gnn_layers.
     neighbors_spread:
       type: categorical
-      choices:
-      - - 10
-      - - 10
-        - 5
-      - - 10
-        - 5
-        - 5
-      - - 10
-        - 10
-        - 5
-    embedding_dropout:
-      type: float
-      low: 0.0
-      high: 0.3
-    feature_dropout:
-      type: float
-      low: 0.0
-      high: 0.3
+      choices: [[10], [10, 5], [10, 5, 5]]
+    embedding_dropout: {type: float, low: 0.0, high: 0.3}
+    feature_dropout: {type: float, low: 0.0, high: 0.2}
   GATv2:
-    heads:
-      type: categorical
-      choices:
-      - 1
-      - 2
-      - 4
-      - 8
+    heads: {type: categorical, choices: [1, 2, 4, 8]}
   GraphTransformer:
-    heads:
-      type: categorical
-      choices:
-      - 1
-      - 2
-      - 4
-      - 8
+    heads: {type: categorical, choices: [1, 2, 4, 8]}
   XGBoost:
-    n_estimators:
-      type: int
-      low: 200
-      high: 2000
-      step: 100
-    max_depth:
-      type: int
-      low: 3
-      high: 10
-    learning_rate:
-      type: float
-      low: 0.005
-      high: 0.3
-      log: true
-    min_child_weight:
-      type: float
-      low: 0.1
-      high: 30.0
-      log: true
-    subsample:
-      type: float
-      low: 0.5
-      high: 1.0
-    colsample_bytree:
-      type: float
-      low: 0.5
-      high: 1.0
-    gamma:
-      type: float
-      low: 0.0
-      high: 5.0
-    reg_alpha:
-      type: float
-      low: 1.0e-08
-      high: 10.0
-      log: true
-    reg_lambda:
-      type: float
-      low: 1.0e-06
-      high: 100.0
-      log: true
-    max_bin:
-      type: categorical
-      choices:
-      - 128
-      - 256
-      - 512
+    n_estimators: {type: int, low: 200, high: 2000, step: 100}
+    max_depth: {type: int, low: 3, high: 10}
+    learning_rate: {type: float, low: 0.005, high: 0.3, log: true}
+    min_child_weight: {type: float, low: 0.1, high: 30.0, log: true}
+    subsample: {type: float, low: 0.5, high: 1.0}
+    colsample_bytree: {type: float, low: 0.5, high: 1.0}
+    gamma: {type: float, low: 0.0, high: 5.0}
+    reg_alpha: {type: float, low: 0.00000001, high: 10.0, log: true}
+    reg_lambda: {type: float, low: 0.000001, high: 100.0, log: true}
+    max_bin: {type: categorical, choices: [128, 256, 512]}
+  # Optional foundation-model inference searches; enable via --models.
   TabPFN:
-    n_estimators:
-      type: categorical
-      choices:
-      - 4
-      - 8
-      - 16
-      - 32
-    softmax_temperature:
-      type: float
-      low: 0.5
-      high: 1.5
-    balance_probabilities:
-      type: categorical
-      choices:
-      - false
-      - true
-    average_before_softmax:
-      type: categorical
-      choices:
-      - false
-      - true
+    n_estimators: {type: categorical, choices: [4, 8, 16, 32]}
+    softmax_temperature: {type: float, low: 0.5, high: 1.5}
+    balance_probabilities: {type: categorical, choices: [false, true]}
+    average_before_softmax: {type: categorical, choices: [false, true]}
   TabICL:
-    n_estimators:
-      type: categorical
-      choices:
-      - 4
-      - 8
-      - 16
-      - 32
-    softmax_temperature:
-      type: float
-      low: 0.5
-      high: 1.5
-    outlier_threshold:
-      type: float
-      low: 2.0
-      high: 8.0
-    feat_shuffle_method:
-      type: categorical
-      choices:
-      - latin
-      - random
-    class_shuffle_method:
-      type: categorical
-      choices:
-      - shift
-      - none
-    average_logits:
-      type: categorical
-      choices:
-      - false
-      - true
+    n_estimators: {type: categorical, choices: [4, 8, 16, 32]}
+    softmax_temperature: {type: float, low: 0.5, high: 1.5}
+    outlier_threshold: {type: float, low: 2.0, high: 8.0}
+    feat_shuffle_method: {type: categorical, choices: [latin, random]}
+    class_shuffle_method: {type: categorical, choices: [shift, none]}
+    average_logits: {type: categorical, choices: [false, true]}
+
+# Existing AML training and artifact defaults.
 runtime_defaults:
   n_edges: 9913451
   num_classes: 5
-  n_epo: 100
-  batch_size: 64
-  grad_clip_norm: 0.9563551257532924
-  hidden_dim: 256
-  learning_rate: 0.0016268882355913081
-  weight_decay: 0.0018757300558958096
-  dropout: 0.2159414126692356
-  gnn_layers: 1
-  feature_dropout: 0.0
-  embedding_dropout: 0.0
-  heads: 4
-  lr_patience: 2
-  early_stopping_patience: 7
+  n_epo: 200
+  lr_patience: 7
+  early_stopping_patience: 30
   umap_n_neighbors: 20
   umap_min_dist: 0.8
   umap_metric: correlation
@@ -225,11 +78,6 @@ runtime_defaults:
   - TabICL
   - XGBoost
   best_trained_model: PNA
-  neighbors_spread:
-  - 10
-  - 5
-  - 5
-  - 5
   explain_neighbors_spread:
   - -1
   - 100

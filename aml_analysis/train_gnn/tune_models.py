@@ -204,7 +204,7 @@ def input_fingerprint(config, search):
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
-def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None):
+def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None, fresh=False):
     import optuna
     base = apply_model_settings(config, name)
     # Flatten overrides so the winning config cannot reapply stale defaults.
@@ -215,6 +215,9 @@ def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None)
             raise ValueError('study_tag must be a single directory name')
         output /= study_tag
     directory = (output / name).resolve()
+    if fresh:
+        from stage_reset import remove_output
+        remove_output(Path(base.p_base), directory)
     directory.mkdir(parents=True, exist_ok=True)
     fingerprint = input_fingerprint(base, search)
     study = optuna.create_study(study_name=name, storage='sqlite:///' + str(directory / 'study.sqlite3'),
@@ -310,12 +313,15 @@ def main():
     parser.add_argument('--config', type=Path, default=HERE.parent / 'config/config.yaml')
     parser.add_argument('--search-space', type=Path, default=HERE.parent / 'config/optuna.yaml')
     parser.add_argument('--models', nargs='+', choices=MODELS)
+    parser.add_argument('--fresh', action='store_true', help='Discard selected studies and start trials from scratch')
     parser.add_argument('--export-existing', action='store_true', help='Create dataset configs from completed studies without running trials')
     parser.add_argument('--study-tag', help='Separate study group under generated/optuna/')
     parser.add_argument('--trials', type=int, help='Additional trials per model and dataset')
     parser.add_argument('--timeout', type=float, help='Seconds per model and dataset')
     add_parameter_arguments(parser)
     args = parser.parse_args()
+    if args.fresh and args.export_existing:
+        parser.error('--fresh cannot be combined with --export-existing')
     config_path = args.config.resolve()
     search = OmegaConf.load(args.search_space.resolve())
     config = tuning_source(config_path, search, args)
@@ -339,7 +345,7 @@ def main():
                 if Path(previous.p_arrays).resolve() != Path(current.p_arrays).resolve() or previous.gene_dim != current.gene_dim:
                     raise ValueError(f'{directory}: completed study is for a different cohort')
             else:
-                directory = optimize_model(current, search, name, n_trials, args.timeout, args.study_tag)
+                directory = optimize_model(current, search, name, n_trials, args.timeout, args.study_tag, fresh=args.fresh)
             write_tuned_dataset(current, directory)
 
 

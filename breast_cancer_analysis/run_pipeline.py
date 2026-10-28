@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+from training_runs import archive_training_run, run_name, comparison_run
 import sys
 from omegaconf import OmegaConf
 from preprocessing_grid import preprocessing_configs
@@ -16,10 +17,10 @@ from stage_reset import reset_stage_outputs
 
 HERE=Path(__file__).resolve().parent
 PATTERN=re.compile(r'^data_corr_([0-9.eE+-]+)_knn_n_(\d+)_n_neg_(\d+)$')
-STAGES=('preprocess','tune','train','xai','compare-predictions')
+STAGES=('preprocess','tune','train','xai','compare-predictions','accumulate')
 SCRIPTS={'preprocess':'preprocess_raw_data/process_raw_illumina_arrays_bc.py',
          'tune':'train_gnn/tune_models.py','train':'train_gnn/main.py',
-         'xai':'train_gnn/run_xai_explainer.py','compare-predictions':'evaluation/run_comparisons.py'}
+         'accumulate':'evaluation/accumulate_runs.py','xai':'train_gnn/run_xai_explainer.py','compare-predictions':'evaluation/run_comparisons.py'}
 
 
 def absolute(path):
@@ -113,12 +114,17 @@ def main():
     parser.add_argument('--folder',type=Path,help='One dataset directory; default: all dataset folders')
     parser.add_argument('--config',type=Path,default=HERE/'config/config.yaml')
     parser.add_argument('--models',nargs='+',help='Models for tuning, training or prediction comparison')
+    parser.add_argument('--run',help='Prediction comparison artifacts from runs/run<number>; default: generated/')
     parser.add_argument('--trials',type=int)
     parser.add_argument('--timeout',type=float)
     parser.add_argument('--study-tag')
     parser.add_argument('--search-space',type=Path)
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
     args=parser.parse_args();source=OmegaConf.load(args.config.resolve())
+    if args.run is not None:
+        if args.stage!='compare-predictions':parser.error('--run is only supported with --stage compare-predictions')
+        try:args.run=run_name(args.run)
+        except ValueError as error:parser.error(str(error))
     folders=selected_folders(source,args.folder,args.stage in ('preprocess','all'))
     if args.stage=='compare-predictions' and args.folder is None and source.get('config_scope')!='dataset':
         ready=[]
@@ -128,7 +134,7 @@ def main():
         folders=ready
         if not folders:raise FileNotFoundError('No tuned dataset configs available for prediction comparison')
     fresh=args.folder is None and source.get('config_scope')!='dataset'
-    stages=STAGES if args.stage=='all' else (args.stage,)
+    stages=tuple(s for s in STAGES if s!='accumulate') if args.stage=='all' else (args.stage,)
     env=os.environ.copy();env['PATH']=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH','')
     env.update(OMP_NUM_THREADS='4',OPENBLAS_NUM_THREADS='4',MKL_NUM_THREADS='4',MPLBACKEND='Agg')
     for folder in folders:
@@ -154,7 +160,10 @@ def main():
                     if args.models:extra+=['--models',*args.models]
             else:
                 current=prepare_dataset(folder,True);config_path=folder/'config.yaml'
-                if fresh and not args.dry_run:reset_stage_outputs(folder,stage,current,args.models)
+                if stage=='compare-predictions' and args.run:
+                    comparison_run(folder,args.run)  # Validate before resetting outputs.
+                    extra+=['--run',args.run]
+                if fresh and not args.dry_run and not args.run:reset_stage_outputs(folder,stage,current,args.models)
                 if not args.dry_run:current=prepare_dataset(folder)
                 if stage=='train' and args.models:extra+=['--models',*args.models]
                 if stage=='xai':
@@ -162,7 +171,7 @@ def main():
                         print(f'XAI node: first test_gene_ids in {folder}/generated/data/pred_likely_pos_bc_PNA.csv',flush=True)
                         extra+=['--model','PNA','--first-likely-positive']
                     else:extra+=['--model','PNA','--node-id',str(first_likely_positive_node(folder,current))]
-                if stage=='compare-predictions' and args.models:extra+=['--models',*args.models]
+                if stage in ('compare-predictions','accumulate') and args.models:extra+=['--models',*args.models]
                 if stage=='compare-predictions' and not args.dry_run:(folder/'evaluation').mkdir(exist_ok=True)
             command=[sys.executable,'-u',str(HERE/SCRIPTS[stage]),'--config',str(config_path),*extra]
             print(' '.join(command),flush=True)
@@ -171,6 +180,9 @@ def main():
             with log.open('w') as output:
                 result=subprocess.run(command,cwd=HERE,env=env,stdout=output,stderr=subprocess.STDOUT)
             if result.returncode:raise SystemExit(f'{stage} failed for {folder.name}; see {log}')
+            if stage=='train':
+                run=archive_training_run(folder,current,log,args.models)
+                print(f'{folder.name}: saved training run: {run}',flush=True)
             if stage=='preprocess':
                 subprocess.run([sys.executable,str(HERE/'preprocess_raw_data/validate_bc_outputs.py'),'--config',str(config_path)],cwd=HERE,env=env,check=True)
             print(f'{folder.name}: {stage} complete; log: {log}',flush=True)

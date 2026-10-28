@@ -28,7 +28,8 @@ from tune_models import seed_all
 
 TRAIN_KEYS=('SEED','batch_size','hidden_dim','grad_clip_norm','learning_rate','weight_decay','dropout',
             'gnn_layers','class_weight_power','feature_dropout','embedding_dropout','neighbors_spread',
-            'n_epo','lr_patience','early_stopping_patience','checkpoint_selection_metric','pna_variant')
+            'n_epo','lr_patience','early_stopping_patience','checkpoint_selection_metric','pna_variant',
+            'pna_aggregators','pna_scalers','pna_towers','pna_pre_layers','pna_post_layers','pna_divide_input')
 
 
 def digest(path):

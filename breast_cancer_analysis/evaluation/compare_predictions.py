@@ -240,6 +240,9 @@ def main():
     for group, label, filename, color in GROUPS:
         path = extracted / filename
         frame = read_predictions(path, group)
+        if group == 'negative':
+            # Archived training exports may include classes 3–5; compare class 5 only.
+            frame = frame.loc[frame['pred_labels'].eq(5)].copy()
         frame.to_csv(output_path(output, f'{group}_extracted_cpg_genes.tsv', suffix), sep='\t', index=False)
         predictions.append(frame)
         inputs.append(path)
@@ -385,7 +388,8 @@ def main():
               '',f'Common CpGs assigned to both prediction groups: {len(overlap)}. Such CpGs remain in both group panels; the groups are not assumed independent.',
               '', f'Plots: `delta_beta_original_vs_external_{suffix}.png` and `delta_beta_shift_by_prediction_group_{suffix}.png`, with PDF versions.',
               'Additional outputs: criterion_sensitivity PNG/PDF/TSV, per-CpG external p/FDR/95% CI, full external test universe, and cohort_audit JSON.',
-              'Tables retain all extracted features, all matching CpG-gene rows, unique matched CpGs, and unmatched predictions (Matched_external_CpG=false).',
+              'Predicted-negative plots and comparison tables use predicted class 5 only. Source exports retain their original selections.',
+              'Tables retain selected features, matching CpG-gene rows, unique matched CpGs, and unmatched predictions (Matched_external_CpG=false).',
               '',report['limitations'],'',
               f'Regenerate from breast_cancer_analysis with `python evaluation/compare_predictions.py --model {args.model} --data {args.data}`.']
     output_path(output, 'README.md', suffix).write_text('\n'.join(lines)+'\n')

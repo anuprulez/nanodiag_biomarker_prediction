@@ -3,6 +3,7 @@ from torch.nn import Linear, LayerNorm, Dropout
 from torch_geometric.nn import PNAConv, GCNConv, SAGEConv, GATv2Conv, TransformerConv
 import torch.nn.functional as F
 from torch_geometric.utils import degree
+from pna_options import pna_conv_options
 
 
 class GPNA(torch.nn.Module):
@@ -35,11 +36,10 @@ class GPNA(torch.nn.Module):
         self.encoder = torch.nn.Sequential(
             Linear(config.gene_dim, hidden), LayerNorm(hidden), torch.nn.GELU(),
         )
+        options = pna_conv_options(config, hidden)
         self.convs = torch.nn.ModuleList([
-            PNAConv(
-                hidden, hidden, ["mean", "min", "max", "std"],
-                ["identity", "amplification", "attenuation"], histogram,
-            ) for _ in range(layers)
+            PNAConv(hidden, hidden, deg=histogram, **options)
+            for _ in range(layers)
         ])
         self.norms = torch.nn.ModuleList([LayerNorm(hidden) for _ in range(layers)])
         # Original features bypass message passing, preserving rare-node signals.

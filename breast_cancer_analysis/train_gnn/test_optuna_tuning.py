@@ -130,6 +130,21 @@ class OptunaTuningTests(unittest.TestCase):
                     self.optimize(name)
                 self.config.n_epo=2
 
+    def test_fresh_tuning_discards_trials_sampler_and_old_outputs(self):
+        import optuna
+        directory=self.optimize('XGBoost')
+        stale=directory/'stale.log';stale.write_text('old run')
+        unrelated=directory.parent/'GCN/keep.txt';unrelated.parent.mkdir();unrelated.write_text('keep')
+        # Fresh studies must also accept updated input fingerprints.
+        self.config.n_epo=3
+        with contextlib.redirect_stdout(io.StringIO()):
+            optimize_model(self.config,self.search,'XGBoost',1,fresh=True)
+        study=optuna.load_study(study_name='XGBoost',storage='sqlite:///'+str(directory/'study.sqlite3'))
+        self.assertEqual(len(study.trials),1)
+        self.assertEqual(study.trials[0].number,0)
+        self.assertFalse(stale.exists());self.assertTrue(unrelated.exists())
+        self.assertTrue((directory/'best_model.joblib').is_file())
+
     def test_unpromising_gnn_trial_is_pruned(self):
         import optuna
         with patch('optuna.pruners.MedianPruner', return_value=optuna.pruners.ThresholdPruner(lower=1.1)):

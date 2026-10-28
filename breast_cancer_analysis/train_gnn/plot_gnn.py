@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
 import networkx as nx
-import torch
-import umap
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
@@ -222,6 +220,7 @@ def plot_features(features, labels, chosen_model, config, title, flag):
     dpi = config.dpi
 
     labels = [int(item) for item in labels]
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -266,6 +265,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
 
     labels = [int(item) for item in labels]
 
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -288,7 +288,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
         ax=ax,
         palette=config.color_palette,
     )
-    ax.set_title(f"Embeddings UMAP of last {feature_type} layer: {chosen_model}")
+    ax.set_title(f"Embeddings UMAP of last GNN layer: {chosen_model}")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(
         fig,
@@ -401,6 +401,7 @@ def draw_xai_local_graph(
             )
 
     # Normalize ei_sub to numpy
+    import torch
     if isinstance(ei_sub, torch.Tensor):
         ei_np = ei_sub.detach().cpu().numpy()
     else:

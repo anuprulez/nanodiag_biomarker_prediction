@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import seaborn as sns
 import json
-import umap
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
@@ -1307,3 +1306,183 @@ if __name__ == "__main__":
     for config in downstream_configs(config_path):
         current = apply_model_settings(config, str(config.best_trained_model))
         plot_xai_nodes_raw_values_averaged_runs(current)
+
+
+def plot_likely_positive_cpg_overlap(runs, output, dpi=200):
+    """Count unique CpG IDs by the number of PNA runs predicting them."""
+    from collections import Counter
+    import re
+
+    memberships = {}
+    sources = []
+    for run in runs:
+        manifest = json.loads((run/'run.json').read_text())
+        if 'PNA' not in manifest['models']:
+            continue
+        paths = list((run/'generated').rglob('pred_likely_pos_bc_PNA.csv'))
+        if not paths:
+            print(f'{run.name}: no PNA likely-positive export; excluded from CpG overlap', flush=True)
+            continue
+        if len(paths) != 1:
+            raise ValueError(f'{run}: expected one PNA likely-positive export, found {len(paths)}')
+        path = paths[0]
+        frame = pd.read_csv(path, sep=None, engine='python')
+        if 'test_gene_names' not in frame:
+            raise ValueError(f'{path}: missing test_gene_names column')
+        # A CpG can have several gene annotations; it counts once in each run.
+        cpgs = set()
+        for name in frame['test_gene_names']:
+            match = re.fullmatch(r'(cg[0-9]+)(?:_.*)?', str(name), flags=re.I)
+            if not match:
+                raise ValueError(f'{path}: invalid CpG feature name: {name!r}')
+            cpgs.add(match[1].lower())
+        sources.append({'run': run.name, 'source': str(path), 'unique_cpgs': len(cpgs)})
+        for cpg in cpgs:
+            memberships.setdefault(cpg, []).append(run.name)
+    if not sources:
+        print('No PNA likely-positive exports available for CpG overlap; pie chart skipped', flush=True)
+        return
+    output = Path(output)
+    data = _as_path(output/'data')
+    plots = _as_path(output/'plots')
+    n_runs = len(sources)
+    counts = Counter(len(names) for names in memberships.values())
+    pd.DataFrame([{'runs_predicted': k, 'unique_cpgs': counts[k]}
+                  for k in range(1, n_runs+1)]).to_csv(data/'PNA_likely_positive_cpg_overlap_counts.csv', index=False)
+    pd.DataFrame([{'cpg': cpg, 'n_runs': len(names), 'runs': ';'.join(names)}
+                  for cpg, names in sorted(memberships.items())],
+                 columns=['cpg', 'n_runs', 'runs']).to_csv(data/'PNA_likely_positive_cpg_membership.csv', index=False)
+    summary = {'included_runs': sources, 'n_runs': n_runs,
+               'union_cpgs': len(memberships),
+               'common_to_all_runs': counts[n_runs]}
+    (data/'PNA_likely_positive_cpg_overlap.json').write_text(json.dumps(summary, indent=2)+'\n')
+    fig, ax = plt.subplots(figsize=(9, 7))
+    if memberships:
+        categories = [k for k in range(1, n_runs+1) if counts[k]]
+        values = [counts[k] for k in categories]
+        labels = [f'{k} of {n_runs} runs: {counts[k]} CpGs' for k in categories]
+        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
+    else:
+        ax.text(.5, .5, 'No likely-positive CpG sites in the included runs',
+                ha='center', va='center', transform=ax.transAxes)
+        ax.set_axis_off()
+    ax.set_title(f'PNA likely-positive CpG overlap across {n_runs} runs\n'
+                 f'{counts[n_runs]} common to all runs; {len(memberships)} unique CpGs total')
+    fig.tight_layout()
+    stem = plots/'PNA_likely_positive_cpg_overlap_pie'
+    try:
+        for extension in ('pdf', 'png'):
+            fig.savefig(stem.with_suffix('.'+extension), dpi=dpi, bbox_inches='tight')
+    finally:
+        plt.close(fig)
+    return summary
+
+
+def plot_cumulative_runs(config, models=None):
+    """Average completed run metrics, with radar and variable-length histories."""
+    from training_runs import completed_runs
+    from train_gnn.plot_gnn import plot_model_comparison
+
+    runs = completed_runs(config.p_base)
+    if not runs:
+        print(f'No archived training runs in {config.p_base}; cumulative plots skipped', flush=True)
+        return
+    models = list(models or config.model_type)
+    output = Path(config.p_base)/'accumulated_results'
+    if 'PNA' in models:
+        plot_likely_positive_cpg_overlap(runs, output, config.get('dpi', 200))
+    current = OmegaConf.create(OmegaConf.to_container(config, resolve=False))
+    current.p_plot = str(output/'plots')+'/'
+    current.p_data = str(output/'data')+'/'
+    current.MAKE_HEATMAP = True
+    keys = ['best_val_acc', 'te_acc', 'te_f1_macro', 'te_f1_weighted',
+            'te_f1_micro', 'te_precision', 'te_recall']
+    histories = {}
+    provenance = {}
+    averages = {}
+    rows = []
+    for model in models:
+        records = []
+        sources = []
+        for run in runs:
+            manifest = json.loads((run/'run.json').read_text())
+            if model not in manifest['models']:
+                continue
+            # Model overrides may store outputs below a custom generated root.
+            paths = list((run/'generated').rglob(f'all_metrics_{model}.json'))
+            if len(paths) != 1:
+                raise ValueError(f'{run}: expected one metrics file for {model}, found {len(paths)}')
+            records.append(json.loads(paths[0].read_text()))
+            sources.append(run.name)
+        if not records:
+            continue
+        histories[model] = records
+        provenance[model] = sources
+        averages[model] = {}
+        for key in keys:
+            values = []
+            for record in records:
+                value = record.get(key)
+                if isinstance(value, list):
+                    value = value[-1] if value else None
+                if value is not None and np.isfinite(float(value)):
+                    values.append(float(value))
+            if values:
+                averages[model][key] = float(np.mean(values))
+                rows.append({'model': model, 'metric': key, 'mean': np.mean(values),
+                             'std': np.std(values), 'n_runs': len(values)})
+    if not averages:
+        print('No matching archived model metrics; cumulative plots skipped', flush=True)
+        return
+    data_path = _as_path(current.p_data)
+    pd.DataFrame(rows).to_csv(data_path/'metrics_mean_std.csv', index=False)
+    (data_path/'included_runs.json').write_text(json.dumps(provenance, indent=2)+'\n')
+    plot_model_comparison(averages, list(averages), current)
+
+    # A radar compares the actual averaged scores on their common [0, 1] scale.
+    angles = np.linspace(0, 2*np.pi, len(keys), endpoint=False)
+    closed_angles = np.r_[angles, angles[0]]
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': 'polar'})
+    for model, metrics in averages.items():
+        values = [metrics.get(key, np.nan) for key in keys]
+        ax.plot(closed_angles, values+[values[0]], label=f'{model} (n={len(histories[model])})')
+    ax.set_xticks(angles)
+    ax.set_xticklabels(keys)
+    ax.set_ylim(0, 1)
+    ax.legend(loc='upper left', bbox_to_anchor=(1.1, 1.1))
+    ax.set_title('Mean performance across training runs')
+    _save(fig, Path(current.p_plot)/'radar_mean_metrics.pdf', config.get('dpi', 200))
+
+    for model, records in histories.items():
+        for kind, series in [('loss', ['tr_loss', 'val_loss', 'te_loss']),
+                             ('accuracy', ['tr_acc', 'val_acc', 'te_acc'])]:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            plotted = False
+            for key in series:
+                arrays = [np.asarray(record.get(key, []), dtype=float).reshape(-1) for record in records]
+                length = max((len(a) for a in arrays), default=0)
+                if not length:
+                    continue
+                padded = np.full((len(arrays), length), np.nan)
+                for i, values in enumerate(arrays):
+                    padded[i, :len(values)] = values
+                valid = np.isfinite(padded).sum(axis=0)
+                keep = valid > 0
+                mean = np.divide(np.nansum(padded, axis=0), valid,
+                                 out=np.full(length, np.nan), where=keep)
+                variance = np.divide(np.nansum((padded-mean)**2, axis=0), valid,
+                                     out=np.full(length, np.nan), where=keep)
+                std = np.sqrt(variance)
+                epochs = np.arange(1, length+1)
+                line, = ax.plot(epochs, mean, label=key)
+                ax.fill_between(epochs, mean-std, mean+std, alpha=.2, color=line.get_color())
+                pd.DataFrame({'epoch': epochs, 'mean': mean, 'std': std, 'n_runs': valid}).to_csv(
+                    data_path/f'{model}_{key}_mean_std.csv', index=False)
+                plotted = True
+            if plotted:
+                ax.set(xlabel='Epoch', ylabel=kind.title(), title=f'{model}: mean ± std across runs')
+                ax.legend()
+                _save(fig, Path(current.p_plot)/f'{model}_{kind}_mean_std.pdf', config.get('dpi', 200))
+            else:
+                plt.close(fig)
+    return output

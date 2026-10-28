@@ -27,3 +27,70 @@ Method: exact intersection of cg probe IDs; GPL13534 UCSC_RefGene_Name (legacy h
 These are descriptive cross-study differences without batch, age, sex, or cell-composition adjustment. Whole blood controls and primary AML blood differ in cellular composition. GSE62298 is the requested AML GEO dataset; it is not TCGA.
 
 Dataset URLs, checksums, row counts and policies are in results/analysis_report.json; sample metadata and cohort tables are retained in raw/ and results/.
+
+## Dataset-specific prediction comparisons
+
+```bash
+python run_pipeline.py --stage compare-predictions --folder data_corr_0.33_knn_n_3000_n_neg_10000
+```
+
+Omit `--folder` for all dataset folders, or use `--models PNA GCN` to select
+models. Each dataset must have its own tuned `config.yaml`. Comparisons use
+`generated/data` test-partition tables and `generated/models` prediction tensors;
+flat legacy artifacts remain readable. Existing `generated/data/pred_negatives_<model>.csv` and
+`pred_likely_pos_aml_<model>.csv` are authoritative, including any updated XAI
+selection rules. Their rows are checked against current saved inference IDs,
+feature names, labels and probabilities (allowing float32 CSV rounding). Group
+CSVs are copied into evaluation outputs and their original paths/SHA256 hashes
+are recorded. Only when both exports are absent are groups reconstructed from
+tensors; incomplete or inconsistent exports fail clearly. Editing XAI rules
+requires regenerating its group CSVs before comparing. Outputs go to
+each dataset's `evaluation/`, including per-model tables, PNG/PDF plots, extracted
+groups and checksummed reports. Metadata-aligned original effects are calculated
+as AML minus healthy; external cohorts remain GSE40279 and GSE62298.
+
+The standalone `evaluation/run_comparisons.py --config <dataset>/config.yaml`
+accepts `--dry-run`. `evaluation/compare_pna_predictions.py` remains a compatible
+entry point for the generalized `compare_predictions.py`.
+
+### Enhanced AML prediction comparisons
+
+```bash
+python run_pipeline.py --stage compare-predictions --folder data_corr_0.33_knn_n_3000_n_neg_10000
+```
+
+All three PNG/PDF figures show **likely positive first, negative second**:
+`delta_beta_original_vs_external` (four-panel agreement, absolute effects and
+exploratory support), `delta_beta_shift_by_prediction_group`, and
+`criterion_sensitivity`. Outputs live in the dataset's `evaluation/` directory.
+The negative selection uses original labels 2–5 and predicted label 5; likely
+positives use original labels 2–5 and predicted label 2. Exports sort by descending
+`pred_probs` with stable ties. Comparison preserves validated custom XAI exports.
+
+Points represent unique CpGs matched to the external comparison table, rather
+than all exported CpG–gene rows. Summary TSV/JSON records input rows, unique CpGs,
+matched and plotted counts, Pearson/Spearman, direction agreement, MAE, median
+absolute effects and fractions above 0.10/0.20. Per-CpG tables include external
+Welch p-values, BH FDR, pointwise 95% CI, absolute errors and support flags.
+
+Welch inference uses existing means, sample SDs (ddof=1) and per-CpG valid n.
+BH correction uses the complete `evaluation/results/shared_cpg_statistics.tsv`
+universe before selecting predictions, including unannotated probes. Untestable
+sites remain in the correction family as p=1 but receive missing inference.
+The input comparison table is checked for consistency against this universe.
+Reference: [SciPy Welch test from summary statistics](https://docs.scipy.org/doc/scipy/reference/generated/scipy.stats.ttest_ind_from_stats.html).
+
+The exploratory criterion requires absolute external Δβ ≥0.10, BH FDR <0.05,
+and consistent nonzero direction. Sensitivity plots/TSVs show effect thresholds
+0.05/0.10/0.20 and FDR cutoffs 0.01/0.05/0.10. Denominators are finite matched
+unique CpGs; missing significance is not counted as support. Summary effect
+threshold fractions use strict >0.10/>0.20. Exact zero-zero sign matches count
+as direction agreement, but the support criterion requires nonzero effects.
+
+External controls are GSE40279 and AML samples are GSE62298. Disease and external
+study are confounded; age and blood-cell composition may also affect comparisons.
+No batch or covariate adjustment is performed. FDR and effect agreement do not
+establish independent replication or model superiority over selection-derived
+labels. These thresholds are exploratory, not prospectively registered.
+Only tuned datasets with completed prediction artifacts can be evaluated; an
+explicit `--folder` avoids other folders whose training is still incomplete.

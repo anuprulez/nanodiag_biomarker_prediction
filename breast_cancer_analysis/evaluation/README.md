@@ -84,6 +84,40 @@ partition tables are read from `generated/data/`; prediction tensors come from
 likely-positive/negative groups into `generated/data/`, and XAI selects the first
 `test_gene_ids` in the PNA likely-positive table.
 
+## Accumulate saved training runs
+
+From `breast_cancer_analysis`, generate cumulative plots independently of the
+external prediction comparison:
+
+```bash
+python run_pipeline.py --stage accumulate --folder data_corr_0.33_knn_n_3000_n_neg_10000
+python run_pipeline.py --stage accumulate --models PNA XGBoost
+```
+
+Successful `run_pipeline.py --stage train` invocations archive generated
+artifacts, the config, model manifest, and training log in each dataset's
+`runs/run1/`, `runs/run2/`, and subsequent numbered folders. Accumulation reads
+these completed archives and writes average heatmaps, radar plots, and
+mean/std loss and accuracy curves under `accumulated_results/plots/`.
+The PNA likely-positive overlap pie chart (PNG/PDF) counts unique CpGs by the
+number of runs predicting them and reports the all-run intersection. CpGs with
+multiple gene annotations count once per run. Missing exports are reported and
+excluded; membership/count CSVs and source-run JSON accompany the chart.
+Metric means, standard deviations, contributing run counts, and included-run
+provenance are saved under `accumulated_results/data/`. Histories with
+different stopping epochs are averaged using the available values per epoch.
+
+Omit `--folder` to process configured dataset folders. Use `--models` to select
+models, or `--dry-run` to preview commands. With no completed archives,
+cumulative plotting is skipped with a message. Accumulation does not train
+models or rerun external comparisons.
+
+`--stage compare-predictions` also generates these cumulative plots after
+comparing current predictions. It defaults to all models in each tuned dataset
+config; `--models` restricts both comparison and cumulative plotting. See the
+[project README](../../README.md#training-runs-and-cumulative-plots) for the
+archive layout and training commands.
+
 ## Compare likely-positive and negative predictions later
 
 After training and test prediction artifacts have been saved, run:
@@ -261,3 +295,27 @@ LP/negative classes depend on graph/methylation selection; groups may share CpGs
 The descriptive comparison does not isolate GNN benefit or support an independent
 between-group significance test. Comparable NIAPU and Random Forest held-out
 predictions are not supplied; no baseline replication superiority is claimed.
+
+### Compare predictions from a saved training run
+
+Run from `breast_cancer_analysis`:
+
+```bash
+python run_pipeline.py --stage compare-predictions \
+  --folder data_corr_0.33_knn_n_3000_n_neg_10000 --run run2 --models PNA
+```
+
+`--run 2` is equivalent to `--run run2`. The command reads the archived config
+and prediction/model artifacts under `<dataset>/runs/run2/`; it does not retrain
+models. Results go to `<dataset>/evaluation/run2/`. Without `--run`, comparisons
+continue to use the current configured `generated/` artifacts and write to
+`<dataset>/evaluation/`. The run flag is also available on
+`evaluation/run_comparisons.py`. If `--models` is omitted with `--run`, the models
+recorded in that run's manifest are selected. Missing runs or models absent
+from the selected run raise an error rather than falling back to current files.
+When `--folder` is omitted, the selected run must exist in each selected dataset.
+
+Predicted-negative external comparison plots and derived comparison tables are
+restricted to **predicted class 5**, including when `--run` selects an older
+archive containing classes 3–5. Source prediction exports are preserved; the
+likely-positive selection is unchanged. Regenerate comparisons to apply this rule.

@@ -24,6 +24,8 @@ def main():
         if args.dry_run:
             print(f"Accumulate {config.p_base}runs/run*/generated + evaluation/run* -> {config.p_base}accumulated_results")
             continue
+        from plot_degree_per_soft_label import plot_degree_per_soft_label
+        plot_degree_per_soft_label(config)
         from train_gnn.plot_aggregations import plot_cumulative_runs
         plot_cumulative_runs(config, args.models)
         from accumulate_evaluation import accumulate_evaluation

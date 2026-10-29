@@ -114,3 +114,12 @@ The direct runner supports the same flags and additionally `--node-name`:
 ```bash
 python train_gnn/run_xai_explainer.py --config data_corr_0.33_knn_n_3000_n_neg_10000/config.yaml --model PNA --xai-group RN --top-k 3
 ```
+
+The `--stage accumulate` stage also plots mean and median preprocessed probe degree
+for each soft label (0–4), independently of archived training runs. Outputs are
+`accumulated_results/plots/degree_per_soft_label.{pdf,svg,png}` (PNG at 600 dpi)
+and `accumulated_results/data/degree_per_soft_label.csv` (count, mean, median).
+To generate only this plot for one dataset folder, run from this analysis directory:
+```bash
+python evaluation/plot_degree_per_soft_label.py --folder /path/to/data_folder
+```

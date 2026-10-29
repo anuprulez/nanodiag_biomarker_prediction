@@ -6,7 +6,7 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from plot_xai_neighbor_correlations import correlate_profiles, plotted_nodes, read_profiles, delta_beta_statistics, delta_beta_scatter, cohort_comparison_table, combined_xai_figure
+from plot_xai_neighbor_correlations import correlate_profiles, plotted_nodes, read_profiles, delta_beta_statistics, delta_beta_scatter, cohort_comparison_table, combined_xai_figure, correlate_all_seeds, all_seed_correlation_plot
 
 
 class NeighborCorrelationTests(unittest.TestCase):
@@ -114,6 +114,29 @@ class NeighborCorrelationTests(unittest.TestCase):
                 self.assertIn('B. DNA methylation correlation',text)
                 self.assertIn('C. Δβ : Original vs external cohort',text)
                 self.assertEqual(len(document[0].get_images()),0)
+            with patch.object(pymupdf.Page, 'get_pixmap'):
+                combined_xai_figure(*sources,base/'combined_rn',7980,'cg16909733_ANKMY1',prediction_group='RN')
+            with pymupdf.open(base/'combined_rn.pdf') as document:
+                self.assertIn('B. All seeds: correlation with RN',document[0].get_text())
+                self.assertNotIn('delta content',document[0].get_text())
+                self.assertNotIn('C. Δβ',document[0].get_text())
+                self.assertLess(document[0].rect.height,document[0].rect.width)
+
+    def test_rn_uses_every_seed_including_nonlocal_and_negative_correlations(self):
+        import matplotlib.pyplot as plt
+        names=['cg0_RN','cg1_A','cg2_B','cg3_C','cg4_nonseed']
+        table=pd.DataFrame({'name':names,'seed_score':[0.,.5,.3,.2,0.]})
+        profiles=pd.DataFrame([[.1,.2,.3],[.1,.2,.3],[.3,.2,.1],
+                               [.2,.3,.4],[.2,.2,.2]],index=names)
+        result=correlate_all_seeds(profiles,table,0)
+        self.assertEqual(set(result.neighbor_node_id),{1,2,3})
+        self.assertAlmostEqual(result.set_index('neighbor_node_id').loc[2,'correlation'],-1.)
+        fig=all_seed_correlation_plot(result,0,names[0],'pearson')
+        try:
+            self.assertEqual(len(fig.axes[0].patches),3)
+            self.assertLess(fig.axes[0].get_ylim()[0],-1.)
+        finally:
+            plt.close(fig)
 
     def test_exact_pdf_legend_and_named_profile_rows(self):
         import pymupdf

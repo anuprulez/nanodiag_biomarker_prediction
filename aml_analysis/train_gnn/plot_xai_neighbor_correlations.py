@@ -125,6 +125,36 @@ def correlation_plot(results, center, center_name, method):
     return fig
 
 
+def correlate_all_seeds(profiles, table, center, method='pearson'):
+    """Compare the RN with every positive-weight seed, not just local neighbors."""
+    seeds = table.loc[table.seed_score.gt(0)]
+    nodes = {int(node): row['name'] for node, row in seeds.iterrows() if int(node) != center}
+    if not nodes:
+        raise ValueError('No seed nodes available for RN correlations')
+    nodes[center] = table.loc[center, 'name']
+    return correlate_profiles(profiles, nodes, table, center, method)
+
+
+def all_seed_correlation_plot(results, center, center_name, method):
+    ordered = results.sort_values('correlation', na_position='last').reset_index(drop=True)
+    fig, ax = plt.subplots(figsize=(14, 10), constrained_layout=True)
+    ax.bar(np.arange(1, len(ordered)+1), ordered.correlation, color='green', width=.85,
+           label=f'All seed nodes (n={len(ordered)})')
+    ax.axhline(0, color='#555555', linewidth=1)
+    ax.set_xlim(.25, len(ordered)+.75)
+    ax.set_ylim(-1.05, 1.05)
+    ax.set_xlabel('Seed nodes ordered by correlation with RN', fontsize=28.8)
+    ax.set_ylabel(f'{method.capitalize()} correlation with RN', fontsize=28.8)
+    ax.set_title(f'RN {center}: correlation with all seed nodes\n{center_name}', fontsize=21, pad=18)
+    ax.tick_params(labelsize=21.6)
+    ax.set_axisbelow(True)
+    ax.grid(axis='y', color='#dddddd', linewidth=.7)
+    for side in ('top', 'right'):
+        ax.spines[side].set_visible(False)
+    ax.legend(fontsize=21.6, loc='upper left', frameon=False)
+    return fig
+
+
 def delta_beta_statistics(profiles, metadata_path, matrix_path):
     """Check positional sample alignment before comparing AML and controls."""
     metadata = pd.read_csv(metadata_path, sep='\t')
@@ -254,20 +284,23 @@ def place_cpg_labels(fig, ax, data, xfield, yfield):
         occupied.append(box)
 
 
-def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name, dpi=300):
-    """Assemble three vector panels: XAI above, bars and cohort scatter below."""
+def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name, dpi=300, prediction_group='LP'):
+    """Compose two RN panels or three LP panels, preserving vector content."""
     import pymupdf
     output = Path(output)
     with pymupdf.open() as document:
-        page = document.new_page(width=1440, height=1401.4)
+        page = document.new_page(width=1440, height=780 if prediction_group == 'RN' else 1401.4)
         page.insert_textbox(pymupdf.Rect(24, 12, 1416, 66),
                             f'AML: XAI node {center} ({center_name})',
                             fontsize=28, fontname='helv', align=1)
         from matplotlib.font_manager import FontProperties, findfont
         page.insert_font(fontname='PanelTitle', fontfile=str(findfont(FontProperties(weight='bold'))))
         panels = [('A. Explanation subgraph', xai_pdf, (24, 83, 1416, 736.4)),
-                  ('B. DNA methylation correlation', bar_pdf, (24, 771.4, 710, 1371.4)),
+                  ('B. All seeds: correlation with RN' if prediction_group == 'RN' else 'B. DNA methylation correlation', bar_pdf, (24, 771.4, 710, 1371.4)),
                   ('C. Δβ : Original vs external cohort', delta_pdf, (734, 771.4, 1416, 1371.4))]
+        if prediction_group == 'RN':
+            panels = [('A. Explanation subgraph', xai_pdf, (24, 90, 710, 750)),
+                      ('B. All seeds: correlation with RN', bar_pdf, (734, 90, 1416, 750))]
         for title, source_path, coords in panels:
             rect = pymupdf.Rect(coords)
             page.insert_textbox(pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y0+45),
@@ -282,7 +315,7 @@ def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name
                     for line in block.get('lines', []) for span in line['spans']
                     if span['bbox'][1] < source[0].rect.height*.2 and
                     (span['text'].startswith(('AML:', 'Breast Cancer:',
-                                              'Explanation subgraph of '))
+                                              'Explanation subgraph of ', 'RN '))
                      or (span['text'].startswith('XAI node ') and ':' in span['text'])
                      or span['text'] == center_name)]
                 if title_bottoms:
@@ -298,7 +331,7 @@ def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name
 def create_neighbor_correlation_plots(dataset, node_id, model='PNA', *, xai_plot=None,
                                       features=None, node_table=None, metadata=None,
                                       matrix=None, external=None, output=None, method='pearson', dpi=300,
-                                      data_dir=None, plot_dir=None):
+                                      data_dir=None, plot_dir=None, prediction_group=None):
     """Shared standalone/stage entry point; consumes the exact current XAI PDF."""
     dataset = Path(dataset).resolve()
     generated = dataset/'generated'
@@ -309,6 +342,13 @@ def create_neighbor_correlation_plots(dataset, node_id, model='PNA', *, xai_plot
             raise ValueError(f'Expected one local XAI PDF; found {len(candidates)}. Supply --xai-plot.')
         xai_plot = candidates[0]
     nodes = plotted_nodes(xai_plot)
+    if prediction_group is None:
+        import pymupdf
+        with pymupdf.open(xai_plot) as source:
+            prediction_group = 'RN' if '(RN)' in source[0].get_text() else 'LP'
+    prediction_group = prediction_group.upper()
+    if prediction_group not in ('LP', 'RN'):
+        raise ValueError('Prediction group must be LP or RN')
     table_path = Path(node_table or dataset/'preprocessed/out_genes_aml.csv')
     table = pd.read_csv(table_path, sep=r'\s+', header=None,
                         names=['node_id', 'name', 'seed_score']).set_index('node_id')
@@ -316,12 +356,49 @@ def create_neighbor_correlation_plots(dataset, node_id, model='PNA', *, xai_plot
     metadata = Path(metadata or ROOT/'raw/harmonised/sample_metadata.tsv')
     matrix = Path(matrix or ROOT/'raw/harmonised/combined_beta_cpg_gene.tsv.gz')
     external = Path(external or ROOT/'evaluation/results/cpg_gene_beta_comparison.tsv')
-    profiles = read_profiles(features, nodes.values())
-    results = correlate_profiles(profiles, nodes, table, node_id, method)
+    requested_names = list(nodes.values())
+    if prediction_group == 'RN':
+        requested_names = list(dict.fromkeys(requested_names+table.loc[table.seed_score.gt(0), 'name'].tolist()))
+    profiles = read_profiles(features, requested_names)
+    results = (correlate_all_seeds(profiles, table, node_id, method) if prediction_group == 'RN'
+               else correlate_profiles(profiles, nodes, table, node_id, method))
+    if prediction_group == 'RN':
+        # RN figures require methylation profiles only, not external comparisons.
+        output = Path(output or generated)
+        data_dir = Path(data_dir or output/'data')
+        plot_dir = Path(plot_dir or output/'plots')
+        for folder in (data_dir, plot_dir):
+            folder.mkdir(parents=True, exist_ok=True)
+        seed_stem = f'XAI_all_seed_correlations_node_{node_id}_{model}_{method}'
+        results.to_csv(data_dir/f'{seed_stem}.tsv', sep='\t', index=False)
+        fig = all_seed_correlation_plot(results, node_id, nodes[node_id], method)
+        with matplotlib.rc_context({'pdf.fonttype': 42, 'svg.fonttype': 'none'}):
+            for extension in ('pdf', 'png', 'svg'):
+                fig.savefig(plot_dir/f'{seed_stem}.{extension}', dpi=max(300, dpi),
+                            bbox_inches='tight', facecolor='white')
+        plt.close(fig)
+        combined_xai_figure(xai_plot, plot_dir/f'{seed_stem}.pdf', None,
+                            plot_dir/f'XAI_combined_node_{node_id}_{model}',
+                            node_id, nodes[node_id], dpi, prediction_group='RN')
+        provenance = dict(prediction_group='RN', model=model, node_id=node_id,
+                          node_name=nodes[node_id], n_seeds=len(results),
+                          seed_scope='All graph nodes with seed_score > 0, excluding self',
+                          sample_count=profiles.shape[1], method=method,
+                          xai_plot=str(Path(xai_plot).resolve()),
+                          features=str(features.resolve()), node_table=str(table_path.resolve()),
+                          panels=['Explanation subgraph', 'All-seed correlation with RN'])
+        (data_dir/f'{seed_stem}.json').write_text(json.dumps(provenance, indent=2)+'\n')
+        print(f'RN {node_id}: included all {len(results)} seed nodes; two-panel composite generated.')
+        return results
     stats = delta_beta_statistics(profiles, metadata, matrix)
     results = results.join(stats, on='neighbor_name', validate='many_to_one')
-    comparison = cohort_comparison_table(stats, nodes, table, node_id, external)
-    external_by_name = comparison.set_index('node_name')[['external_delta_beta_AML_minus_healthy', 'matched_external']]
+    comparison_nodes = dict(nodes)
+    if prediction_group == 'RN':
+        comparison_nodes.update({int(node): row['name']
+                                 for node, row in table.loc[table.seed_score.gt(0)].iterrows()})
+    all_comparison = cohort_comparison_table(stats, comparison_nodes, table, node_id, external)
+    comparison = all_comparison.loc[all_comparison.node_id.isin(nodes)].copy()
+    external_by_name = all_comparison.set_index('node_name')[['external_delta_beta_AML_minus_healthy', 'matched_external']]
     results = results.join(external_by_name, on='neighbor_name', validate='many_to_one')
     center_delta = float(stats.loc[nodes[node_id], 'delta_beta_AML_minus_healthy'])
     results['xai_delta_beta_AML_minus_healthy'] = center_delta
@@ -331,12 +408,16 @@ def create_neighbor_correlation_plots(dataset, node_id, model='PNA', *, xai_plot
         folder.mkdir(parents=True, exist_ok=True)
     stem = f'XAI_neighbor_correlations_node_{node_id}_{model}_{method}'
     results.to_csv(data_dir/f'{stem}.tsv', sep='\t', index=False)
+    seed_stem = f'XAI_all_seed_correlations_node_{node_id}_{model}_{method}'
+    if prediction_group == 'RN':
+        results.to_csv(data_dir/f'{seed_stem}.tsv', sep='\t', index=False)
     comparison.to_csv(data_dir/f'XAI_neighbor_delta_beta_current_vs_external_node_{node_id}_{model}.tsv', sep='\t', index=False)
     missing = comparison.loc[~comparison.matched_external, 'node_name'].tolist()
     if missing:
         print(f'Nodes absent from external cohort (excluded from scatter): {missing}', flush=True)
     for fig, name in (
-            (correlation_plot(results, node_id, nodes[node_id], method), stem),
+            ((all_seed_correlation_plot(results, node_id, nodes[node_id], method) if prediction_group == 'RN'
+              else correlation_plot(results, node_id, nodes[node_id], method)), seed_stem if prediction_group == 'RN' else stem),
             (delta_beta_scatter(comparison, node_id, nodes[node_id]),
              f'XAI_neighbor_delta_beta_current_vs_external_node_{node_id}_{model}')):
         with matplotlib.rc_context({'pdf.fonttype': 42, 'svg.fonttype': 'none'}):
@@ -346,13 +427,16 @@ def create_neighbor_correlation_plots(dataset, node_id, model='PNA', *, xai_plot
                 print(path)
         plt.close(fig)
     combined_xai_figure(
-        xai_plot, plot_dir/f'{stem}.pdf',
+        xai_plot, plot_dir/f"{seed_stem if prediction_group == 'RN' else stem}.pdf",
         plot_dir/f'XAI_neighbor_delta_beta_current_vs_external_node_{node_id}_{model}.pdf',
-        plot_dir/f'XAI_combined_node_{node_id}_{model}', node_id, nodes[node_id], dpi)
+        plot_dir/f'XAI_combined_node_{node_id}_{model}', node_id, nodes[node_id], dpi, prediction_group)
     provenance = dict(xai_plot=str(Path(xai_plot).resolve()), features=str(features.resolve()),
                       node_table=str(table_path.resolve()), metadata=str(metadata.resolve()),
                       matrix=str(matrix.resolve()), external=str(external.resolve()), method=method,
-                      neighborhood='All green and blue nodes displayed in the selected local XAI PDF',
+                      prediction_group=prediction_group,
+                      seed_scope='All graph nodes with seed_score > 0' if prediction_group == 'RN' else 'Displayed neighbors',
+                      n_seed_correlations=len(results) if prediction_group == 'RN' else None,
+                      neighborhood='All displayed nodes in cohort scatter; all seeds in RN correlation panel',
                       sample_count=profiles.shape[1],
                       correlation='Pairwise finite sample methylation values; no NeDBIT or seed-score features',
                       delta_beta='Current and external cohort mean AML beta minus mean healthy-control beta; scatter x=current, y=external',
@@ -369,6 +453,8 @@ def main():
     parser.add_argument('--dataset', type=Path, default=DEFAULT_DATASET)
     parser.add_argument('--node-id', type=int, default=7980)
     parser.add_argument('--model', default='PNA')
+    parser.add_argument('--xai-group', dest='prediction_group', type=str.upper, choices=('LP','RN'),
+                        help='Default: infer LP/RN from the source XAI plot title')
     parser.add_argument('--xai-plot', type=Path)
     parser.add_argument('--features', type=Path)
     parser.add_argument('--node-table', type=Path)

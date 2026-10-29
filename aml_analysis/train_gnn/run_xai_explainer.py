@@ -736,7 +736,8 @@ def explain_configuration(config, node_id=None, node_name=None):
         config.p_base, node_i, chosen_model, xai_plot=local_plot,
         features=config.p_dnam_features, node_table=config.p_out_genes,
         metadata=config.p_sample_metadata, matrix=config.p_arrays,
-        data_dir=config.p_data, plot_dir=config.p_plot, dpi=config.get('dpi', 300))
+        data_dir=config.p_data, plot_dir=config.p_plot, dpi=config.get('dpi', 300),
+        prediction_group=config.get('xai_prediction_group', 'LP'))
     return plotted_nodes
 
 

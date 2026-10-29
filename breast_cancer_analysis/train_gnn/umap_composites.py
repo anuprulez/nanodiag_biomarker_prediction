@@ -90,9 +90,17 @@ def plot_umap_run_composites(runs, output, dpi=300, model='PNA', feature_type='P
         return []
     try:
         import pymupdf
-    except ImportError as error:
-        raise ImportError('UMAP composites require PyMuPDF: pip install -r '
-                          'train_gnn/requirements-plotting.txt') from error
+    except ModuleNotFoundError as error:
+        if error.name != 'pymupdf':
+            raise
+        requirements = Path(__file__).with_name('requirements-plotting.txt')
+        warnings.warn(
+            'UMAP composites skipped because PyMuPDF is unavailable. '
+            f'Install it in the active environment with: python -m pip install -r {requirements}. '
+            'Other accumulation outputs will continue.',
+            stacklevel=2,
+        )
+        return []
     output = Path(output)
     plots = output/'plots'
     plots.mkdir(parents=True, exist_ok=True)

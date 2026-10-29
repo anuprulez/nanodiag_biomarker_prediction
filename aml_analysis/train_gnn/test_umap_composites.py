@@ -24,6 +24,22 @@ class CompositeTests(unittest.TestCase):
             runs.append(run)
         return runs
 
+    def test_missing_pymupdf_skips_only_composites(self):
+        import builtins
+        original_import = builtins.__import__
+
+        def without_pymupdf(name, *args, **kwargs):
+            if name == 'pymupdf':
+                raise ModuleNotFoundError("No module named 'pymupdf'", name='pymupdf')
+            return original_import(name, *args, **kwargs)
+
+        with tempfile.TemporaryDirectory() as temp:
+            runs = self.sources(Path(temp))
+            with patch('builtins.__import__', side_effect=without_pymupdf):
+                with self.assertWarnsRegex(UserWarning, 'Other accumulation outputs will continue'):
+                    self.assertEqual(plot_umap_run_composites(runs, Path(temp)/'output'), [])
+            self.assertFalse((Path(temp)/'output').exists())
+
     def test_numeric_order_and_missing_run(self):
         with tempfile.TemporaryDirectory() as temp:
             runs=self.sources(Path(temp))

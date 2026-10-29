@@ -81,8 +81,8 @@ python run_pipeline.py --stage compare-predictions --folder data_corr_0.33_knn_n
 Each dataset exports comparisons to its own `evaluation/` directory. Saved test
 partition tables are read from `generated/data/`; prediction tensors come from
 `generated/models/`. Legacy flat exports remain readable. Training writes the
-likely-positive/negative groups into `generated/data/`, and XAI selects the first
-`test_gene_ids` in the PNA likely-positive table.
+likely-positive/negative groups into `generated/data/`, and XAI selects the highest-probability prediction from LP or RN unless
+`--node-id` is supplied.
 
 ## Accumulate saved training runs
 
@@ -319,3 +319,111 @@ Predicted-negative external comparison plots and derived comparison tables are
 restricted to **predicted class 5**, including when `--run` selects an older
 archive containing classes 3–5. Source prediction exports are preserved; the
 likely-positive selection is unchanged. Regenerate comparisons to apply this rule.
+
+
+## Evaluation accumulation across training runs
+
+Run `python run_pipeline.py --stage accumulate` from the analysis directory
+(with the same folder/model selectors as the other stages). This includes
+archived comparisons in `<dataset>/evaluation/run1/` through `run5/` and any
+additional completed evaluation runs. Generate those comparisons first using
+`--stage compare-predictions --run run1` (repeat for each archived run).
+Comparisons also refresh accumulated evaluation outputs automatically.
+
+Outputs are in `<dataset>/accumulated_results/evaluation/`, separately for each
+model and dataset suffix:
+
+- `summary_*.tsv` and `criterion_sensitivity_*.tsv`: equal-weight means, sample
+  standard deviations, and contributing run counts. Sensitivity plots average
+  each run's fractions rather than pooling CpGs across runs.
+- `delta_beta_criterion_*.png/pdf`: mean support percentage with SD error bars.
+- `*_common_unique_cpgs_*.tsv` and `common_cpg_summary_*.tsv`: intersection of
+  CpGs across every included run, separately within each prediction group.
+  Internal effects are averaged per CpG; external cohort effects and FDR must
+  agree across runs and are retained without repeating statistical inference.
+- `delta_beta_original_vs_external_*.png/pdf` and
+  `delta_beta_shift_by_prediction_group_*.png/pdf`: effects for those common CpGs.
+- `included_runs_*.json`: source run names, counts, skipped runs, and methods.
+
+A model/run is included only when its summary, sensitivity table, and both
+prediction-group CpG tables exist. Fewer or more than five included runs produce
+a warning with the actual count. Models with no complete evaluations are skipped;
+an empty CpG intersection skips effect plots while retaining mean results.
+
+Accumulated four-panel figures use consistent 24-point axis titles and tick
+labels, 22-point legends, and Pearson-only annotations. PNG exports use at
+least 300 DPI; PDF embeds TrueType fonts and SVG retains editable text.
+
+### Five-run PNA UMAP composites
+
+`--stage accumulate` also creates `accumulated_results/plots/UMAP_before_PNA_5_runs`
+and `UMAP_after_PNA_5_runs` as vector PDF and at least 300 DPI PNG. Each figure
+has five run panels, arranged three above and two centered below. Before uses
+raw NeDBIT/DNA methylation UMAPs; after uses final PNAConv4 embeddings. Both
+require the same five archived runs and preserve existing UMAP coordinates and
+class colors. Missing runs or source figures cause an explicit skip warning.
+Source paths are recorded under `accumulated_results/data/`. Install the PDF
+composition dependency with `pip install -r train_gnn/requirements-plotting.txt`.
+To generate only these composites, run
+`python train_gnn/umap_composites.py --dataset <dataset-folder>`.
+
+### XAI neighborhood composite
+
+`--stage xai` now automatically creates correlation bars, a current-versus-external
+delta-beta scatter, and `XAI_combined_node_<id>_<model>.pdf/png`. The three-panel
+composite contains the original local XAI graph, the methylation correlation bar
+plot, and the matched cohort scatter. Scatter labels use full CpG_Gene names
+without annotation lines, and x/y axes use identical limits and ticks. Green
+means seed nodes, blue means other displayed nodes, and the XAI node is red.
+Current Δβ uses original BC_ minus NC_ sample means after verifying sample
+order and beta values against the original matrix. External effects use
+`evaluation/results/cpg_gene_beta_comparison.tsv`, as in compare-predictions.
+Tables and provenance are exported to the configured data directory.
+Standalone generation is available via `train_gnn/plot_xai_neighbor_correlations.py`
+with `--dataset`, `--node-id`, and optional `--xai-plot`.
+
+## XAI node and prediction-group selection
+
+Run these commands from `breast_cancer_analysis`:
+
+```bash
+# Default: the highest-probability likely-positive prediction (LP).
+python run_pipeline.py --stage xai --folder data_corr_0.33_knn_n_3000_n_neg_10000
+
+# Explicit graph node ID overrides automatic prediction selection.
+python run_pipeline.py --stage xai --folder data_corr_0.33_knn_n_3000_n_neg_10000 --node-id 7980 --xai-group LP
+
+# Highest-probability predicted negative (RN).
+python run_pipeline.py --stage xai --folder data_corr_0.33_knn_n_3000_n_neg_10000 --xai-group RN
+
+# Explain the top five predictions in the chosen group.
+python run_pipeline.py --stage xai --folder data_corr_0.33_knn_n_3000_n_neg_10000 --xai-group LP --top-k 5
+python run_pipeline.py --stage xai --folder data_corr_0.33_knn_n_3000_n_neg_10000 --xai-group RN --top-k 5
+```
+
+Node IDs are dataset-specific; replace `7980` with the intended graph ID for
+that dataset. `--xai-group` also accepts the alias `--prediction-group`. `LP`
+reads `generated/data/pred_likely_pos_bc_PNA.csv`; `RN` reads
+`generated/data/pred_negatives_PNA.csv` (respecting model-specific output paths).
+Without an explicit ID, rows are ranked by descending `pred_probs`; ties keep
+file order. `--top-k` defaults to 1. Missing exports are reconstructed from the
+saved predictions; empty groups or insufficient rows fail with a clear error.
+Each selected node gets its own XAI, correlation, Δβ, and three-panel composite
+outputs. The current pipeline XAI model is PNA.
+
+The direct runner supports the same flags and additionally `--node-name`:
+
+```bash
+python train_gnn/run_xai_explainer.py --config data_corr_0.33_knn_n_3000_n_neg_10000/config.yaml --model PNA --xai-group RN --top-k 3
+```
+
+### RN seed comparison
+
+With `--stage xai --xai-group RN`, panel B compares the selected RN against
+**every seed node** (`seed_score > 0`) using methylation profiles, including
+seeds outside the displayed local subgraph. Ranked bars retain negative
+correlations. Full CpG_Gene names, coefficients, and sample counts are exported
+to `XAI_all_seed_correlations_node_<id>_<model>_pearson.tsv`; no seeds are
+truncated. The RN composite contains only two panels: the explanation subgraph and
+all-seed correlations. It requires no external cohort inputs. A center-only RN
+graph is supported. LP retains its three-panel cohort-comparison layout.

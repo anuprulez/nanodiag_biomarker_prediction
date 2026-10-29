@@ -16,7 +16,6 @@ spaces:
     batch_size:
       type: categorical
       choices:
-      - 32
       - 64
       - 128
       - 256
@@ -29,23 +28,24 @@ spaces:
     hidden_dim:
       type: categorical
       choices:
+      - 32
       - 64
       - 128
       - 256
     learning_rate:
       type: float
-      low: 5.0e-05
-      high: 0.005
+      low: 1.0e-05
+      high: 0.01
       log: true
     weight_decay:
       type: float
-      low: 1.0e-07
-      high: 0.05
+      low: 1.0e-06
+      high: 0.1
       log: true
     dropout:
       type: float
       low: 0.0
-      high: 0.75
+      high: 0.9
     gnn_layers:
       type: int
       low: 1
@@ -53,35 +53,20 @@ spaces:
     neighbors_spread:
       type: categorical
       choices:
-      - - 2
-      - - 5
       - - 10
-      - - 5
-        - 5
       - - 10
         - 5
       - - 10
         - 5
         - 5
-      - - 20
-        - 5
-        - 5
-      - - 25
-        - 10
-        - 5
-      - - 40
     embedding_dropout:
       type: float
       low: 0.0
-      high: 0.25
+      high: 0.3
     feature_dropout:
       type: float
       low: 0.0
-      high: 0.05
-    class_weight_power:
-      type: float
-      low: 0.0
-      high: 1.5
+      high: 0.2
   GATv2:
     heads:
       type: categorical

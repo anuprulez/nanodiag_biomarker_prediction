@@ -110,6 +110,9 @@ def first_likely_positive_node(folder,config):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    from train_gnn.xai_selection import add_xai_selection_arguments
+    add_xai_selection_arguments(parser)
+    parser.add_argument('--node-id', type=int, help='Graph node ID for --stage xai; overrides top prediction selection')
     parser.add_argument('--stage',choices=['all',*STAGES],default='all')
     parser.add_argument('--folder',type=Path,help='One dataset directory; default: all dataset folders')
     parser.add_argument('--config',type=Path,default=HERE/'config/config.yaml')
@@ -120,7 +123,10 @@ def main():
     parser.add_argument('--study-tag')
     parser.add_argument('--search-space',type=Path)
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
-    args=parser.parse_args();source=OmegaConf.load(args.config.resolve())
+    args=parser.parse_args()
+    if args.node_id is not None and args.node_id < 0:parser.error('--node-id must be nonnegative')
+    if args.top_k < 1:parser.error('--top-k must be at least 1')
+    source=OmegaConf.load(args.config.resolve())
     if args.run is not None:
         if args.stage!='compare-predictions':parser.error('--run is only supported with --stage compare-predictions')
         try:args.run=run_name(args.run)
@@ -167,10 +173,8 @@ def main():
                 if not args.dry_run:current=prepare_dataset(folder)
                 if stage=='train' and args.models:extra+=['--models',*args.models]
                 if stage=='xai':
-                    if args.dry_run:
-                        print(f'XAI node: first test_gene_ids in {folder}/generated/data/pred_likely_pos_bc_PNA.csv',flush=True)
-                        extra+=['--model','PNA','--first-likely-positive']
-                    else:extra+=['--model','PNA','--node-id',str(first_likely_positive_node(folder,current))]
+                    extra+=['--model','PNA','--xai-group',args.xai_group,'--top-k',str(args.top_k)]
+                    if args.node_id is not None:extra+=['--node-id',str(args.node_id)]
                 if stage in ('compare-predictions','accumulate') and args.models:extra+=['--models',*args.models]
                 if stage=='compare-predictions' and not args.dry_run:(folder/'evaluation').mkdir(exist_ok=True)
             command=[sys.executable,'-u',str(HERE/SCRIPTS[stage]),'--config',str(config_path),*extra]

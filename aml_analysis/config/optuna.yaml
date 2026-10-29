@@ -187,7 +187,7 @@ spaces:
 runtime_defaults:
   n_edges: 9913451
   num_classes: 5
-  n_epo: 100
+  n_epo: 200
   batch_size: 64
   grad_clip_norm: 0.9563551257532924
   hidden_dim: 256

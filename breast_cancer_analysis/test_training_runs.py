@@ -43,6 +43,28 @@ class TrainingRunTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 run_name('../run1')
 
+    def test_boxplots_cover_heatmap_metrics_and_models(self):
+        from train_gnn.plot_gnn import MODEL_COMPARISON_METRICS
+        from train_gnn.plot_aggregations import plot_metric_boxplots
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            cfg = OmegaConf.create({'p_data': str(folder/'data'),
+                                    'p_plot': str(folder/'plots'), 'dpi': 40})
+            records = {'PNA': [{key: .6 for key in MODEL_COMPARISON_METRICS},
+                               {key: [.7, .8] for key in MODEL_COMPARISON_METRICS}],
+                       'GCN': [{key: .5 for key in MODEL_COMPARISON_METRICS}]}
+            records['GCN'][0]['te_precision'] = None
+            frame = plot_metric_boxplots(records, {'PNA': ['run1', 'run2'], 'GCN': ['run2']}, cfg)
+            self.assertEqual(set(frame.metric), set(MODEL_COMPARISON_METRICS))
+            self.assertEqual(frame.model.unique().tolist(), ['PNA', 'GCN'])
+            self.assertEqual(len(frame), 3*len(MODEL_COMPARISON_METRICS)-1)
+            self.assertEqual(frame.loc[(frame.model=='PNA') & (frame.run=='run2'), 'value'].tolist(),
+                             [.8]*len(MODEL_COMPARISON_METRICS))
+            self.assertTrue((folder/'data/accuracy_metrics_by_run.csv').is_file())
+            for metric in MODEL_COMPARISON_METRICS:
+                for suffix in ['png', 'pdf']:
+                    self.assertTrue((folder/f'plots/boxplot_{metric}_across_runs.{suffix}').is_file())
+
     def test_archives_and_variable_epoch_aggregation(self):
         from train_gnn.plot_aggregations import plot_cumulative_runs
         import pandas as pd
@@ -81,6 +103,7 @@ class TrainingRunTests(unittest.TestCase):
             self.assertEqual(curve['mean'].tolist(), [2., 2., 3.])
             self.assertTrue((output/'plots/radar_mean_metrics.pdf').is_file())
             self.assertTrue(list((output/'plots').glob('Heatmap*.pdf')))
+            self.assertTrue((output/'plots/boxplot_te_acc_across_runs.pdf').is_file())
 
 
 if __name__ == '__main__':

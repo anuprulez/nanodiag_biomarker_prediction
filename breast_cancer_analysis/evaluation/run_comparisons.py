@@ -53,5 +53,7 @@ def main():
         else:
             from train_gnn.plot_aggregations import plot_cumulative_runs
             plot_cumulative_runs(config, models)
+            from accumulate_evaluation import accumulate_evaluation
+            accumulate_evaluation(config, models)
 
 if __name__=='__main__':main()

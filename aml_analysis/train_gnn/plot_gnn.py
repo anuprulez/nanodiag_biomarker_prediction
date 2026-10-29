@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
 import networkx as nx
-import torch
-import umap
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
@@ -222,6 +220,7 @@ def plot_features(features, labels, chosen_model, config, title, flag):
     dpi = config.dpi
 
     labels = [int(item) for item in labels]
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -266,6 +265,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
 
     labels = [int(item) for item in labels]
 
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -288,7 +288,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
         ax=ax,
         palette=config.color_palette,
     )
-    ax.set_title(f"Embeddings UMAP of last {feature_type} layer: {chosen_model}")
+    ax.set_title(f"Embeddings UMAP of last GNN layer: {chosen_model}")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(
         fig,
@@ -396,6 +396,7 @@ def draw_xai_local_graph(
             )
 
     # Normalize ei_sub to numpy
+    import torch
     if isinstance(ei_sub, torch.Tensor):
         ei_np = ei_sub.detach().cpu().numpy()
     else:
@@ -429,19 +430,20 @@ def draw_xai_local_graph(
     # Layout on the small graph (stable seed for reproducibility)
     pos = nx.spring_layout(H, seed=42)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    nx.draw(H, pos=pos, with_labels=True, node_color=colors_in_order, ax=ax)
+    fig, ax = plt.subplots(figsize=(11, 8))
+    nx.draw(H, pos=pos, with_labels=True, node_color=colors_in_order,
+            node_size=650, font_size=16, width=1.2, ax=ax)
 
     # Side legend
     if legend_elements:
         plt.legend(
             handles=legend_elements,
-            title="Nodes",
+            title="Nodes", fontsize=16, title_fontsize=18,
             loc="center left",
             bbox_to_anchor=(1, 0.5),
         )
 
-    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
+    plt.title(f"Explanation subgraph of {idx_global} node ({config.get('xai_prediction_group', 'LP')})")
     plt.grid(True)
 
     # Save
@@ -517,19 +519,22 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
     plt.close()
 
 
+MODEL_COMPARISON_METRICS = {
+    'best_val_acc': 'Validation accuracy',
+    'te_acc': 'Test accuracy',
+    'te_f1_macro': 'Macro F1',
+    'te_f1_weighted': 'Weighted F1',
+    'te_f1_micro': 'Micro F1',
+    'te_precision': 'Precision (weighted)',
+    'te_recall': 'Recall (weighted)',
+}
+
+
 def plot_model_comparison(results, models, config):
     """Compare this run's final metrics; missing/failed models appear as N/A."""
     if not config.get('MAKE_HEATMAP', True):
         return None
-    metric_labels = {
-        'best_val_acc': 'Validation accuracy',
-        'te_acc': 'Test accuracy',
-        'te_f1_macro': 'Macro F1',
-        'te_f1_weighted': 'Weighted F1',
-        'te_f1_micro': 'Micro F1',
-        'te_precision': 'Precision (weighted)',
-        'te_recall': 'Recall (weighted)',
-    }
+    metric_labels = MODEL_COMPARISON_METRICS
     metric_keys = list(metric_labels)
     rows = []
     for name in models:
@@ -547,17 +552,9 @@ def plot_model_comparison(results, models, config):
     if not np.isfinite(mat).any():
         return None
 
-    normalize = config.get('NORMALIZE_FOR_HEATMAP', True)
-    A_norm = np.full_like(mat, np.nan)
-    if normalize:
-        for j in range(mat.shape[1]):
-            valid = np.isfinite(mat[:, j])
-            if valid.any():
-                low, high = mat[valid, j].min(), mat[valid, j].max()
-                A_norm[valid, j] = (mat[valid, j] - low) / max(high - low, 1e-12)
-    else:
-        low, high = np.nanmin(mat), np.nanmax(mat)
-        A_norm = (mat - low) / max(high - low, 1e-12)
+    # Scores and annotations share the same fixed [0, 1] color scale.
+    # Re-scaling across models exaggerates low scores and hides absolute values.
+    A_norm = mat.copy()
 
     cmap = plt.cm.YlGnBu.copy()
     cmap.set_bad('#dddddd')
@@ -585,10 +582,11 @@ def plot_model_comparison(results, models, config):
         ax.tick_params(which='minor', bottom=False, left=False)
         ax.set_title('Models vs Metrics', pad=10)
         cbar = fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
-        cbar.set_label('Per-metric normalized score' if normalize else 'Globally normalized score', labelpad=12)
+        cbar.set_label('Metric score', labelpad=12)
+        cbar.set_ticks(np.linspace(0., 1., 6))
         output = _as_path(config.p_plot)
         stem = f'Heatmap_avg_edges_{config.n_edges}_epochs_{config.n_epo}'
-        # Save original values alongside the normalized visualization.
+        # Save the same metric values used for both colors and annotations.
         pd.DataFrame(mat, index=pd.Index(models, name='model'), columns=metric_keys).to_csv(_as_path(config.get("p_data",config.p_plot)) / f'{stem}.csv')
         path = output / f'{stem}.pdf'
         _save(fig, path, config.dpi)

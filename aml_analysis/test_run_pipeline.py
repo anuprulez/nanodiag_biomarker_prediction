@@ -50,7 +50,10 @@ class PipelineFolderTests(unittest.TestCase):
             self.assertEqual(len(commands),2,stage)
             for command,folder in zip(commands,self.folders):
                 self.assertEqual(command[command.index('--config')+1],str(folder/('preprocessing_config.yaml' if stage=='tune' else 'config.yaml')))
-                if stage=='xai':self.assertEqual(command[command.index('--node-id')+1],'17')
+                if stage=='xai':
+                    self.assertEqual(command[command.index('--xai-group')+1],'LP')
+                    self.assertEqual(command[command.index('--top-k')+1],'1')
+                    self.assertNotIn('--node-id',command)
                 if stage=='compare-predictions':self.assertTrue((folder/'evaluation').is_dir())
 
     def test_specific_folder_and_preprocess_parameter_binding(self):
@@ -113,6 +116,18 @@ class PipelineFolderTests(unittest.TestCase):
             pipeline.main()
         execute.assert_not_called()
         self.assertEqual(log.read_text(),'keep');self.assertEqual(marker.read_text(),'{}')
+
+    def test_successful_train_publishes_sequential_archives(self):
+        folder=self.folders[0]
+        self.invoke('train',folder)
+        first=folder/'runs/run1'
+        self.assertTrue((first/'generated').is_dir())
+        self.assertTrue((first/'logs/train.log').is_file())
+        self.assertTrue((first/'config.yaml').is_file())
+        self.assertEqual(json.loads((first/'run.json').read_text())['models'],['PNA'])
+        self.invoke('train',folder)
+        self.assertTrue((folder/'runs/run2/run.json').is_file())
+        self.assertTrue((first/'run.json').is_file())
 
     def test_all_stage_order(self):
         commands=self.invoke('all',self.folders[0])
@@ -197,6 +212,16 @@ class PipelineFolderTests(unittest.TestCase):
         self.assertEqual(len(commands),1)
         self.assertEqual(commands[0][commands[0].index('--config')+1],str(folder/'config.yaml'))
         self.assertEqual(set(self.root.iterdir()),before)
+
+    def test_xai_forwards_explicit_node_and_rn_group(self):
+        argv=['run_pipeline.py','--stage','xai','--config',str(self.source),
+              '--folder',str(self.folders[0]),'--node-id','7980','--xai-group','RN','--top-k','3']
+        with patch.object(pipeline.sys,'argv',argv),patch.object(pipeline.subprocess,'run',return_value=SimpleNamespace(returncode=0)) as execute:
+            pipeline.main()
+        command=execute.call_args.args[0]
+        self.assertEqual(command[command.index('--node-id')+1],'7980')
+        self.assertEqual(command[command.index('--xai-group')+1],'RN')
+        self.assertEqual(command[command.index('--top-k')+1],'3')
 
     def test_dry_run_does_not_write_or_move(self):
         folder=self.folders[0];before=(folder/'config.yaml').read_bytes()

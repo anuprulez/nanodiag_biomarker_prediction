@@ -137,7 +137,7 @@ def cohort_audit(matrix, training_series, root, raw_dir):
                 interpretation='Exploratory cross-study evidence; no claim of independent biological validation'), checked
 
 
-def validation_plots(plot_data, summary, groups, original_axis):
+def validation_plots(plot_data, summary, groups, original_axis, *, publication=False):
     import matplotlib.pyplot as plt
     # Use the largest existing axis-label size consistently across panels.
     from matplotlib.font_manager import FontProperties
@@ -166,10 +166,20 @@ def validation_plots(plot_data, summary, groups, original_axis):
         ax.set_aspect('equal')
         pearson = f"{row['pearson_r']:.3f}" if row['pearson_r'] is not None else 'undefined'
         spearman = f"{row['spearman_r']:.3f}" if row['spearman_r'] is not None else 'undefined'
-        ax.text(.03, .97, f"Pearson r={pearson}; Spearman ρ={spearman}\nDirection={row['same_direction_fraction']:.1%}; MAE={row['mean_absolute_error']:.3f}",
-                transform=ax.transAxes, va='top', fontsize=27,
+        annotation = (f'Pearson r={pearson}' if publication else
+                      f"Pearson r={pearson}; Spearman ρ={spearman}\nDirection={row['same_direction_fraction']:.1%}; MAE={row['mean_absolute_error']:.3f}")
+        ax.text(.03, .97, annotation,
+                transform=ax.transAxes, va='top', fontsize=24 if publication else 27,
                 bbox=dict(facecolor='white', alpha=.85, edgecolor='none'))
-        ax.legend(loc='lower right', fontsize=15)
+        if publication:
+            handles, labels = ax.get_legend_handles_labels()
+            labels = [label.replace('external cohort criterion', 'external cohort\ncriterion')
+                      for label in labels]
+            ax.legend(handles, labels, loc='lower right', fontsize=22,
+                      markerscale=1.5, frameon=True, facecolor='white',
+                      edgecolor='none', framealpha=.95)
+        else:
+            ax.legend(loc='lower right', fontsize=15)
     ax = axes[len(groups)]
     rng = np.random.default_rng(32)
     for i, (group, label, _, color) in enumerate(groups):
@@ -194,11 +204,9 @@ def validation_plots(plot_data, summary, groups, original_axis):
                 f"{row['exploratory_criterion_count']}/{row['plotted_unique_cpgs']}\n{100*row['exploratory_criterion_fraction']:.1f}%", ha='center', fontsize=18)
     ax.set(xticks=range(len(groups)), xticklabels=[label.replace('Predicted ', 'Predicted\n') for _,label,_,_ in groups], ylim=(0,110),
            ylabel='Common CpGs meeting criterion (%)', title=f'{chr(66+len(groups))}. External cohort support')
-    ax.text(.5, -.24, '|External Δβ| ≥ 0.10, BH FDR < 0.05, consistent nonzero direction',
-            transform=ax.transAxes, ha='center', fontsize=15)
     for panel in axes:
         for axis in (panel.xaxis, panel.yaxis):
-            axis.label.set(fontsize=label_size, fontfamily=font_family,
+            axis.label.set(fontsize=label_size * 1.5, fontfamily=font_family,
                            fontstyle='normal', fontweight='normal')
             for tick in axis.get_ticklabels():
                 # Enlarge numeric ticks by 50%; keep category labels consistent.
@@ -214,6 +222,31 @@ def validation_plots(plot_data, summary, groups, original_axis):
         panel.title.set(fontsize=24, fontfamily=font_family)
     fig.suptitle('External cohort support for likely positive predicted CpG sites',
                  fontsize=36, fontfamily=font_family)
+    if publication:
+        # Apply one explicit size to axis titles and numeric/category tick labels.
+        from matplotlib.ticker import MaxNLocator
+        for panel in axes[:len(groups)]:
+            panel.xaxis.set_major_locator(MaxNLocator(nbins=5))
+            panel.yaxis.set_major_locator(MaxNLocator(nbins=5))
+        effect_panel = axes[len(groups)]
+        effect_panel.set_xticks(positions, [label.replace('likely positive', 'likely\npositive')
+                                          for label in labels])
+        fig.set_size_inches(20, 17)
+        fig.set_facecolor('white')
+        for panel in axes:
+            panel.set_facecolor('white')
+            panel.set_axisbelow(True)
+            panel.grid(axis='y', color='#dddddd', linewidth=.6, alpha=.65)
+            panel.grid(axis='x', visible=False)
+            for side in ('top', 'right'):
+                panel.spines[side].set_visible(False)
+            for axis in (panel.xaxis, panel.yaxis):
+                axis.label.set(fontsize=24, fontfamily=font_family)
+                axis.get_offset_text().set(fontsize=24, fontfamily=font_family)
+                for tick in axis.get_ticklabels():
+                    tick.set(fontsize=24, fontfamily=font_family)
+            panel.tick_params(axis='both', pad=8)
+            panel.set_title(panel.get_title(), fontsize=24, fontfamily=font_family, pad=16)
     return fig
 
 

@@ -136,7 +136,7 @@ def plot_radar_runs_multiple(config):
     and generate:
       1) Improved overlay radar (models on axes, metrics in legend)
       2) Small-multiples radars (one radar per model, metrics on axes)
-      3) Metric-normalized heatmap (models x metrics)
+      3) Metric-score heatmap (models x metrics)
 
     Expects files at:
       {config.p_base}/runs/{run_id}/all_metrics_{Model}.json
@@ -167,7 +167,6 @@ def plot_radar_runs_multiple(config):
 
     SORT_MODELS = True  # sort models for overlay/heatmap
     SORT_BY = "mean"  # "mean" or one of metric_keys
-    NORMALIZE_FOR_HEATMAP = True  # per-metric min-max to [0,1]
 
     plot_local_path = Path(getattr(config, "p_plot", "./plots"))
     p_base = getattr(config, "p_generated_files", config.p_base)
@@ -374,22 +373,13 @@ def plot_radar_runs_multiple(config):
         print(f"Saved small-multiples radars -> {out_path_sm}")
 
     # ----------------------------
-    # 4) Metric-Normalized Heatmap
+    # 4) Metric-Score Heatmap
     # ----------------------------
     if MAKE_HEATMAP:
         A = mat.copy()  # models x metrics
 
-        if NORMALIZE_FOR_HEATMAP:
-            # Per-metric min-max normalization to [0,1] for contrast
-            mins = np.nanmin(A, axis=0)
-            maxs = np.nanmax(A, axis=0)
-            span = np.clip(maxs - mins, 1e-12, None)
-            A_norm = (A - mins) / span
-        else:
-            # Normalize globally for luminance calculation only
-            gmin, gmax = np.nanmin(A), np.nanmax(A)
-            gspan = max(gmax - gmin, 1e-12)
-            A_norm = (A - gmin) / gspan
+        # Keep colors, annotations and colorbar on the actual metric scale.
+        A_norm = A.copy()
 
         # Use a colormap with light low-end so text stays visible for small values
         cmap = plt.cm.YlGnBu  # low = light yellow, high = dark blue
@@ -399,7 +389,7 @@ def plot_radar_runs_multiple(config):
             figsize=(1.2 * len(metric_keys) + 2.5, 0.6 * len(models) + 2.5)
         )
         im = ax.imshow(
-            A_norm if NORMALIZE_FOR_HEATMAP else A_norm,
+            np.ma.masked_invalid(A_norm),
             aspect="auto",
             interpolation="nearest",
             cmap=cmap,
@@ -442,6 +432,7 @@ def plot_radar_runs_multiple(config):
         ax.set_title(f"Models vs Metrics", pad=10)
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cbar.ax.set_ylabel("Metric score", rotation=90, va="center", labelpad=12)
+        cbar.set_ticks(np.linspace(0., 1., 6))
 
         plt.tight_layout()
         out_path_hm = (
@@ -1378,10 +1369,54 @@ def plot_likely_positive_cpg_overlap(runs, output, dpi=200):
     return summary
 
 
+def plot_metric_boxplots(histories, provenance, config):
+    """Use the heatmap's model order and metrics, with one observation per run."""
+    from train_gnn.plot_gnn import MODEL_COMPARISON_METRICS
+
+    models = list(histories)
+    rows = []
+    for model, records in histories.items():
+        for run, record in zip(provenance[model], records):
+            for key in MODEL_COMPARISON_METRICS:
+                value = record.get(key)
+                if isinstance(value, (list, tuple, np.ndarray)):
+                    value = value[-1] if len(value) else None
+                if value is not None and np.isfinite(float(value)):
+                    rows.append({'model': model, 'run': run, 'metric': key, 'value': float(value)})
+    frame = pd.DataFrame(rows, columns=['model', 'run', 'metric', 'value'])
+    frame.to_csv(_as_path(config.p_data)/'accuracy_metrics_by_run.csv', index=False)
+    output = _as_path(config.p_plot)
+    for key, label in MODEL_COMPARISON_METRICS.items():
+        selected = frame.loc[frame.metric.eq(key)]
+        if selected.empty:
+            print(f'{label}: no finite saved-run values; box plot skipped', flush=True)
+            continue
+        fig, ax = plt.subplots(figsize=(max(9, 1.3*len(models)), 7))
+        try:
+            sns.boxplot(data=selected, x='model', y='value', order=models,
+                        color='#a8c8e4', showfliers=False, ax=ax)
+            # Show every run, including when a model has only one observation.
+            sns.stripplot(data=selected, x='model', y='value', order=models,
+                          color='#233d53', jitter=False, size=6, alpha=.8, ax=ax)
+            counts = selected.groupby('model').size()
+            ax.set_xticks(range(len(models)))
+            ax.set_xticklabels([f'{model}\n(n={counts.get(model, 0)})' for model in models],
+                               rotation=30, ha='right')
+            ax.set(xlabel='Model', ylabel=label, ylim=(-.03, 1.03),
+                   title=f'{label} across training runs')
+            fig.tight_layout()
+            for extension in ('pdf', 'png'):
+                fig.savefig(output/f'boxplot_{key}_across_runs.{extension}',
+                            dpi=config.get('dpi', 200), bbox_inches='tight')
+        finally:
+            plt.close(fig)
+    return frame
+
+
 def plot_cumulative_runs(config, models=None):
     """Average completed run metrics, with radar and variable-length histories."""
     from training_runs import completed_runs
-    from train_gnn.plot_gnn import plot_model_comparison
+    from train_gnn.plot_gnn import plot_model_comparison, MODEL_COMPARISON_METRICS
 
     runs = completed_runs(config.p_base)
     if not runs:
@@ -1390,13 +1425,14 @@ def plot_cumulative_runs(config, models=None):
     models = list(models or config.model_type)
     output = Path(config.p_base)/'accumulated_results'
     if 'PNA' in models:
+        from train_gnn.umap_composites import plot_umap_run_composites
+        plot_umap_run_composites(runs, output, config.get('dpi', 300))
         plot_likely_positive_cpg_overlap(runs, output, config.get('dpi', 200))
     current = OmegaConf.create(OmegaConf.to_container(config, resolve=False))
     current.p_plot = str(output/'plots')+'/'
     current.p_data = str(output/'data')+'/'
     current.MAKE_HEATMAP = True
-    keys = ['best_val_acc', 'te_acc', 'te_f1_macro', 'te_f1_weighted',
-            'te_f1_micro', 'te_precision', 'te_recall']
+    keys = list(MODEL_COMPARISON_METRICS)
     histories = {}
     provenance = {}
     averages = {}
@@ -1438,6 +1474,7 @@ def plot_cumulative_runs(config, models=None):
     pd.DataFrame(rows).to_csv(data_path/'metrics_mean_std.csv', index=False)
     (data_path/'included_runs.json').write_text(json.dumps(provenance, indent=2)+'\n')
     plot_model_comparison(averages, list(averages), current)
+    plot_metric_boxplots(histories, provenance, current)
 
     # A radar compares the actual averaged scores on their common [0, 1] scale.
     angles = np.linspace(0, 2*np.pi, len(keys), endpoint=False)

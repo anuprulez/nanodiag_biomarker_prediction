@@ -86,7 +86,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         # use [1, 2, 3, 4, 5] for extracting negatives
         if y[i] in neighbour_predictions:  # [0, 1, 2, 3, 4]
             nodes_with_idxs[node] = i
-    print("[+]", len(nodes_with_idxs), "likely positive nodes found in the graph")
+    print("[+]", len(nodes_with_idxs), "candidate nodes allowed by neighbour_predictions")
 
     """if xai_node not in nodes_with_idxs:
         raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")"""
@@ -513,6 +513,15 @@ def explain_configuration(config, node_id=None, node_name=None):
     graph = to_networkx(data, node_attrs=["x"], to_undirected=True)
     plotted_nodes = explain_candiate_gene(model, data, node_i, graph, chosen_model, config)
     get_node_names_links(plotted_nodes, node_i, config)
+    from plot_xai_neighbor_correlations import create_neighbor_correlation_plots
+    local_plot = Path(config.p_plot) / (
+        f"Explanation_local_subgraph_node_{node_i}_edges_{config.n_edges}"
+        f"_epo_{config.n_epo}_{chosen_model}.pdf")
+    create_neighbor_correlation_plots(
+        config.p_base, node_i, chosen_model, xai_plot=local_plot,
+        features=config.p_dnam_features, node_table=config.p_out_genes,
+        metadata=config.p_sample_metadata, matrix=config.p_arrays,
+        data_dir=config.p_data, plot_dir=config.p_plot, dpi=config.get('dpi', 300))
     return plotted_nodes
 
 
@@ -527,27 +536,32 @@ def run_explanations(config_path=None, args=None, node_id=None, node_name=None):
         current = apply_model_settings(config, chosen_model)
         for field in ('p_data','p_plot','p_model'):
             if field in current:Path(current[field]).mkdir(parents=True,exist_ok=True)
-        selected_node=node_id
-        if getattr(args,'first_likely_positive',False):
-            from run_pipeline import first_likely_positive_node
-            selected_node=first_likely_positive_node(Path(current.p_base),config)
-        print(f"Explaining {index}/{len(configs)}: {current.p_base} ({chosen_model})", flush=True)
-        try:
-            explain_configuration(current, node_id=selected_node, node_name=node_name)
-        finally:
-            gc.collect()
-            if torch.cuda.is_available():
-                torch.cuda.empty_cache()
+        from xai_selection import select_xai_targets
+        group = 'LP' if getattr(args, 'first_likely_positive', False) else getattr(args, 'xai_group', 'LP')
+        current.xai_prediction_group = group
+        targets = select_xai_targets(
+            current, node_id, node_name, group, getattr(args, 'top_k', 1),
+            refresh_predictions=collect_pred_labels)
+        print(f"Explaining {index}/{len(configs)}: {current.p_base} ({chosen_model}, {group}); targets={targets}", flush=True)
+        for selected_node, selected_name in targets:
+            try:
+                explain_configuration(current, node_id=selected_node, node_name=selected_name)
+            finally:
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    from xai_selection import add_xai_selection_arguments
+    add_xai_selection_arguments(parser)
     parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
     parser.add_argument("--model", choices=["PNA","GCN","GraphSAGE","GATv2","GraphTransformer"])
-    parser.add_argument("--first-likely-positive", action="store_true", help="Use the first test_gene_ids from the PNA likely-positive table")
+    parser.add_argument("--first-likely-positive", action="store_true", help="Compatibility alias for --xai-group LP; select highest-probability likely positives")
     add_parameter_arguments(parser)
     nodes = parser.add_mutually_exclusive_group()
-    nodes.add_argument("--node-id", type=int, help="Graph node ID (default: config xai_node_id or 8140)")
+    nodes.add_argument("--node-id", type=int, help="Explicit graph node ID; default: highest-probability prediction from --xai-group")
     nodes.add_argument("--node-name", help="CpG-gene name; resolved independently in every dataset")
     args = parser.parse_args()
     config_path = args.config.resolve()

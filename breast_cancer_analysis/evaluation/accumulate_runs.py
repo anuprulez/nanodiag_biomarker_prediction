@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create cumulative training plots from a dataset's runs/run<number> archives."""
+"""Create cumulative training and evaluation plots from a dataset's runs/run<number> archives."""
 import argparse
 import os
 from pathlib import Path
@@ -22,10 +22,12 @@ def main():
     os.chdir(ROOT/'train_gnn')
     for config in downstream_configs(config_path, args):
         if args.dry_run:
-            print(f"Accumulate {config.p_base}runs/run*/generated -> {config.p_base}accumulated_results")
+            print(f"Accumulate {config.p_base}runs/run*/generated + evaluation/run* -> {config.p_base}accumulated_results")
             continue
         from train_gnn.plot_aggregations import plot_cumulative_runs
         plot_cumulative_runs(config, args.models)
+        from accumulate_evaluation import accumulate_evaluation
+        accumulate_evaluation(config, args.models)
 
 
 if __name__ == '__main__':

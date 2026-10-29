@@ -185,6 +185,9 @@ def main():
     for group,label,filename,color in GROUPS:
         path=extracted/filename
         frame=read_predictions(path,group)
+        if group == 'negative':
+            # Older archives may export classes 3–5; compare predicted class 5 only.
+            frame = frame.loc[frame['pred_labels'].eq(5)].copy()
         frame.to_csv(output_path(output,f'{group}_extracted_cpg_genes.tsv',suffix),sep='\t',index=False)
         predictions.append(frame);inputs.append(path)
     internal = internal_statistics(predictions, signal_path, args.metadata, args.annotated_matrix)

@@ -5,8 +5,8 @@ models:
 - GATv2
 - GraphTransformer
 - TabPFN
-- TabICL
 - XGBoost
+- TabICL
 n_trials: 25
 metric: macro_f1
 startup_trials: 20
@@ -219,8 +219,8 @@ runtime_defaults:
   - GATv2
   - GraphTransformer
   - TabPFN
-  - TabICL
   - XGBoost
+  - TabICL
   best_trained_model: PNA
   neighbors_spread:
   - 10

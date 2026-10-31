@@ -5,8 +5,8 @@ models:
 - GATv2
 - GraphTransformer
 - TabPFN
-- TabICL
 - XGBoost
+- TabICL
 n_trials: 25
 metric: accuracy
 startup_trials: 8
@@ -209,8 +209,8 @@ runtime_defaults:
   - GATv2
   - GraphTransformer
   - TabPFN
-  - TabICL
   - XGBoost
+  - TabICL
   best_trained_model: PNA
   explain_neighbors_spread:
   - -1

@@ -273,11 +273,27 @@ def optimize_model(config, search, name, n_trials, timeout=None, study_tag=None,
             return gnn_objective(trial, current, data, trial_directory, str(search.metric))
         return tabular_objective(trial, current, dataset, trial_directory, str(search.metric))
 
+    finished_before = sum(trial.state.is_finished() for trial in study.trials)
+    print(f'{name}: requesting {n_trials} additional trials; '
+          f'previous finished trials={finished_before}; timeout={timeout}; '
+          f'results: {directory}', flush=True)
+    budget = dict(requested_additional_trials=n_trials, timeout_seconds=timeout,
+                  finished_trials_before=finished_before)
+    write_json(directory / 'trial_budget.json', budget)
     try:
         study.optimize(objective, n_trials=n_trials, timeout=timeout, n_jobs=1, gc_after_trial=True,
                        callbacks=[save_sampler])
     finally:
         study.trials_dataframe().to_csv(directory / 'trials.csv', index=False)
+        finished_after = sum(trial.state.is_finished() for trial in study.trials)
+        attempted = finished_after - finished_before
+        budget.update(finished_trials_after=finished_after, attempted_trials=attempted)
+        write_json(directory / 'trial_budget.json', budget)
+        print(f'{name}: finished {attempted}/{n_trials} requested additional trials '
+              f'(complete, pruned, or failed); total finished={finished_after}', flush=True)
+        if attempted < n_trials:
+            print(f'{name}: trial budget was not exhausted; check the timeout, '
+                  'interruptions, or errors in this log', flush=True)
     if input_fingerprint(base, search) != fingerprint:
         raise RuntimeError('Inputs changed during optimization; discard this study')
     complete = [trial for trial in study.trials if trial.state == optuna.trial.TrialState.COMPLETE]
@@ -330,6 +346,9 @@ def main():
     n_trials = args.trials if args.trials is not None else int(search.n_trials)
     if n_trials < 1 or (args.timeout is not None and args.timeout <= 0):
         parser.error('trials and timeout must be positive')
+    print(f'Tuning config: {config_path}; search space: {args.search_space.resolve()}; '
+          f'additional trials per model={n_trials} '
+          f"(source={'--trials' if args.trials is not None else 'search-space n_trials'})", flush=True)
     models = args.models if args.models is not None else list(search.models)
     if not models or any(name not in MODELS for name in models):
         parser.error(f'Choose models from {MODELS}')

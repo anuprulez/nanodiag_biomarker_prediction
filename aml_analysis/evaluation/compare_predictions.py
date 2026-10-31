@@ -147,6 +147,7 @@ def main():
     parser.add_argument('--generated-dir',type=Path)
     parser.add_argument('--model',choices=['PNA','GCN','GraphSAGE','GATv2','GraphTransformer','TabPFN','TabICL','XGBoost','CatBoost'])
     parser.add_argument('--output',type=Path)
+    parser.add_argument('--tables-only', action='store_true', help='Export comparison tables without rendering per-run plots')
     args=parser.parse_args()
     if args.data is None or args.metadata is None or args.annotated_matrix is None:
         from dataset_configs import downstream_configs
@@ -254,6 +255,9 @@ def main():
     set_plot_style()
     sensitivity = sensitivity_table(plot_data)
     sensitivity.to_csv(output_path(output, 'criterion_sensitivity.tsv', suffix), sep='\t', index=False)
+    if args.tables_only:
+        print(f'{args.model}: comparison tables ready in {output}', flush=True)
+        return
     save_plot(validation_plots(plot_data,summary,GROUPS,'Original cohort'), output, 'delta_beta_original_vs_external', suffix)
     save_plot(sensitivity_plot(sensitivity,GROUPS), output, 'criterion_sensitivity', suffix)
     rng = np.random.default_rng(32)

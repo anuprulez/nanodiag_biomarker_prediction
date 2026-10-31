@@ -65,6 +65,36 @@ class TrainingRunTests(unittest.TestCase):
                 for suffix in ['png', 'pdf']:
                     self.assertTrue((folder/f'plots/boxplot_{metric}_across_runs.{suffix}').is_file())
 
+    def test_five_run_cpg_venn_deduplicates_gene_annotations(self):
+        from train_gnn.plot_aggregations import plot_likely_positive_cpg_overlap
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            runs = []
+            for i in range(1, 6):
+                run = folder/f'run{i}'
+                generated = run/'generated'
+                generated.mkdir(parents=True)
+                (run/'run.json').write_text(json.dumps({'models': ['PNA']}))
+                names = ['cg00000001_A', 'cg00000001_B']
+                if i <= 2:
+                    names.append('cg00000002_X')
+                if i == 5:
+                    names.append('cg00000003_Y')
+                pd.DataFrame({'test_gene_names': names, 'pred_labels': [2]*len(names)}).to_csv(
+                    generated/'pred_likely_pos_aml_PNA.csv', index=False)
+                runs.append(run)
+            output = folder/'output'
+            summary = plot_likely_positive_cpg_overlap(runs, output, dpi=50)
+            self.assertEqual(summary['union_cpgs'], 3)
+            self.assertEqual(summary['common_to_all_runs'], 1)
+            membership = pd.read_csv(output/'data/PNA_likely_positive_cpg_membership.csv')
+            self.assertEqual(membership.n_runs.tolist(), [5, 2, 1])
+            self.assertEqual(membership.runs.tolist(),
+                             ['run1;run2;run3;run4;run5', 'run1;run2', 'run5'])
+            for extension in ('png', 'pdf'):
+                self.assertTrue((output/f'plots/PNA_likely_positive_cpg_overlap_venn.{extension}').is_file())
+
     def test_archives_and_variable_epoch_aggregation(self):
         from train_gnn.plot_aggregations import plot_cumulative_runs
         import pandas as pd
@@ -96,6 +126,8 @@ class TrainingRunTests(unittest.TestCase):
             self.assertEqual(counts.unique_cpgs.tolist(), [2, 1])
             self.assertTrue((output/'plots/PNA_likely_positive_cpg_overlap_pie.png').is_file())
             self.assertTrue((output/'plots/PNA_likely_positive_cpg_overlap_pie.pdf').is_file())
+            for extension in ('png', 'pdf'):
+                self.assertTrue((output/f'plots/PNA_likely_positive_cpg_overlap_venn.{extension}').is_file())
             summary = pd.read_csv(output/'data/metrics_mean_std.csv')
             self.assertAlmostEqual(summary.iloc[0]['mean'], .7)
             curve = pd.read_csv(output/'data/PNA_tr_loss_mean_std.csv')

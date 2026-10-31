@@ -38,6 +38,41 @@ class PipelineFolderTests(unittest.TestCase):
             pipeline.main()
         return [call.args[0] for call in execute.call_args_list]
 
+    def test_compare_preprocess_folder_set_calls_only_run1_heatmap_comparison(self):
+        argv=['run_pipeline.py','--stage','compare-preprocess','--folders',*[str(folder) for folder in self.folders]]
+        with patch.object(pipeline.sys,'argv',argv),patch.object(pipeline.subprocess,'run',return_value=SimpleNamespace(returncode=0)) as execute:
+            pipeline.main()
+        self.assertEqual(execute.call_count,1)
+        command=execute.call_args.args[0]
+        self.assertEqual(Path(command[2]).name,'compare_heatmaps.py')
+        self.assertEqual(command[command.index('--folders')+1:],[str(folder) for folder in self.folders])
+
+    def test_post_evaluation_routes_without_upstream_mutation(self):
+        folder=self.folders[0]
+        before=(folder/'config.yaml').read_bytes()
+        commands=self.invoke('post-evaluation', folder)
+        self.assertEqual(len(commands),1)
+        self.assertEqual(Path(commands[0][2]).name,'post_evaluation.py')
+        self.assertIn('--random-panels',commands[0])
+        self.assertEqual((folder/'config.yaml').read_bytes(),before)
+        self.assertTrue((folder/'generated').is_dir())
+
+    def test_accumulate_does_not_call_comparison_heatmap(self):
+        commands=self.invoke('accumulate', self.folders[0])
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(Path(commands[0][2]).name, 'accumulate_runs.py')
+
+    def test_tune_forwards_explicit_trial_budget(self):
+        folder = self.folders[0]
+        argv = ['run_pipeline.py', '--stage', 'tune', '--config', str(self.source),
+                '--folder', str(folder), '--trials', '25']
+        with patch.object(pipeline.sys, 'argv', argv), patch.object(
+                pipeline.subprocess, 'run', return_value=SimpleNamespace(returncode=0)) as execute:
+            pipeline.main()
+        command = execute.call_args.args[0]
+        self.assertEqual(command[command.index('--trials')+1], '25')
+        self.assertEqual(command[command.index('--config')+1], str(folder/'preprocessing_config.yaml'))
+
     def test_no_folder_selects_all_existing_for_all_downstream_stages(self):
         for stage in ['tune','train','xai','compare-predictions']:
             # Training is mocked, so supply its expected prediction table for XAI.

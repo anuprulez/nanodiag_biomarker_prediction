@@ -61,16 +61,25 @@ def external_inference(frame):
     return result
 
 
-def annotate_candidates(frame):
+def annotate_candidates(frame, effect_threshold=EFFECT_THRESHOLD, effect_cohort='external',
+                        *, fdr_threshold=FDR_THRESHOLD, p_value_threshold=None):
+    if effect_cohort not in ('internal', 'external', 'both'):
+        raise ValueError('effect_cohort must be internal, external, or both')
     result = frame.copy()
     x, y = result[INTERNAL], result[EXTERNAL]
+    effect = x if effect_cohort == 'internal' else y
+    effect_pass = effect.abs().ge(effect_threshold)
+    if effect_cohort == 'both':
+        effect_pass = x.abs().ge(effect_threshold) & y.abs().ge(effect_threshold)
     finite = np.isfinite(x) & np.isfinite(y)
     result['Direction_concordant'] = finite & (np.sign(x) == np.sign(y))
     result['Internal_absolute_delta_beta'] = x.abs()
     result['External_absolute_delta_beta'] = y.abs()
     result['Absolute_delta_error'] = (y-x).abs()
-    result['External_significant'] = result.External_FDR.lt(FDR_THRESHOLD)
-    result['Meets_exploratory_criterion'] = (result.External_significant & y.abs().ge(EFFECT_THRESHOLD)
+    result['External_significant'] = result.External_FDR.lt(fdr_threshold)
+    if p_value_threshold is not None:
+        result['External_significant'] &= result.External_p_value.lt(p_value_threshold)
+    result['Meets_exploratory_criterion'] = (result.External_significant & effect_pass
                                               & result.Direction_concordant & x.ne(0) & y.ne(0))
     return result
 
@@ -120,10 +129,10 @@ def validation_plots(plot_data, summary, groups, original_axis, *, publication=F
         selected = frame.Meets_exploratory_criterion
         ax = axes[column]
         ax.scatter(frame.loc[~selected, INTERNAL], frame.loc[~selected, EXTERNAL], s=22, alpha=.45,
-                   color=color, label='Does not meet criterion', rasterized=True)
+                   color=color, label='Outside criterion', rasterized=True)
         ax.scatter(frame.loc[selected, INTERNAL], frame.loc[selected, EXTERNAL], s=45, alpha=.8,
                    marker='^', color=color, edgecolors='black', linewidths=.5,
-                   label='Meets external cohort criterion', rasterized=True)
+                   label='Within criterion', rasterized=True)
         ax.plot([-limit, limit], [-limit, limit], '--', color='#666666', linewidth=1)
         ax.axhline(0, color='#BBBBBB', linewidth=.7); ax.axvline(0, color='#BBBBBB', linewidth=.7)
         ax.set(xlim=(-limit, limit), ylim=(-limit, limit), xlabel=f'{original_axis} Δβ',
@@ -138,8 +147,6 @@ def validation_plots(plot_data, summary, groups, original_axis, *, publication=F
                 bbox=dict(facecolor='white', alpha=.85, edgecolor='none'))
         if publication:
             handles, labels = ax.get_legend_handles_labels()
-            labels = [label.replace('external cohort criterion', 'external cohort\ncriterion')
-                      for label in labels]
             ax.legend(handles, labels, loc='lower right', fontsize=22,
                       markerscale=1.5, frameon=True, facecolor='white',
                       edgecolor='none', framealpha=.95)

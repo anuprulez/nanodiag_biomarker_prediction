@@ -92,6 +92,21 @@ def correlate_profiles(profiles, nodes, table, center, method='pearson'):
                                          ascending=[False, False], na_position='last')
 
 
+def _legend_below_xlabel(fig, ax):
+    """Place the legend below the rendered x label with a fixed 20-point gap."""
+    legend = ax.get_legend()
+    legend.set_in_layout(False)
+    fig.canvas.draw()
+    label_box = ax.xaxis.label.get_window_extent(fig.canvas.get_renderer())
+    # Freeze the solved axes layout before adding the external legend.
+    fig.set_layout_engine(None)
+    gap_pixels = 20 * fig.dpi / 72
+    anchor = fig.transFigure.inverted().transform(
+        ((label_box.x0 + label_box.x1) / 2, label_box.y0 - gap_pixels))
+    legend.set_bbox_to_anchor(anchor, transform=fig.transFigure)
+    legend.set_in_layout(True)
+
+
 def correlation_plot(results, center, center_name, method):
     fig, ax = plt.subplots(figsize=(14, max(8, .65*len(results)+2.5)), constrained_layout=True)
     positions = np.arange(len(results))
@@ -103,25 +118,26 @@ def correlation_plot(results, center, center_name, method):
     ax.set_xlim(0, 1.12)
     ax.set_xticks(np.linspace(0, 1, 6))
     symbol = 'r' if method == 'pearson' else 'ρ'
-    ax.set_xlabel(f'{method.capitalize()} correlation ({symbol}) across methylation samples', fontsize=28.8)
-    ax.set_title(f'Breast Cancer: methylation correlation with XAI node {center}\n{center_name}', fontsize=21, pad=18)
+    ax.set_xlabel(f'{method.capitalize()} correlation ({symbol})\nacross methylation samples', fontsize=36)
+    ax.set_title(f'Breast Cancer: methylation correlation with XAI node {center}\n{center_name}', fontsize=26.25, pad=18)
     for position, row in enumerate(results.itertuples()):
         if np.isfinite(row.correlation):
             value = row.correlation
             ax.text(value+(.025 if value >= 0 else -.025), position, f'{value:.3f}',
-                    va='center', ha='left' if value >= 0 else 'right', fontsize=21.6)
+                    va='center', ha='left' if value >= 0 else 'right', fontsize=27)
         else:
-            ax.text(.02, position, 'N/A', va='center', fontsize=21.6)
+            ax.text(.02, position, 'N/A', va='center', fontsize=27)
     ax.axvline(0, color='#555555', linewidth=1)
     ax.set_axisbelow(True)
     ax.grid(axis='x', color='#dddddd', linewidth=.7)
-    ax.tick_params(axis='both', labelsize=21.6)
+    ax.tick_params(axis='both', labelsize=27)
     for side in ('top', 'right', 'left'):
         ax.spines[side].set_visible(False)
-    ax.legend(handles=[Patch(color='green', label='Green: seed nodes'),
-                       Patch(color='tab:blue', label='Blue: other likely positive predicted nodes')],
-              loc='upper center', bbox_to_anchor=(.5, -.14), ncol=2,
-              frameon=False, fontsize=24)
+    ax.legend(handles=[Patch(color='green', label='Seed nodes'),
+                       Patch(color='tab:blue', label='Other likely positive\npredicted nodes')],
+              loc='upper center', bbox_to_anchor=(.5, -.14), ncol=1,
+              frameon=False, fontsize=30)
+    _legend_below_xlabel(fig, ax)
     return fig
 
 
@@ -143,15 +159,16 @@ def all_seed_correlation_plot(results, center, center_name, method):
     ax.axhline(0, color='#555555', linewidth=1)
     ax.set_xlim(.25, len(ordered)+.75)
     ax.set_ylim(-1.05, 1.05)
-    ax.set_xlabel('Seed nodes ordered by correlation with RN', fontsize=28.8)
-    ax.set_ylabel(f'{method.capitalize()} correlation with RN', fontsize=28.8)
-    ax.set_title(f'RN {center}: correlation with all seed nodes\n{center_name}', fontsize=21, pad=18)
-    ax.tick_params(labelsize=21.6)
+    ax.set_xlabel('Seed nodes ordered by correlation with RN', fontsize=36)
+    ax.set_ylabel(f'{method.capitalize()} correlation with RN', fontsize=36)
+    ax.set_title(f'RN {center}: correlation with all seed nodes\n{center_name}', fontsize=26.25, pad=18)
+    ax.tick_params(labelsize=27)
     ax.set_axisbelow(True)
     ax.grid(axis='y', color='#dddddd', linewidth=.7)
     for side in ('top', 'right'):
         ax.spines[side].set_visible(False)
-    ax.legend(fontsize=21.6, loc='upper left', frameon=False)
+    ax.legend(fontsize=27, loc='upper center', frameon=False)
+    _legend_below_xlabel(fig, ax)
     return fig
 
 
@@ -240,8 +257,8 @@ def delta_beta_scatter(comparison, center, center_name):
     if valid.empty:
         raise ValueError('No displayed XAI nodes have finite current and external delta beta')
     fig, ax = plt.subplots(figsize=(14, 11), constrained_layout=True)
-    for group, color, label, marker in [('green_seed', 'green', 'Green: seed nodes', 'o'),
-                                       ('blue_other', 'tab:blue', 'Blue: other plotted nodes', 'o'),
+    for group, color, label, marker in [('green_seed', 'green', 'Seed nodes', 'o'),
+                                       ('blue_other', 'tab:blue', 'Other plotted nodes', 'o'),
                                        ('xai_node', '#c43b3b', f'XAI node {center}', '*')]:
         subset = valid.loc[valid.node_group.eq(group)]
         ax.scatter(subset[xfield], subset[yfield], color=color, label=label,
@@ -250,7 +267,7 @@ def delta_beta_scatter(comparison, center, center_name):
     low = min(-.08, float(valid[[xfield, yfield]].min().min())-.1)
     high = max(.3, float(valid[[xfield, yfield]].max().max())+.2)
     ax.plot([low, high], [low, high], '--', color='#777777', linewidth=1.1,
-            label='Equal effect (y = x)', zorder=1)
+            label='_nolegend_', zorder=1)
     ax.axhline(0, color='#bbbbbb', linewidth=.8)
     ax.axvline(0, color='#bbbbbb', linewidth=.8)
     ax.set_xlim(low, high)
@@ -261,16 +278,16 @@ def delta_beta_scatter(comparison, center, center_name):
     ax.set_xticks(ticks)
     ax.set_yticks(ticks)
     ax.set_aspect('equal', adjustable='box')
-    ax.set_xlabel('Current cohort Δβ (Breast Cancer − normal controls)', fontsize=28.8)
-    ax.set_ylabel('External cohort Δβ (Breast Cancer − normal controls)', fontsize=28.8)
+    ax.set_xlabel('Original cohort Δβ\n(Breast Cancer − normal controls)', fontsize=36)
+    ax.set_ylabel('External cohort Δβ\n(Breast Cancer − normal controls)', fontsize=36)
     ax.set_title(f'Breast Cancer: current versus external cohort methylation effects\n'
-                 f'XAI node {center}: {center_name} and its displayed neighbors', fontsize=20, pad=16)
-    ax.tick_params(labelsize=21.6)
+                 f'XAI node {center}: {center_name} and its displayed neighbors', fontsize=25, pad=16)
+    ax.tick_params(labelsize=27)
     ax.set_axisbelow(True)
     ax.grid(color='#dddddd', linewidth=.6)
     for side in ('top', 'right'):
         ax.spines[side].set_visible(False)
-    ax.legend(loc='upper left', fontsize=21.6, frameon=True, facecolor='white')
+    ax.legend(loc='upper left', fontsize=27, frameon=True, facecolor='white')
     place_cpg_labels(fig, ax, valid, xfield, yfield)
     return fig
 
@@ -286,7 +303,7 @@ def place_cpg_labels(fig, ax, data, xfield, yfield):
     bounds = ax.get_window_extent(renderer)
     for row in data.sort_values(yfield, ascending=False).itertuples():
         annotation = ax.annotate(row.node_name, (getattr(row, xfield), getattr(row, yfield)),
-                                 xytext=(8, 8), textcoords='offset points', fontsize=19.2,
+                                 xytext=(8, 8), textcoords='offset points', fontsize=24,
                                  color='#b52a2a' if row.node_group == 'xai_node' else '#222222')
         candidates = [(dx, dy, align) for distance in (10, 26, 44, 66, 92, 122, 156)
                       for dx, dy, align in ((distance, distance, 'left'),
@@ -312,27 +329,60 @@ def place_cpg_labels(fig, ax, data, xfield, yfield):
         occupied.append(box)
 
 
+def _node_list_panel(page, source, target, clip, legend_size):
+    """Redraw the node list at the same final PDF size as the other legends."""
+    import pymupdf
+    from matplotlib.font_manager import FontProperties, findfont
+    spans = [span for block in source[0].get_text('dict')['blocks']
+             for line in block.get('lines', []) for span in line['spans']]
+    nodes = [span for span in spans if re.match(r'^\d+\s*:\s*cg', span['text'])]
+    if not nodes:
+        return False
+    nodes.sort(key=lambda span: span['bbox'][1])
+    graph_clip = pymupdf.Rect(clip)
+    graph_clip.x1 = min(span['bbox'][0] for span in nodes) - 60
+    split = target.x0 + target.width * .60
+    page.show_pdf_page(pymupdf.Rect(target.x0, target.y0, split-18, target.y1),
+                       source, 0, clip=graph_clip, keep_proportion=True)
+    font_path = str(findfont(FontProperties(family='DejaVu Sans')))
+    page.insert_font(fontname='NodeList', fontfile=font_path)
+    font = pymupdf.Font(fontfile=font_path)
+    labels = [span['text'] for span in nodes]
+    width = max(font.text_length(label, fontsize=legend_size) for label in labels)
+    available = target.x1-split-8
+    if width > available:
+        raise ValueError('Node list does not fit at the matching legend font size')
+    height = (len(labels)+2)*legend_size*1.45
+    top = target.y0 + max(0, (target.height-height)/2)
+    page.insert_text((split, top+legend_size), 'Nodes', fontsize=legend_size,
+                     fontname='NodeList')
+    for index, label in enumerate(labels):
+        page.insert_text((split, top+(index+2)*legend_size*1.45), label,
+                         fontsize=legend_size, fontname='NodeList')
+    return True
+
+
 def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name, dpi=300, prediction_group='LP'):
     """Compose two RN panels or three LP panels, preserving vector content."""
     import pymupdf
     output = Path(output)
     with pymupdf.open() as document:
         page = document.new_page(width=1440, height=780 if prediction_group == 'RN' else 1401.4)
-        page.insert_textbox(pymupdf.Rect(24, 12, 1416, 66),
+        page.insert_textbox(pymupdf.Rect(24, 12, 1416, 80),
                             f'Breast Cancer: XAI node {center} ({center_name})',
-                            fontsize=28, fontname='helv', align=1)
+                            fontsize=35, fontname='helv', align=1)
         from matplotlib.font_manager import FontProperties, findfont
-        page.insert_font(fontname='PanelTitle', fontfile=str(findfont(FontProperties(weight='bold'))))
+        page.insert_font(fontname='PanelTitle', fontfile=str(findfont(FontProperties(weight='normal'))))
         panels = [('A. Explanation subgraph', xai_pdf, (24, 83, 1416, 736.4)),
                   ('B. All seeds: correlation with RN' if prediction_group == 'RN' else 'B. DNA methylation correlation', bar_pdf, (24, 771.4, 710, 1371.4)),
-                  ('C. Δβ : Original vs external cohort', delta_pdf, (734, 771.4, 1416, 1371.4))]
+                  ('C. Original vs external cohort', delta_pdf, (734, 771.4, 1416, 1371.4))]
         if prediction_group == 'RN':
             panels = [('A. Explanation subgraph', xai_pdf, (24, 90, 710, 750)),
                       ('B. All seeds: correlation with RN', bar_pdf, (734, 90, 1416, 750))]
         for title, source_path, coords in panels:
             rect = pymupdf.Rect(coords)
-            page.insert_textbox(pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y0+45),
-                                title, fontsize=24, fontname='PanelTitle', align=0)
+            page.insert_textbox(pymupdf.Rect(rect.x0, rect.y0, rect.x1, rect.y0+80),
+                                title, fontsize=30, fontname='PanelTitle', align=1)
             with pymupdf.open(source_path) as source:
                 if len(source) != 1:
                     raise ValueError(f'{source_path}: expected one plot page')
@@ -348,8 +398,25 @@ def combined_xai_figure(xai_pdf, bar_pdf, delta_pdf, output, center, center_name
                      or span['text'] == center_name)]
                 if title_bottoms:
                     clip.y0 = max(title_bottoms)+6
-                page.show_pdf_page(pymupdf.Rect(rect.x0, rect.y0+45, rect.x1, rect.y1),
-                                   source, 0, keep_proportion=True, clip=clip)
+                target = pymupdf.Rect(rect.x0, rect.y0+80, rect.x1, rect.y1)
+                if title.startswith('A.'):
+                    # Match actual rendered legend sizes after each PDF is scaled.
+                    sizes = []
+                    for _, panel_path, panel_coords in panels[1:]:
+                        panel_rect = pymupdf.Rect(panel_coords)
+                        with pymupdf.open(panel_path) as legend_doc:
+                            legend_page = legend_doc[0]
+                            panel_spans = [span for block in legend_page.get_text('dict')['blocks']
+                                           for line in block.get('lines', []) for span in line['spans']]
+                            scale = min(panel_rect.width/legend_page.rect.width,
+                                        (panel_rect.height-80)/legend_page.rect.height)
+                            sizes.extend(span['size']*scale for span in panel_spans
+                                         if span['text'] == 'Seed nodes'
+                                         or span['text'].startswith('All seed nodes'))
+                    legend_size = max(sizes, default=20)
+                    if _node_list_panel(page, source, target, clip, legend_size):
+                        continue
+                page.show_pdf_page(target, source, 0, keep_proportion=True, clip=clip)
         document.save(output.with_suffix('.pdf'), garbage=4, deflate=True)
         page.get_pixmap(dpi=max(300, int(dpi)), alpha=False).save(output.with_suffix('.png'))
     print(output.with_suffix('.pdf'))

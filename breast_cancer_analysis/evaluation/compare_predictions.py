@@ -176,6 +176,7 @@ def main():
     parser.add_argument('--model', choices=['PNA','GCN','GraphSAGE','GATv2','GraphTransformer','TabPFN','TabICL','XGBoost','CatBoost'])
     parser.add_argument('--generated-dir', type=Path, help='Override model artifact directory; selected improved PNA is detected automatically')
     parser.add_argument('--output', type=Path, help='Default: <dataset>/evaluation/')
+    parser.add_argument('--tables-only', action='store_true', help='Export comparison tables without per-run figures')
     args = parser.parse_args()
     if args.data is None or args.matrix is None:
         import sys
@@ -313,6 +314,9 @@ def main():
     set_plot_style()
     sensitivity = sensitivity_table(plot_data)
     sensitivity.to_csv(output_path(output, 'criterion_sensitivity.tsv', suffix), sep='\t', index=False)
+    if args.tables_only:
+        print(f'{args.model}: comparison tables ready in {output}', flush=True)
+        return
     plot_groups = GROUPS
     save_plot(validation_plots(plot_data,summary,plot_groups,original_axis), output, 'delta_beta_original_vs_external', suffix)
     save_plot(sensitivity_plot(sensitivity,plot_groups), output, 'criterion_sensitivity', suffix)

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 
-from replication_metrics import (INTERNAL, EXTERNAL, annotate_candidates,
+from replication_metrics import (INTERNAL, EXTERNAL, EFFECT_THRESHOLD, annotate_candidates,
                                  agreement_metrics, validation_plots, sensitivity_plot)
 
 GROUPS = [('likely_positive', 'Predicted likely positive', '', '#dd8452'),
@@ -49,8 +49,154 @@ def common_effects(tables):
                 raise ValueError(f'External cohort statistics differ across runs: {column}')
     result[INTERNAL] = np.mean([t[INTERNAL].to_numpy(float) for t in aligned], axis=0)
     result['External_minus_internal_delta_beta'] = result[EXTERNAL] - result[INTERNAL]
+    for column in ('Predicted_genes', 'External_genes'):
+        if all(column in table for table in aligned):
+            result[column] = [
+                ';'.join(sorted({gene.strip() for table in aligned
+                                 for value in [table.at[cpg, column]] if pd.notna(value)
+                                 for gene in str(value).split(';') if gene.strip()}))
+                for cpg in result.index]
     result['n_runs'] = len(tables)
     return annotate_candidates(result.reset_index())
+
+
+def export_top_likely_positive_cpgs(frame, output, suffix):
+    """Export absolute-effect rankings of the exact five-run plot intersection."""
+    if not frame['n_runs'].eq(5).all():
+        raise ValueError('Top-20 common CpG tables require exactly five runs')
+    frame = annotate_candidates(frame)
+    frame['Associated_genes'] = [
+        ';'.join(sorted({gene.strip() for value in values if pd.notna(value)
+                         for gene in str(value).split(';') if gene.strip()}))
+        for values in zip(frame.get('Predicted_genes', pd.Series('', index=frame.index)),
+                          frame.get('External_genes', pd.Series('', index=frame.index)))]
+    frame['External_abs_delta_beta_ge_0_10'] = frame[EXTERNAL].abs().ge(EFFECT_THRESHOLD)
+    frame['Same_nonzero_direction'] = (frame.Direction_concordant
+                                       & frame[INTERNAL].ne(0) & frame[EXTERNAL].ne(0))
+    finite = frame.loc[np.isfinite(frame[[INTERNAL, EXTERNAL]]).all(axis=1)]
+    paths = []
+    for cohort, primary, secondary in (('external', EXTERNAL, INTERNAL),
+                                        ('internal', INTERNAL, EXTERNAL)):
+        ranked = finite.sort_values([primary, secondary, 'CpG_ID'],
+                                    key=lambda values: values if values.name == 'CpG_ID' else values.abs(),
+                                    ascending=[False, False, True]).head(20)
+        columns = ['CpG_ID', 'Associated_genes', INTERNAL, EXTERNAL, 'Internal_absolute_delta_beta',
+                   'External_absolute_delta_beta', 'n_runs',
+                   'External_FDR', 'External_abs_delta_beta_ge_0_10',
+                   'External_significant', 'Same_nonzero_direction',
+                   'Meets_exploratory_criterion']
+        result = ranked[columns].rename(columns={INTERNAL: 'Internal_delta_beta',
+                                                EXTERNAL: 'External_delta_beta'}).copy()
+        result.insert(0, 'Rank', range(1, len(result)+1))
+        path = Path(output)/f'top20_likely_positive_common_5_runs_by_{cohort}_delta_beta_{suffix}.tsv'
+        result.to_csv(path, sep='\t', index=False)
+        paths.append(path)
+        print(f'Top {len(result)} common likely-positive CpGs ranked by |{cohort} Δβ| -> {path}', flush=True)
+    return paths
+
+
+def top20_correlation_plot(table, model, ranked_by='external'):
+    """Publication scatter of the selected top 20; retain signed effects."""
+    if ranked_by not in ('external', 'internal'):
+        raise ValueError('ranked_by must be external or internal')
+    from matplotlib.ticker import MaxNLocator
+    x = table.Internal_delta_beta.to_numpy(float)
+    y = table.External_delta_beta.to_numpy(float)
+    varied = len(table) > 1 and np.ptp(x) > 0 and np.ptp(y) > 0
+    correlation = float(pearsonr(x, y).statistic) if varied else None
+    limit = min(1.02, max(.15, float(np.abs(np.r_[x, y]).max())*1.12)) if len(table) else .15
+    selected = table.Meets_exploratory_criterion.to_numpy(bool)
+    with plt.rc_context({'font.family': 'DejaVu Sans', 'axes.titleweight': 'normal'}):
+        fig, ax = plt.subplots(figsize=(10, 9), constrained_layout=True)
+        ax.scatter(x[~selected], y[~selected], s=22, alpha=.45, color='#dd8452',
+                   label='Does not meet criterion', rasterized=True)
+        ax.scatter(x[selected], y[selected], s=45, alpha=.8, marker='^',
+                   color='#dd8452', edgecolors='black', linewidths=.5,
+                   label='Meets external cohort\ncriterion', rasterized=True)
+        ax.plot([-limit, limit], [-limit, limit], '--', color='#666666', linewidth=1)
+        ax.axhline(0, color='#BBBBBB', linewidth=.7)
+        ax.axvline(0, color='#BBBBBB', linewidth=.7)
+        ax.set(xlim=(-limit, limit), ylim=(-limit, limit),
+               xlabel='Mean original cohort Δβ', ylabel='External cohort Δβ')
+        ax.set_title(f'{model}: top 20 likely-positive CpGs by |{ranked_by} Δβ| (n={len(table)})',
+                     fontsize=24, fontweight='normal', loc='center', pad=16, wrap=True)
+        ax.set_aspect('equal')
+        value = f'{correlation:.3f}' if correlation is not None else 'undefined'
+        ax.text(.03, .97, f'Pearson r={value}', transform=ax.transAxes,
+                va='top', fontsize=24,
+                bbox=dict(facecolor='white', alpha=.85, edgecolor='none'))
+        ax.legend(loc='lower right', fontsize=22, markerscale=1.5,
+                  frameon=True, facecolor='white', edgecolor='none', framealpha=.95)
+        ax.set_facecolor('white')
+        ax.set_axisbelow(True)
+        ax.grid(axis='y', color='#dddddd', linewidth=.6, alpha=.65)
+        ax.grid(axis='x', visible=False)
+        for side in ('top', 'right'):
+            ax.spines[side].set_visible(False)
+        for axis in (ax.xaxis, ax.yaxis):
+            axis.set_major_locator(MaxNLocator(nbins=5))
+            axis.label.set(fontsize=24, fontfamily='DejaVu Sans')
+            for tick in axis.get_ticklabels():
+                tick.set(fontsize=24, fontfamily='DejaVu Sans')
+        ax.tick_params(axis='both', pad=8)
+    return fig
+
+
+def export_within_criterion_cpgs(frame, output, suffix, effect_threshold):
+    """Export every common likely-positive CpG within this plot's criterion."""
+    candidates = annotate_candidates(frame, effect_threshold=effect_threshold, effect_cohort='external',
+                                      fdr_threshold=.01, p_value_threshold=.01)
+    selected = candidates.loc[candidates.Meets_exploratory_criterion].copy()
+    selected['Associated_genes'] = [
+        ';'.join(sorted({gene.strip() for value in values if pd.notna(value)
+                         for gene in str(value).split(';') if gene.strip()}))
+        for values in zip(selected.get('Predicted_genes', pd.Series('', index=selected.index)),
+                          selected.get('External_genes', pd.Series('', index=selected.index)))]
+    selected['Same_nonzero_direction'] = (selected.Direction_concordant
+                                         & selected[INTERNAL].ne(0) & selected[EXTERNAL].ne(0))
+    selected['External_absolute_delta_beta_threshold'] = effect_threshold
+    selected['External_p_value_threshold'] = .01
+    selected['External_FDR_threshold'] = .01
+    selected['External_abs_delta_beta_ge_threshold'] = selected[EXTERNAL].abs().ge(effect_threshold)
+    selected = selected.sort_values(['External_absolute_delta_beta', 'Internal_absolute_delta_beta', 'CpG_ID'],
+                                    ascending=[False, False, True])
+    columns = ['CpG_ID', 'Associated_genes', INTERNAL, EXTERNAL,
+               'Internal_absolute_delta_beta', 'External_absolute_delta_beta', 'n_runs',
+               'External_p_value', 'External_FDR', 'External_p_value_threshold',
+               'External_FDR_threshold', 'External_absolute_delta_beta_threshold',
+               'External_abs_delta_beta_ge_threshold', 'External_significant',
+               'Same_nonzero_direction', 'Meets_exploratory_criterion']
+    result = selected[columns].rename(columns={INTERNAL: 'Internal_delta_beta',
+                                              EXTERNAL: 'External_delta_beta'}).copy()
+    result.insert(0, 'Rank', range(1, len(result)+1))
+    path = Path(output)/f'likely_positive_within_criterion_abs_external_ge_{effect_threshold:.2f}_{suffix}.tsv'
+    result.to_csv(path, sep='\t', index=False)
+    print(f'{len(result)} likely-positive CpGs within criterion -> {path}', flush=True)
+    return path
+
+
+def threshold_delta_beta_composite(data, model, n_runs, effect_threshold):
+    """Recompute scatter markers and support counts for a specified effect cutoff."""
+    threshold_data, summary = {}, []
+    for group, _, _, _ in GROUPS:
+        frame = annotate_candidates(data[group], effect_threshold=effect_threshold, effect_cohort='external',
+                                      fdr_threshold=.01, p_value_threshold=.01)
+        threshold_data[group] = frame
+        x, y = frame[INTERNAL].to_numpy(), frame[EXTERNAL].to_numpy()
+        varied = len(frame) > 1 and np.ptp(x) > 0 and np.ptp(y) > 0
+        summary.append(dict(prediction_group=group, plotted_unique_cpgs=len(frame),
+                            external_absolute_delta_beta_threshold=effect_threshold,
+                            external_FDR_threshold=.01, external_p_value_threshold=.01,
+                            pearson_r=float(pearsonr(x, y).statistic) if varied else None,
+                            spearman_r=float(spearmanr(x, y).statistic) if varied else None,
+                            same_direction_fraction=float((np.sign(x)==np.sign(y)).mean()),
+                            **agreement_metrics(frame)))
+    fig = validation_plots(threshold_data, summary, GROUPS,
+                           'Mean original cohort', publication=True)
+    fig.suptitle(f'{model}: external cohort support across {n_runs} runs\n'
+                 f'Criterion: |External Δβ| ≥ {effect_threshold:.2f}; P < 0.01; FDR < 0.01; same nonzero direction',
+                 fontsize=30, fontfamily='DejaVu Sans', fontweight='normal')
+    return fig, pd.DataFrame(summary)
 
 
 def accumulate_evaluation(config, models=None):
@@ -85,7 +231,7 @@ def accumulate_evaluation(config, models=None):
         def read(name):
             return [pd.read_csv(run/f'{name}_{suffix}.tsv', sep='\t') for run in included]
         def save(fig, name):
-            publication = name == 'delta_beta_original_vs_external'
+            publication = name.startswith('delta_beta_original_vs_external')
             formats = ('png', 'pdf', 'svg') if publication else ('png', 'pdf')
             dpi = max(300, config.get('dpi', 300)) if publication else config.get('dpi', 200)
             with matplotlib.rc_context({'pdf.fonttype': 42, 'ps.fonttype': 42,
@@ -112,6 +258,12 @@ def accumulate_evaluation(config, models=None):
             frame.to_csv(output/f'{group}_common_unique_cpgs_{suffix}.tsv', sep='\t', index=False)
             frame = frame.loc[np.isfinite(frame[[INTERNAL, EXTERNAL]]).all(axis=1)].copy()
             data[group] = frame
+            if group == 'likely_positive' and len(included) == 5:
+                top_paths = export_top_likely_positive_cpgs(frame, output, suffix)
+                for cohort, top_path in zip(('external', 'internal'), top_paths):
+                    top_table = pd.read_csv(top_path, sep='\t')
+                    save(top20_correlation_plot(top_table, model, ranked_by=cohort),
+                         f'delta_beta_original_vs_external_top20_{cohort}')
             if frame.empty:
                 continue
             x, y = frame[INTERNAL].to_numpy(), frame[EXTERNAL].to_numpy()
@@ -140,6 +292,13 @@ def accumulate_evaluation(config, models=None):
                      'CpGs common to all included runs; mean original cohort effects',
                      fontsize=30, fontfamily='DejaVu Sans')
         save(fig, 'delta_beta_original_vs_external')
+        for effect_threshold in (.10, .30):
+            export_within_criterion_cpgs(data['likely_positive'], output, suffix, effect_threshold)
+            threshold_fig, threshold_summary = threshold_delta_beta_composite(
+                data, model, len(included), effect_threshold)
+            stem = f'delta_beta_original_vs_external_abs_external_ge_{effect_threshold:.2f}'
+            save(threshold_fig, stem)
+            threshold_summary.to_csv(output/f'{stem}_summary_{suffix}.tsv', sep='\t', index=False)
         print(f'{model}: cumulative four-panel plot ({len(included)} runs) -> '
               f'{output}/delta_beta_original_vs_external_{suffix}.png/pdf/svg', flush=True)
         fig, axes = plt.subplots(1, 2, figsize=(17, 7), constrained_layout=True)

@@ -62,7 +62,7 @@ class NeighborCorrelationTests(unittest.TestCase):
             self.assertEqual({label.get_text() for label in fig.axes[0].texts},
                              {'cg1_A','cg2_B','cg0_X'})
             self.assertTrue(all(label.arrow_patch is None for label in fig.axes[0].texts))
-            self.assertIn('Current cohort', fig.axes[0].get_xlabel())
+            self.assertIn('Original cohort', fig.axes[0].get_xlabel())
             self.assertIn('External cohort', fig.axes[0].get_ylabel())
             self.assertTrue(any(np.array_equal(line.get_xdata(), line.get_ydata())
                                 for line in fig.axes[0].lines))
@@ -112,7 +112,7 @@ class NeighborCorrelationTests(unittest.TestCase):
                     self.assertIn(f'{name} content',text)
                 self.assertIn('A. Explanation subgraph',text)
                 self.assertIn('B. DNA methylation correlation',text)
-                self.assertIn('C. Δβ : Original vs external cohort',text)
+                self.assertIn('C. Original vs external cohort',text)
                 self.assertEqual(len(document[0].get_images()),0)
             with patch.object(pymupdf.Page, 'get_pixmap'):
                 combined_xai_figure(*sources,base/'combined_rn',7980,'cg16909733_ANKMY1',prediction_group='RN')

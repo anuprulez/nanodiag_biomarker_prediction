@@ -48,7 +48,7 @@ def plot_degree_per_soft_label(config):
     summary.to_csv(output / 'data' / f'{stem}.csv')
     with plt.rc_context({'font.family': 'DejaVu Sans', 'font.size': 10,
                          'axes.labelsize': 11, 'axes.titlesize': 12,
-                         'axes.titleweight': 'semibold', 'axes.titlepad': 16,
+                         'axes.titleweight': 'normal', 'axes.titlepad': 16,
                          'text.color': '#262626', 'axes.labelcolor': '#262626',
                          'xtick.color': '#262626', 'ytick.color': '#262626',
                          'axes.edgecolor': '#555555', 'axes.linewidth': 0.7,
@@ -61,11 +61,11 @@ def plot_degree_per_soft_label(config):
         fig, ax = plt.subplots(figsize=(7.2, 4.6), layout='constrained')
         try:
             x = np.arange(len(summary))
-            for offset, metric, color, hatch in [(-0.2, 'mean', '#4477AA', ''),
-                                                  (0.2, 'median', '#CCBB44', '//')]:
+            for offset, metric, color in [(-0.2, 'mean', '#4c72b0'),
+                                          (0.2, 'median', '#dd8452')]:
                 ax.bar(x + offset, summary[metric], width=0.38,
                        label=metric.title(), color=color, edgecolor='#333333',
-                       linewidth=0.55, hatch=hatch, zorder=3)
+                       linewidth=0.55, zorder=3)
             ax.set(xticks=x, xticklabels=summary.index.astype(str),
                    xlabel='Soft label', ylabel='Degree', ylim=(0, None),
                    title='AML: Mean and median degree of probes\nper soft label')

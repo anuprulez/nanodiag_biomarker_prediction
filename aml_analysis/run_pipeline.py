@@ -17,10 +17,11 @@ from stage_reset import reset_stage_outputs
 
 HERE=Path(__file__).resolve().parent
 PATTERN=re.compile(r'^data_corr_([0-9.eE+-]+)_knn_n_(\d+)_n_neg_(\d+)$')
-STAGES=('preprocess','tune','train','xai','compare-predictions','accumulate')
+STAGES=('preprocess','tune','train','xai','compare-predictions','accumulate','post-evaluation')
 SCRIPTS={'preprocess':'preprocess_raw_data/process_raw_illumina_arrays_aml.py',
          'tune':'train_gnn/tune_models.py','train':'train_gnn/main.py',
-         'accumulate':'evaluation/accumulate_runs.py','xai':'train_gnn/run_xai_explainer.py','compare-predictions':'evaluation/run_comparisons.py'}
+         'accumulate':'evaluation/accumulate_runs.py','xai':'train_gnn/run_xai_explainer.py','compare-predictions':'evaluation/run_comparisons.py',
+         'post-evaluation':'evaluation/post_evaluation.py'}
 
 
 def absolute(path):
@@ -113,8 +114,9 @@ def main():
     from train_gnn.xai_selection import add_xai_selection_arguments
     add_xai_selection_arguments(parser)
     parser.add_argument('--node-id', type=int, help='Graph node ID for --stage xai; overrides top prediction selection')
-    parser.add_argument('--stage',choices=['all',*STAGES,'compare_data_overlap'],default='all')
+    parser.add_argument('--stage',choices=['all',*STAGES,'compare_data_overlap','compare-preprocess'],default='all')
     parser.add_argument('--folder',type=Path,help='One dataset directory; default: all dataset folders')
+    parser.add_argument('--folders',nargs='+',type=Path,help='Dataset folders for cross-folder accuracy heatmaps')
     parser.add_argument('--config',type=Path,default=HERE/'config/config.yaml')
     parser.add_argument('--models',nargs='+',help='Models for tuning, training or prediction comparison')
     parser.add_argument('--run',help='Compare artifacts from runs/run<number>; default: generated/')
@@ -122,10 +124,27 @@ def main():
     parser.add_argument('--timeout',type=float)
     parser.add_argument('--study-tag')
     parser.add_argument('--search-space',type=Path)
+    parser.add_argument('--random-panels', type=int, default=30, help='Matched backgrounds for post-evaluation')
+    parser.add_argument('--background-size', type=int, default=800, help='Sampled CpG background for post-evaluation')
+    parser.add_argument('--pathway-gmt', type=Path, help='Local Reactome-compatible gene-set GMT for post-evaluation')
+    parser.add_argument('--offline', action='store_true', help='Post-evaluation: use cached pathway resources only')
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
     args=parser.parse_args()
     if args.node_id is not None and args.node_id < 0:parser.error('--node-id must be nonnegative')
     if args.top_k < 1:parser.error('--top-k must be at least 1')
+    if args.folders and args.stage != 'compare-preprocess':
+        parser.error('--folders is supported only with --stage compare-preprocess')
+    if args.folders and args.folder:
+        parser.error('Choose --folder or --folders')
+    if args.stage == 'compare-preprocess':
+        if args.run is not None:parser.error('compare-preprocess always uses run1; omit --run')
+        comparison_folders = args.folders or ([args.folder] if args.folder else sorted(HERE.glob('data_corr_*_knn_n_*_n_neg_*')))
+        command = [sys.executable, '-u', str(HERE/'evaluation/compare_heatmaps.py'),
+                   '--folders', *[str(folder) for folder in comparison_folders]]
+        if args.models: command += ['--models', *args.models]
+        print(' '.join(command), flush=True)
+        if not args.dry_run: subprocess.run(command, cwd=HERE, check=True)
+        return
     source=OmegaConf.load(args.config.resolve())
     if args.run is not None:
         if args.stage!='compare-predictions':parser.error('--run is only supported with --stage compare-predictions')
@@ -146,8 +165,12 @@ def main():
             else:print(f'Skipping untuned dataset for prediction comparison: {folder}',flush=True)
         folders=ready
         if not folders:raise FileNotFoundError('No tuned dataset configs available for prediction comparison')
+    if args.stage=='post-evaluation' and args.folder is None and source.get('config_scope')!='dataset':
+        folders=[folder for folder in folders if (folder/'config.yaml').is_file() and
+                 list((folder/'accumulated_results/evaluation').glob('likely_positive_common_unique_cpgs_PNA_*.tsv'))]
+        if not folders:raise FileNotFoundError('No five-run PNA evaluation available; run compare-predictions/accumulate first')
     fresh=args.folder is None and source.get('config_scope')!='dataset'
-    stages=tuple(stage for stage in STAGES if stage!='accumulate') if args.stage=='all' else (args.stage,)
+    stages=tuple(stage for stage in STAGES if stage not in ('accumulate','post-evaluation')) if args.stage=='all' else (args.stage,)
     env=os.environ.copy();env['PATH']=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH','')
     env.update(OMP_NUM_THREADS='4',OPENBLAS_NUM_THREADS='4',MKL_NUM_THREADS='4',MPLBACKEND='Agg')
     for folder in folders:
@@ -171,6 +194,13 @@ def main():
                     for option,value in [('--study-tag',args.study_tag),('--search-space',args.search_space.resolve() if args.search_space else None),('--trials',args.trials),('--timeout',args.timeout)]:
                         if value is not None:extra.extend([option,str(value)])
                     if args.models:extra+=['--models',*args.models]
+            elif stage=='post-evaluation':
+                config_path=folder/'config.yaml'
+                if not config_path.is_file():raise FileNotFoundError(f'{config_path} missing')
+                extra += ['--models', *(args.models or ['PNA']), '--random-panels', str(args.random_panels),
+                          '--background-size', str(args.background_size)]
+                if args.pathway_gmt:extra += ['--pathway-gmt', str(args.pathway_gmt.resolve())]
+                if args.offline:extra.append('--offline')
             else:
                 current=prepare_dataset(folder,True);config_path=folder/'config.yaml'
                 if stage=='compare-predictions' and args.run:
@@ -197,5 +227,7 @@ def main():
             if stage=='preprocess':
                 subprocess.run([sys.executable,str(HERE/'preprocess_raw_data/validate_aml_outputs.py'),'--config',str(config_path)],cwd=HERE,env=env,check=True)
             print(f'{folder.name}: {stage} complete; log: {log}',flush=True)
+
+
 
 if __name__=='__main__':main()

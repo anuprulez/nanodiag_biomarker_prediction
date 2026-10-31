@@ -1366,7 +1366,56 @@ def plot_likely_positive_cpg_overlap(runs, output, dpi=200):
             fig.savefig(stem.with_suffix('.'+extension), dpi=dpi, bbox_inches='tight')
     finally:
         plt.close(fig)
+    plot_cpg_overlap_venn(memberships, sources, plots, dpi)
     return summary
+
+
+def plot_cpg_overlap_venn(memberships, sources, plots, dpi=200):
+    """Plot exact run membership; CpGs with several genes count only once."""
+    from collections import Counter
+
+    sets = {source['run']: set() for source in sources}
+    for cpg, names in memberships.items():
+        for name in names:
+            sets[name].add(cpg)
+    n_runs = len(sets)
+    fig, ax = plt.subplots(figsize=(11, 10))
+    try:
+        if not memberships:
+            ax.text(.5, .5, 'No likely-positive CpG sites in the included runs',
+                    ha='center', va='center', transform=ax.transAxes)
+            ax.set_axis_off()
+        elif 2 <= n_runs <= 6:
+            from venn import venn
+            labels = {f'{name} ({len(cpgs):,} CpGs)': cpgs for name, cpgs in sets.items()}
+            venn(labels, ax=ax, cmap=['#4c78a8', '#f58518', '#54a24b',
+                                    '#e45756', '#b279a2', '#72b7b2'], fontsize=18)
+        elif n_runs == 1:
+            from matplotlib.patches import Circle
+            ax.add_patch(Circle((.5, .5), .35, color='#4c78a8', alpha=.4))
+            ax.text(.5, .5, f'{len(memberships):,}', ha='center', va='center', fontsize=18)
+            ax.text(.5, .9, next(iter(sets)), ha='center')
+            ax.set(xlim=(0, 1), ylim=(0, 1), aspect='equal')
+            ax.set_axis_off()
+        else:
+            # More than six sets cannot use this Venn layout. Preserve exact
+            # intersection counts in a bar chart rather than dropping runs.
+            regions = Counter(tuple(names) for names in memberships.values())
+            ordered = sorted(regions, key=lambda names: (len(names), names))
+            ax.barh(range(len(ordered)), [regions[names] for names in ordered])
+            ax.set_yticks(range(len(ordered)), [' & '.join(names) for names in ordered], fontsize=9)
+            ax.set_xlabel('Unique CpGs in exactly these runs')
+        common = sum(len(names) == n_runs for names in memberships.values())
+        ax.set_title(f'PNA likely-positive test CpG overlap across {n_runs} runs\n'
+                     f'{len(memberships):,} unique CpGs; {common:,} shared by all runs',
+                     fontsize=16, pad=20)
+        fig.tight_layout()
+        stem = Path(plots)/('PNA_likely_positive_cpg_overlap_venn' if n_runs <= 6
+                           else 'PNA_likely_positive_cpg_overlap_intersections')
+        for extension in ('pdf', 'png'):
+            fig.savefig(stem.with_suffix('.'+extension), dpi=dpi, bbox_inches='tight')
+    finally:
+        plt.close(fig)
 
 
 def plot_metric_boxplots(histories, provenance, config):
@@ -1522,4 +1571,6 @@ def plot_cumulative_runs(config, models=None):
                 _save(fig, Path(current.p_plot)/f'{model}_{kind}_mean_std.pdf', config.get('dpi', 200))
             else:
                 plt.close(fig)
+    from train_gnn.accuracy_composites import plot_accuracy_composite
+    plot_accuracy_composite(config.p_base, list(histories), config.get('dpi', 200))
     return output

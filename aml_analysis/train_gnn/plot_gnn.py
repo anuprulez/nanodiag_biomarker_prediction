@@ -432,13 +432,13 @@ def draw_xai_local_graph(
 
     fig, ax = plt.subplots(figsize=(11, 8))
     nx.draw(H, pos=pos, with_labels=True, node_color=colors_in_order,
-            node_size=650, font_size=16, width=1.2, ax=ax)
+            node_size=850, font_size=20, width=1.2, ax=ax)
 
     # Side legend
     if legend_elements:
         plt.legend(
             handles=legend_elements,
-            title="Nodes", fontsize=16, title_fontsize=18,
+            title="Nodes", fontsize=27, title_fontsize=27,
             loc="center left",
             bbox_to_anchor=(1, 0.5),
         )

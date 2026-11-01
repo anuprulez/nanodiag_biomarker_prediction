@@ -127,7 +127,10 @@ def main():
     parser.add_argument('--random-panels', type=int, default=30, help='Matched backgrounds for post-evaluation')
     parser.add_argument('--background-size', type=int, default=800, help='Sampled CpG background for post-evaluation')
     parser.add_argument('--pathway-gmt', type=Path, help='Local Reactome-compatible gene-set GMT for post-evaluation')
-    parser.add_argument('--offline', action='store_true', help='Post-evaluation: use cached pathway resources only')
+    parser.add_argument('--offline', action='store_true', help='Post-evaluation: use cached resources only, including expression')
+    sys.path.insert(0,str(HERE.parent))
+    from post_evaluation_support.cross_cohort_pipeline import add_arguments
+    add_arguments(parser)
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
     args=parser.parse_args()
     if args.node_id is not None and args.node_id < 0:parser.error('--node-id must be nonnegative')
@@ -194,6 +197,9 @@ def main():
                           '--background-size', str(args.background_size)]
                 if args.pathway_gmt:extra += ['--pathway-gmt', str(args.pathway_gmt.resolve())]
                 if args.offline:extra.append('--offline')
+                extra += ['--post-evaluation-analysis',args.post_evaluation_analysis]
+                if args.rscript:extra += ['--rscript',args.rscript]
+                if args.refresh_expression:extra.append('--refresh-expression')
             else:
                 current=prepare_dataset(folder,True);config_path=folder/'config.yaml'
                 if stage=='compare-predictions' and args.run:

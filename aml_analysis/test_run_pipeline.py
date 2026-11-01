@@ -57,6 +57,18 @@ class PipelineFolderTests(unittest.TestCase):
         self.assertEqual((folder/'config.yaml').read_bytes(),before)
         self.assertTrue((folder/'generated').is_dir())
 
+    def test_post_evaluation_forwards_cross_cohort_options(self):
+        argv=['run_pipeline.py','--stage','post-evaluation','--config',str(self.source),
+              '--folder',str(self.folders[0]),'--post-evaluation-analysis','cross-cohort',
+              '--rscript','custom-R','--refresh-expression','--offline']
+        with patch.object(pipeline.sys,'argv',argv),patch.object(pipeline.subprocess,'run',return_value=SimpleNamespace(returncode=0)) as execute:
+            pipeline.main()
+        command=execute.call_args.args[0]
+        self.assertEqual(command[command.index('--post-evaluation-analysis')+1],'cross-cohort')
+        self.assertEqual(command[command.index('--rscript')+1],'custom-R')
+        self.assertIn('--refresh-expression',command)
+        self.assertIn('--offline',command)
+
     def test_accumulate_does_not_call_comparison_heatmap(self):
         commands=self.invoke('accumulate', self.folders[0])
         self.assertEqual(len(commands), 1)

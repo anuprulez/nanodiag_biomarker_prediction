@@ -363,6 +363,16 @@ arrows labeling only inverse-sign candidates. Its stem is
 `AML_17_CpGs_methylation_vs_GSE15061_expression` under
 `methylation_expression/cross_cohort_comparison/plots/`.
 
+## Dataset comparability audit
+
+See the [dataset comparability report](evaluation/dataset_comparability/REPORT.md)
+for the verified study/specimen differences, complete study–disease confounding,
+and a sensitivity analysis using GSE58477's 10 currently excluded CD34+ controls.
+All 17 frozen CpGs retain their methylation-effect direction with these controls;
+16 pass targeted BH FDR <0.05 across the 17 tests. This reuses the same AML cases
+and is a post-selection sensitivity analysis, not independent validation.
+The report and audit outputs do not replace existing models or figures.
+
 ## Setup and configuration
 
 Use the project ML environment, including compatible PyTorch/PyG and the selected

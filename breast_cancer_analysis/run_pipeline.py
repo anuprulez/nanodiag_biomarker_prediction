@@ -17,11 +17,11 @@ from stage_reset import reset_stage_outputs
 
 HERE=Path(__file__).resolve().parent
 PATTERN=re.compile(r'^data_corr_([0-9.eE+-]+)_knn_n_(\d+)_n_neg_(\d+)$')
-STAGES=('preprocess','tune','train','xai','compare-predictions','accumulate','post-evaluation')
+STAGES=('preprocess','tune','train','xai','compare-predictions','accumulate','post-evaluation','niapu-rankings')
 SCRIPTS={'preprocess':'preprocess_raw_data/process_raw_illumina_arrays_bc.py',
          'tune':'train_gnn/tune_models.py','train':'train_gnn/main.py',
          'accumulate':'evaluation/accumulate_runs.py','xai':'train_gnn/run_xai_explainer.py','compare-predictions':'evaluation/run_comparisons.py',
-         'post-evaluation':'evaluation/post_evaluation.py'}
+         'post-evaluation':'evaluation/post_evaluation.py','niapu-rankings':'evaluation/niapu_rankings.py'}
 
 
 def absolute(path):
@@ -114,12 +114,12 @@ def main():
     from train_gnn.xai_selection import add_xai_selection_arguments
     add_xai_selection_arguments(parser)
     parser.add_argument('--node-id', type=int, help='Graph node ID for --stage xai; overrides top prediction selection')
-    parser.add_argument('--stage',choices=['all',*STAGES,'compare-preprocess'],default='all')
+    parser.add_argument('--stage',choices=['all',*STAGES,'naipu-rankings','compare-preprocess'],default='all')
     parser.add_argument('--folder',type=Path,help='One dataset directory; default: all dataset folders')
     parser.add_argument('--folders',nargs='+',type=Path,help='Dataset folders for cross-folder accuracy heatmaps')
     parser.add_argument('--config',type=Path,default=HERE/'config/config.yaml')
     parser.add_argument('--models',nargs='+',help='Models for tuning, training or prediction comparison')
-    parser.add_argument('--run',help='Prediction comparison artifacts from runs/run<number>; default: generated/')
+    parser.add_argument('--run',help='Archived run for prediction comparison or NIAPU UMAP; UMAP default: run1')
     parser.add_argument('--trials',type=int)
     parser.add_argument('--timeout',type=float)
     parser.add_argument('--study-tag')
@@ -132,7 +132,12 @@ def main():
     from post_evaluation_support.cross_cohort_pipeline import add_arguments
     add_arguments(parser)
     parser.add_argument('--dry-run',action='store_true',help='Print commands without changing configs, files or running stages')
+    umap_options=parser.add_mutually_exclusive_group()
+    umap_options.add_argument('--umap-only',action='store_true',help='NIAPU stage: create four UMAP panels without patient classifiers')
+    umap_options.add_argument('--skip-umap',action='store_true',help='NIAPU stage: run patient classifiers without requiring a trained PNA run')
     args=parser.parse_args()
+    if args.stage=='naipu-rankings':args.stage='niapu-rankings'
+    if (args.umap_only or args.skip_umap) and args.stage!='niapu-rankings':parser.error('--umap-only/--skip-umap require --stage niapu-rankings')
     if args.node_id is not None and args.node_id < 0:parser.error('--node-id must be nonnegative')
     if args.top_k < 1:parser.error('--top-k must be at least 1')
     if args.folders and args.stage != 'compare-preprocess':
@@ -150,7 +155,7 @@ def main():
         return
     source=OmegaConf.load(args.config.resolve())
     if args.run is not None:
-        if args.stage!='compare-predictions':parser.error('--run is only supported with --stage compare-predictions')
+        if args.stage not in ('compare-predictions','niapu-rankings'):parser.error('--run is only supported with --stage compare-predictions or niapu-rankings')
         try:args.run=run_name(args.run)
         except ValueError as error:parser.error(str(error))
     folders=selected_folders(source,args.folder,args.stage in ('preprocess','all'))
@@ -165,8 +170,12 @@ def main():
         folders=[folder for folder in folders if (folder/'config.yaml').is_file() and
                  list((folder/'accumulated_results/evaluation').glob('likely_positive_common_unique_cpgs_PNA_*.tsv'))]
         if not folders:raise FileNotFoundError('No five-run PNA evaluation available; run compare-predictions/accumulate first')
+    if args.stage=='niapu-rankings' and args.folder is None:
+        folders=[folder for folder in folders if (folder/'preprocessed/out_gene_rankings_bc.csv').is_file()
+                 and ((folder/'config.yaml').is_file() or (folder/'preprocessing_config.yaml').is_file())]
+        if not folders:raise FileNotFoundError('No NIAPU rankings available; run --stage preprocess first')
     fresh=args.folder is None and source.get('config_scope')!='dataset'
-    stages=tuple(s for s in STAGES if s not in ('accumulate','post-evaluation')) if args.stage=='all' else (args.stage,)
+    stages=tuple(s for s in STAGES if s not in ('accumulate','post-evaluation','niapu-rankings')) if args.stage=='all' else (args.stage,)
     env=os.environ.copy();env['PATH']=str(Path(sys.executable).parent)+os.pathsep+env.get('PATH','')
     env.update(OMP_NUM_THREADS='4',OPENBLAS_NUM_THREADS='4',MKL_NUM_THREADS='4',MPLBACKEND='Agg')
     for folder in folders:
@@ -190,6 +199,14 @@ def main():
                     for option,value in [('--study-tag',args.study_tag),('--search-space',args.search_space.resolve() if args.search_space else None),('--trials',args.trials),('--timeout',args.timeout)]:
                         if value is not None:extra.extend([option,str(value)])
                     if args.models:extra+=['--models',*args.models]
+            elif stage=='niapu-rankings':
+                config_path=folder/'config.yaml'
+                if not config_path.is_file():config_path=folder/'preprocessing_config.yaml'
+                if not config_path.is_file():raise FileNotFoundError(f'{config_path} missing; run preprocessing first')
+                if args.models:raise ValueError('niapu-rankings uses its fixed four patient classifiers; omit --models')
+                if args.run:extra+=['--run',args.run]
+                if args.umap_only:extra.append('--umap-only')
+                if args.skip_umap:extra.append('--skip-umap')
             elif stage=='post-evaluation':
                 config_path=folder/'config.yaml'
                 if not config_path.is_file():raise FileNotFoundError(f'{config_path} missing')

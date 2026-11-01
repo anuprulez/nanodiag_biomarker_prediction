@@ -69,6 +69,31 @@ class PipelineFolderTests(unittest.TestCase):
         self.assertIn('--refresh-expression',command)
         self.assertIn('--offline',command)
 
+    def test_niapu_stage_routes_without_gnn_or_post_evaluation(self):
+        folder=self.folders[0];before=(folder/'config.yaml').read_bytes()
+        commands=self.invoke('niapu-rankings',folder)
+        self.assertEqual(len(commands),1)
+        self.assertEqual(Path(commands[0][2]).name,'niapu_rankings.py')
+        self.assertNotIn('--models',commands[0])
+        self.assertEqual((folder/'config.yaml').read_bytes(),before)
+
+    def test_naipu_alias_forwards_selected_pna_run_and_umap_only(self):
+        argv=['run_pipeline.py','--stage','naipu-rankings','--config',str(self.source),
+              '--folder',str(self.folders[0]),'--run','2','--umap-only']
+        with patch.object(pipeline.sys,'argv',argv),patch.object(pipeline.subprocess,'run',return_value=SimpleNamespace(returncode=0)) as execute:
+            pipeline.main()
+        command=execute.call_args.args[0]
+        self.assertEqual(Path(command[2]).name,'niapu_rankings.py')
+        self.assertEqual(command[command.index('--run')+1],'run2')
+        self.assertIn('--umap-only',command)
+
+    def test_niapu_uses_preprocessing_config_without_tuning(self):
+        folder=self.folders[0]
+        (folder/'config.yaml').rename(folder/'preprocessing_config.yaml')
+        commands=self.invoke('niapu-rankings',folder)
+        self.assertEqual(commands[0][commands[0].index('--config')+1],str(folder/'preprocessing_config.yaml'))
+        self.assertFalse((folder/'config.yaml').exists())
+
     def test_accumulate_does_not_call_comparison_heatmap(self):
         commands=self.invoke('accumulate', self.folders[0])
         self.assertEqual(len(commands), 1)

@@ -158,6 +158,149 @@ prepares matrices, fits limma, maps genes to CpGs, calculates direction concorda
 and correlations, validates results, and exports PDF, editable SVG and 300-dpi PNG.
 No manual download or R command is required between these steps.
 
+### NIAPU rankings comparison and UMAP
+
+```bash
+python run_pipeline.py --stage niapu-rankings --folder "$dataset_folder" --run run1
+```
+
+The patient-classifier comparison needs preprocessing outputs and the external
+methylation reference prepared above. For its feature selection, it reads the
+dataset's `p_out_gene_rankings` directly and selects **NIAPU class 2
+(likely-positive) nodes only**, without GNN predictions, top-N probability
+thresholds or a five-training-run intersection. This classifier portion does not
+require graph training or the fixed 33/17-CpG post-evaluation. The four UMAP
+panels additionally require an archived PNA training run (default `run1`); use
+`--skip-umap` for classifiers alone. A tuned `config.yaml` is used when available;
+otherwise the saved `preprocessing_config.yaml` is used.
+
+#### Four matched UMAP panels
+
+```bash
+# Plot only, using the archived best-checkpoint PNA predictions from run1.
+# naipu-rankings is accepted as an alias for niapu-rankings.
+python run_pipeline.py --stage naipu-rankings --folder "$dataset_folder" --run run1 --umap-only
+
+# Existing likely-positive patient-classifier comparison without UMAP/PNA inputs.
+python run_pipeline.py --stage niapu-rankings --folder "$dataset_folder" --skip-umap
+```
+
+The default full stage creates UMAPs followed by the patient-classifier comparison.
+`--umap-only` needs preprocessing rankings plus one completed PNA run, with no
+external download or patient-classifier refitting. Choose another archived run
+with `--run run2` (or `--run 2`). The saved PNA predictions were generated after
+restoring that run's best validation checkpoint. The script checks them against
+raw saved prediction, true-label and node-ID tensors and records checkpoint/input
+hashes. It neither trains another PNA model nor uses training-node predictions.
+
+The four panels use the **same held-out CpG–gene nodes and all five classes**:
+
+1. NIAPU labels, NeDBIT features.
+2. NIAPU labels, NeDBIT + DNA methylation features.
+3. NIAPU labels, DNA methylation features.
+4. PNA predicted labels, final PNA message-passing layer representation
+   (256 dimensions in run1), projected with UMAP.
+
+Colors follow the existing training UMAPs (`tab10`): positive seed blue, likely
+positive orange, weakly negative green, likely negative red, reliable negative
+purple, with opacity 0.9.
+
+Panel 4 uses a separate UMAP of the saved final PNA message-passing output `h`
+(after the last residual PNAConv and LayerNorm), from
+`runs/<run>/generated/models/embed_conv_<disease>_PNA.pt`. The model was trained
+with NeDBIT + DNA methylation. Saved latent values enter UMAP without additional
+scaling, using the same UMAP settings as panels 1–3. Its row order matches the
+verified held-out node IDs. This is the final GNN representation, rather than
+class probabilities or the concatenated raw features and intermediate states. NeDBIT
+columns come from the archived run's `keep_feature_names`; methylation columns are
+patient measurements describing CpG nodes. Labels are excluded from all feature
+matrices and never passed to UMAP. Columns are median-imputed when necessary and
+standardized on plotted nodes; each block is divided by the square root of its
+nonconstant feature count to balance the two blocks. UMAP settings are read from the selected archived run's configuration, matching
+the earlier training UMAPs. For `run1` in both datasets: correlation distance,
+20 neighbors, `min_dist=0.8`, seed 32. Trustworthiness uses this input metric;
+silhouette and Davies–Bouldin scores use Euclidean distances.
+
+Figures omit scores and subtitles. All held-out nodes are included, without a
+likely-positive filter, and panels 1–3 use NIAPU labels while panel 4 uses PNA predicted labels. The quality
+TSV retains **silhouette in 2D ↑, silhouette in feature/latent space ↑,
+Davies–Bouldin in 2D ↓, and trustworthiness (15 neighbors) ↑**. The quality table
+also includes Calinski–Harabasz in 2D ↑ and NIAPU/PNA adjusted Rand agreement.
+Feature-space silhouette checks whether apparent separation survives outside the
+projection. These are descriptive scores of supplied labels, not disease
+accuracy or independent biological validation: NIAPU and NeDBIT share graph
+information, and PNA is trained to predict NIAPU. CpG–gene nodes can share a CpG.
+
+UMAP outputs are under `accumulated_results/niapu_comparison/`:
+
+- `plots/niapu_umap_comparison.{pdf,svg,png}`: four-panel figure; individual
+  `niapu_umap_1` through `niapu_umap_4` plots are exported too.
+- `data/niapu_umap_quality.tsv` and `data/niapu_umap_coordinates.tsv`.
+- `umap_manifest.json`: selected run, feature columns, settings and input hashes.
+- `UMAP_REPORT.md`: methods and interpretation; `cache/niapu_umap_run*.npz`:
+  coordinates reused when input hashes/settings match; final-layer coordinates
+  have a separate `niapu_umap_pna_last_layer_run*.npz` cache. Selecting a different run
+  replaces displayed figures/tables while retaining per-run coordinate caches.
+
+The all-class UMAP comparison is separate from the **class-2-only** external
+patient-classifier feature selection described below.
+
+The merged ranking file combines the disjoint preprocessing splits. Multiple
+class-2 gene annotations are deduplicated to one CpG; its maximum NIAPU score is
+retained for ranking/display, with no score cutoff. "Common" means NIAPU likely
+positives measured in the external reference. Sites must meet **all** criteria:
+
+- |external delta beta| ≥ 0.30;
+- external Welch P < 0.01;
+- BH FDR < 0.01, computed over the complete shared external CpG universe before
+  selecting NIAPU candidates;
+- matching nonzero original/external methylation directions.
+
+Original delta beta is recomputed from original patient methylation. The selected
+panel size is determined by these criteria; it is not forced to 33 or 17.
+The same patient classifiers—**Random Forest, XGBoost, TabPFN and TabICL**—use
+the existing fixed hyperparameters/checkpoints, original-patient five-fold CV,
+and final fitting on all original patients before external prediction. Targets
+are disease vs healthy, not NIAPU classes. No class weighting or external fitting
+is applied. Omit `--models`: this stage has a fixed four-classifier suite.
+
+Results are isolated in `<dataset>/accumulated_results/niapu_comparison/`:
+
+```text
+niapu_comparison/
+  REPORT.md
+  CLASSIFIER_COMPARISON.md
+  manifest.json
+  selection_manifest.json
+  classifier_manifest.json
+  validation.json
+  candidate_cohort_comparison.pdf
+  data/
+    niapu_likely_positive_nodes.tsv
+    niapu_likely_positive_unique_CpGs.tsv
+    all_common_likely_positive_CpGs.tsv
+    selected_niapu_CpGs.tsv
+    external_full_test_universe.tsv.gz
+    candidate_cohort_performance.tsv
+    candidate_cohort_predictions.tsv
+  plots/candidate_cohort_*.{pdf,svg,png}
+  models/
+  cache/
+```
+
+Accuracy at threshold 0.5, balanced accuracy, sensitivity, specificity, F1, AUROC,
+AUPRC, Brier, confusion counts and confidence intervals are reported separately
+for original CV and external transfer. The report records selection counts and
+source hashes. Matrix and prediction caches are reused when their fingerprints
+match. Logs are at `<dataset>/logs/niapu-rankings.log`. Existing post-evaluation
+results are not changed. Without `--folder`, datasets with NIAPU rankings and a
+saved dataset/preprocessing config are selected.
+
+Because external labels are used to select CpGs, external accuracy is
+**exploratory and selection-biased**, not independent validation. Original-patient
+CV is also conditional on methylation-based NIAPU/feature selection performed
+before CV. Intervals do not correct for that selection or study confounding.
+
 ### Other supported commands
 
 Preview a command without running stages or modifying outputs:
@@ -179,7 +322,7 @@ as N/A. Omit `--folders` to compare matching folders.
 
 `--stage all` runs preprocess, tune, train, XAI and prediction comparison once,
 in that order. It does **not** create five training runs or run the explicit
-`accumulate` and `post-evaluation` stages. Omitting `--folder` can process multiple
+`accumulate`, `post-evaluation` and `niapu-rankings` stages. Omitting `--folder` can process multiple
 configured datasets and, for upstream stages, restart outputs; use an explicit
 folder for reproducible work on one dataset.
 

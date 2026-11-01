@@ -26,3 +26,22 @@
 *.swp
 *.tmp
 .DS_Store
+breast_cancer_analysis/data_corr_*
+aml_analysis/data_corr_*
+aml_analysis/__pycache__/*
+aml_analysis/train_gnn/__pycache_*
+breast_cancer_analysis/__pycache__/*
+breast_cancer_analysis/train_gnn/__pycache_*
+aml_analysis/evaluation/__pycache__*
+breast_cancer_analysis/evaluation/__pycache__*
+breast_cancer_analysis/train_gnn/__pycache__/*
+aml_analysis/train_gnn/__pycache__/*
+
+# Keep optional benchmark dependency specifications
+!breast_cancer_analysis/train_gnn/requirements-benchmark.txt
+
+*.ckpt
+
+!breast_cancer_analysis/train_gnn/requirements-sampling.txt
+
+

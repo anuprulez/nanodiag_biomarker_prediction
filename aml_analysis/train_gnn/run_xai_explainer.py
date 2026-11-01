@@ -1,3 +1,11 @@
+"""Explain the selected GNN for each configured AML preprocessing combination."""
+import argparse
+import gc
+import os
+from pathlib import Path
+import random
+import sys
+
 import pandas as pd
 import numpy as np
 import torch
@@ -13,6 +21,15 @@ import gnn_network
 import plot_gnn
 import utils
 
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+from preprocessing_grid import preprocessing_configs, add_parameter_arguments, load_preprocessing_config
+from model_settings import apply_model_settings
+from seed_inputs import validate_seed_manifest
+from dataset_configs import downstream_configs
+
+GNN_MODELS = {"pna", "gcn", "graphsage", "gatv2", "graphtransformer"}
+
 
 class LogitsOnly(nn.Module):
     def __init__(self, base):
@@ -27,10 +44,10 @@ class LogitsOnly(nn.Module):
         return out
 
 
-def load_model(model_path, data, chosen_model):
+def load_model(model_path, data, chosen_model, config):
     device = "cpu"
     model = utils.choose_model(config, data, chosen_model, False)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    model.load_state_dict(torch.load(model_path, map_location=device, weights_only=True))
     return model
 
 
@@ -54,11 +71,13 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         # use [1, 2, 3, 4, 5] for extracting negatives
         if y[i] in neighbour_predictions:  # [0, 1, 2, 3, 4]
             nodes_with_idxs[node] = i
-    print("[+]", len(nodes_with_idxs), "likely positive nodes found in the graph")
+    print("[+]", len(nodes_with_idxs), "candidate nodes allowed by neighbour_predictions")
+
+    """if xai_node not in nodes_with_idxs:
+        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")"""
 
     if xai_node not in nodes_with_idxs:
-        raise ValueError(f"xai_node '{xai_node}' not found among likely positives.")
-
+        raise ValueError(f"Node {xai_node} is absent or its label is excluded by neighbour_predictions")
     idx_global = int(nodes_with_idxs[xai_node])
 
     print(f"idx_global: {idx_global}")
@@ -70,8 +89,8 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
         input_nodes=torch.tensor([idx_global], dtype=torch.long),
         batch_size=1,
         shuffle=False,
-        num_workers=8,
-        pin_memory=True,
+        num_workers=int(config.get("num_workers", 0)),
+        pin_memory=torch.cuda.is_available(),
         subgraph_type=config.graph_subtype,
     )
 
@@ -184,7 +203,7 @@ def explain_candiate_gene(model, dataset, xai_node, G, chosen_model, config):
     print("Drawing neighbourhood with global G")
     plot_gnn.draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config)
     plot_gnn.plot_feature_importance(
-        data, node_mask, mean_node_mask, xai_node, chosen_model, config
+        dataset, node_mask, mean_node_mask, xai_node, chosen_model, config
     )
     return s_rankings_draw
 
@@ -556,22 +575,9 @@ def prioritise_center_and_positive_nodes(center_node, ranking, positive_nodes):
 
 def collect_pred_labels(config):
     print("Collecting datasets ...")
-    df_test_probe_genes = pd.read_csv(config.p_test_probe_genes, sep=",")
-    df_test_probe_genes.columns = ["test_gene_ids", "test_gene_names"]
-    df_labels = df_test_probe_genes
-    print("Test dataframe reconstructed")
-    print(df_labels)
-    true_labels = torch.load(config.p_true_labels, weights_only=False)
-    pred_labels = torch.load(config.p_pred_labels, weights_only=False)
-    pred_probs = torch.load(config.p_best_class_pred_probs, weights_only=False)
-    true_labels = [int(item) + 1 for item in true_labels]
-    pred_labels = [int(item) + 1 for item in pred_labels]
-
-    df_labels["labels"] = true_labels
-    df_labels["pred_labels"] = pred_labels
-    df_labels["pred_probs"] = pred_probs
-
-    print(df_labels)
+    from evaluation.extract_predictions import extract
+    extract(config.p_base,str(config.model_type),config.p_data,generated_dir=config.p_generated_files)
+    df_labels = pd.read_csv(Path(config.p_data)/f'all_test_predictions_{config.model_type}.tsv',sep='\t')
 
     pred_pos = df_labels[
         (df_labels["labels"].isin([1])) & (df_labels["pred_labels"].isin([1]))
@@ -582,9 +588,12 @@ def collect_pred_labels(config):
     ]
 
     pred_negatives = df_labels[
-        (df_labels["labels"].isin([3, 4, 5]))
-        & (df_labels["pred_labels"].isin([3, 4, 5]))
+        (df_labels["labels"].isin([2, 3, 4, 5]))
+        & (df_labels["pred_labels"].eq(5))
     ]
+
+    pred_negatives = pred_negatives.sort_values('pred_probs', ascending=False, kind='stable').copy()
+    pred_likely_pos = pred_likely_pos.sort_values('pred_probs', ascending=False, kind='stable').copy()
 
     pred_negatives.to_csv(config.p_pred_negatives, sep="\t", index=None)
     pred_likely_pos.to_csv(config.p_pred_likely_pos, sep="\t", index=None)
@@ -608,7 +617,7 @@ def collect_pred_labels(config):
     pred_likely_pos["gene_ids"] = l_gene_ids
 
     df_tr_probe_genes = pd.read_csv(config.p_train_probe_genes)
-    training_node_ids = df_tr_probe_genes["tr_gene_ids"].tolist()
+    training_node_ids = df_tr_probe_genes["train_gene_ids"].tolist()
 
     tr_probes_genes = df_out_genes[df_out_genes.iloc[:, 0].isin(training_node_ids)]
 
@@ -634,7 +643,7 @@ def collect_pred_labels(config):
     ]
 
     print("Pred likely pos with no training genes/probes")
-    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False)
+    pred_likely_pos = pred_likely_pos.sort_values(by=["pred_probs"], ascending=False, kind="stable")
 
     print("Before filtering cross-reactive probes")
     print(pred_likely_pos)
@@ -686,19 +695,96 @@ def get_node_names_links(n_nodes, xai_node, config):
     print(df_xai_node_links_plotted_node)
 
 
-if __name__ == "__main__":
-    config = OmegaConf.load("../config/config.yaml")
-    plot_local_path = config.p_plot
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    data = torch.load(config.p_torch_data, weights_only=False)
-    # test_data = torch.load(config.p_torch_test_data, weights_only=False)
-    model = load_model(config.p_torch_model, data, config.best_trained_model)
-    node_i = 273  # 2025 #273
+def resolve_explanation_node(data, config, node_id=None, node_name=None):
+    """Resolve a CpG-gene name separately in each dataset's node-ID table."""
+    if node_name is not None:
+        nodes = pd.read_csv(config.p_out_genes, sep=r"\s+", header=None)
+        matches = nodes.loc[nodes[1] == node_name, 0]
+        if len(matches) != 1:
+            raise ValueError(f"Expected one node named {node_name!r} in {config.p_base}; found {len(matches)}")
+        node_id = int(matches.iloc[0])
+    elif node_id is None:
+        node_id = int(config.get("xai_node_id", 8140))
+    if not 0 <= node_id < data.num_nodes:
+        raise ValueError(f"Node ID {node_id} is outside [0, {data.num_nodes}) for {config.p_base}; "
+                         "use --node-id or --node-name")
+    return node_id
+
+
+def explain_configuration(config, node_id=None, node_name=None):
+    validate_seed_manifest(config)
+    chosen_model = str(config.model_type)
+    seed = int(config.SEED)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+    data = torch.load(config.p_torch_data, map_location="cpu", weights_only=False)
+    node_i = resolve_explanation_node(data, config, node_id, node_name)
+    model = load_model(config.p_torch_model, data, chosen_model, config)
     collect_pred_labels(config)
-    print(f"Creating graph with all nodes ...")
-    G = to_networkx(data, node_attrs=["x"], to_undirected=True)
-    # Collect dataframes for different axes
-    p_nodes = explain_candiate_gene(
-        model, data, node_i, G, config.best_trained_model, config
-    )
-    get_node_names_links(p_nodes, node_i, config)
+    print("Creating graph with all nodes ...", flush=True)
+    graph = to_networkx(data, node_attrs=["x"], to_undirected=True)
+    plotted_nodes = explain_candiate_gene(model, data, node_i, graph, chosen_model, config)
+    get_node_names_links(plotted_nodes, node_i, config)
+    from plot_xai_neighbor_correlations import create_neighbor_correlation_plots
+    local_plot = Path(config.p_plot) / (
+        f"Explanation_local_subgraph_node_{node_i}_edges_{config.n_edges}"
+        f"_epo_{config.n_epo}_{chosen_model}.pdf")
+    create_neighbor_correlation_plots(
+        config.p_base, node_i, chosen_model, xai_plot=local_plot,
+        features=config.p_dnam_features, node_table=config.p_out_genes,
+        metadata=config.p_sample_metadata, matrix=config.p_arrays,
+        data_dir=config.p_data, plot_dir=config.p_plot, dpi=config.get('dpi', 300),
+        prediction_group=config.get('xai_prediction_group', 'LP'))
+    return plotted_nodes
+
+
+def run_explanations(config_path=None, args=None, node_id=None, node_name=None):
+    config_path = Path(config_path or HERE.parent / "config/config.yaml").resolve()
+    configs = downstream_configs(config_path, args)
+    for index, config in enumerate(configs, 1):
+        chosen_model = str(getattr(args,'model',None) or config.best_trained_model)
+        if chosen_model.lower() not in GNN_MODELS:
+            raise ValueError("GNNExplainer requires best_trained_model to be PNA, GCN, "
+                             "GraphSAGE, GATv2 or GraphTransformer")
+        current = apply_model_settings(config, chosen_model)
+        for field in ('p_data','p_plot','p_model'):
+            if field in current:Path(current[field]).mkdir(parents=True,exist_ok=True)
+        from xai_selection import select_xai_targets
+        group = 'LP' if getattr(args, 'first_likely_positive', False) else getattr(args, 'xai_group', 'LP')
+        current.xai_prediction_group = group
+        targets = select_xai_targets(
+            current, node_id, node_name, group, getattr(args, 'top_k', 1),
+            refresh_predictions=collect_pred_labels)
+        print(f"Explaining {index}/{len(configs)}: {current.p_base} ({chosen_model}, {group}); targets={targets}", flush=True)
+        for selected_node, selected_name in targets:
+            try:
+                explain_configuration(current, node_id=selected_node, node_name=selected_name)
+            finally:
+                gc.collect()
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    from xai_selection import add_xai_selection_arguments
+    add_xai_selection_arguments(parser)
+    parser.add_argument("--config", type=Path, default=HERE.parent / "config/config.yaml")
+    parser.add_argument("--model", choices=["PNA","GCN","GraphSAGE","GATv2","GraphTransformer"])
+    parser.add_argument("--first-likely-positive", action="store_true", help="Compatibility alias for --xai-group LP; select highest-probability likely positives")
+    add_parameter_arguments(parser)
+    nodes = parser.add_mutually_exclusive_group()
+    nodes.add_argument("--node-id", type=int, help="Explicit graph node ID; default: highest-probability prediction from --xai-group")
+    nodes.add_argument("--node-name", help="CpG-gene name; resolved independently in every dataset")
+    args = parser.parse_args()
+    config_path = args.config.resolve()
+    os.chdir(HERE)
+    node_id = args.node_id
+    run_explanations(config_path, args, node_id, args.node_name)
+
+
+if __name__ == "__main__":
+    main()

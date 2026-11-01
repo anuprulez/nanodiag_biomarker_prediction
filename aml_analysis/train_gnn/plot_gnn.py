@@ -9,8 +9,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.lines import Line2D
 import networkx as nx
-import torch
-import umap
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
@@ -39,11 +37,10 @@ def plot_loss_acc(
     n_epo, tr_loss, val_loss, tr_acc, val_acc, chosen_model, config, te_acc=None
 ):
     """
-    Signature unchanged. Saves two PDFs and (as before) shows the last figure.
+    Save loss and accuracy histories using the actual completed epoch count.
     """
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
-    n_epo = config.n_epo
     dpi = config.dpi
 
     tr_loss = np.asarray(tr_loss)
@@ -52,6 +49,10 @@ def plot_loss_acc(
     tr_acc = np.asarray(tr_acc)
     te_acc = None if te_acc is None else np.asarray(te_acc)
 
+    # Early stopping can finish before config.n_epo (or the supplied limit).
+    n_epo = len(tr_loss)
+    if any(len(history) != n_epo for history in (val_loss, tr_acc, val_acc)):
+        raise ValueError("Training and validation histories must have equal lengths")
     x_val = np.arange(n_epo)
 
     # --- Training loss
@@ -219,6 +220,7 @@ def plot_features(features, labels, chosen_model, config, title, flag):
     dpi = config.dpi
 
     labels = [int(item) for item in labels]
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -263,6 +265,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
 
     labels = [int(item) for item in labels]
 
+    import umap
     reducer = umap.UMAP(
         n_neighbors=n_neighbors,
         min_dist=min_dist,
@@ -285,7 +288,7 @@ def plot_node_embed(features, labels, pred_labels, chosen_model, config, feature
         ax=ax,
         palette=config.color_palette,
     )
-    ax.set_title(f"Embeddings UMAP of last {feature_type} layer: {chosen_model}")
+    ax.set_title(f"Embeddings UMAP of last GNN layer: {chosen_model}")
     ax.legend(title="Class", loc="best", frameon=True)
     _save(
         fig,
@@ -303,15 +306,12 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
     num_features = data.num_node_features
     # Assign groups
     n_nedbit_features = len(config.keep_feature_names.split(","))
-    n_aml_day0_features = 20
-    n_aml_day8_features = 20
+    metadata = pd.read_csv(config.p_sample_metadata, sep="\t")
+    if num_features != n_nedbit_features + len(metadata):
+        raise ValueError("Feature count differs from NeDBIT plus sample metadata")
     group_ids = np.zeros(num_features, dtype=int)
-    group_ids[:n_nedbit_features] = 0  # Group of nedbit features
-    group_ids[n_nedbit_features : n_nedbit_features + n_aml_day0_features] = (
-        1  # Group of breast cancer patients
-    )
-    group_ids[n_nedbit_features + n_aml_day0_features :] = 2  # Group of normal patients
-    group_names = ["NeDBIT", "Day0", "Day8"]
+    group_ids[n_nedbit_features:] = np.where(metadata["group"].eq("healthy_control"), 1, 2)
+    group_names = ["NeDBIT", "Healthy controls", "AML"]
     # Collect distributions per group
     distributions = []
     labels = []
@@ -329,7 +329,7 @@ def plot_feature_importance(data, node_mask, mean_mask, xai_node, chosen_model, 
     sns.violinplot(data=distributions)
     plt.xticks(range(3), labels)
     plt.ylabel("Feature importance")
-    plt.title("Feature importance distributions per group (NeDBIT, Day0, Day8)")
+    plt.title("Feature importance distributions per group (NeDBIT, Healthy controls, AML)")
 
     # Overlay means
     for i, m in enumerate(means):
@@ -392,10 +392,11 @@ def draw_xai_local_graph(
         if not node_name.empty:
             label = f"{node_name.iloc[0, 0]}:{node_name.iloc[0, 1]}"
             legend_elements.append(
-                Line2D([0], [0], marker="o", color="w", label=label, markersize=5)
+                Line2D([0], [0], marker="o", color="w", label=label, markersize=10)
             )
 
     # Normalize ei_sub to numpy
+    import torch
     if isinstance(ei_sub, torch.Tensor):
         ei_np = ei_sub.detach().cpu().numpy()
     else:
@@ -429,19 +430,20 @@ def draw_xai_local_graph(
     # Layout on the small graph (stable seed for reproducibility)
     pos = nx.spring_layout(H, seed=42)
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    nx.draw(H, pos=pos, with_labels=True, node_color=colors_in_order, ax=ax)
+    fig, ax = plt.subplots(figsize=(11, 8))
+    nx.draw(H, pos=pos, with_labels=True, node_color=colors_in_order,
+            node_size=850, font_size=20, width=1.2, ax=ax)
 
     # Side legend
     if legend_elements:
         plt.legend(
             handles=legend_elements,
-            title="Nodes",
+            title="Nodes", fontsize=27, title_fontsize=27,
             loc="center left",
             bbox_to_anchor=(1, 0.5),
         )
 
-    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
+    plt.title(f"Explanation subgraph of {idx_global} node ({config.get('xai_prediction_group', 'LP')})")
     plt.grid(True)
 
     # Save
@@ -505,7 +507,7 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
         loc="center left",
         bbox_to_anchor=(1, 0.5),
     )
-    plt.title(f"Explanation subgraph of {idx_global} node (LP)")
+    plt.title(f"Explanation subgraph of seed node :{idx_global}")
     plt.grid(True)
     # save subgraph plot
     _save(
@@ -515,3 +517,80 @@ def draw_xai_global_graph(G, sorted_ranking, idx_global, chosen_model, config):
         dpi,
     )
     plt.close()
+
+
+MODEL_COMPARISON_METRICS = {
+    'best_val_acc': 'Validation accuracy',
+    'te_acc': 'Test accuracy',
+    'te_f1_macro': 'Macro F1',
+    'te_f1_weighted': 'Weighted F1',
+    'te_f1_micro': 'Micro F1',
+    'te_precision': 'Precision (weighted)',
+    'te_recall': 'Recall (weighted)',
+}
+
+
+def plot_model_comparison(results, models, config):
+    """Compare this run's final metrics; missing/failed models appear as N/A."""
+    if not config.get('MAKE_HEATMAP', True):
+        return None
+    metric_labels = MODEL_COMPARISON_METRICS
+    metric_keys = list(metric_labels)
+    rows = []
+    for name in models:
+        metrics = results.get(name, {})
+        metrics = metrics if isinstance(metrics, dict) else {}
+        row = []
+        for key in metric_keys:
+            value = metrics.get(key, np.nan)
+            if isinstance(value, (list, tuple, np.ndarray)):
+                value = value[-1] if len(value) else np.nan
+            row.append(float(value) if value is not None else np.nan)
+        rows.append(row)
+    mat = np.asarray(rows, dtype=float)
+    mat[~np.isfinite(mat)] = np.nan
+    if not np.isfinite(mat).any():
+        return None
+
+    # Scores and annotations share the same fixed [0, 1] color scale.
+    # Re-scaling across models exaggerates low scores and hides absolute values.
+    A_norm = mat.copy()
+
+    cmap = plt.cm.YlGnBu.copy()
+    cmap.set_bad('#dddddd')
+    fig, ax = plt.subplots(figsize=(1.2 * len(metric_keys) + 2.5, 0.6 * len(models) + 2.5))
+    try:
+        im = ax.imshow(np.ma.masked_invalid(A_norm), aspect='auto', interpolation='nearest',
+                       cmap=cmap, vmin=0., vmax=1.)
+        ax.set_xticks(np.arange(len(metric_keys)))
+        ax.set_yticks(np.arange(len(models)))
+        ax.set_xticklabels(list(metric_labels.values()), rotation=30, ha='right')
+        ax.set_yticklabels(models)
+        for i in range(len(models)):
+            for j in range(len(metric_keys)):
+                value = mat[i, j]
+                color = 'black'
+                if np.isfinite(value):
+                    r, g, b, _ = cmap(A_norm[i, j])
+                    color = 'black' if .299 * r + .587 * g + .114 * b > .55 else 'white'
+                ax.text(j, i, f'{value:.3f}' if np.isfinite(value) else 'N/A',
+                        ha='center', va='center', fontsize=12, color=color)
+        ax.set_xticks(np.arange(-.5, len(metric_keys), 1), minor=True)
+        ax.set_yticks(np.arange(-.5, len(models), 1), minor=True)
+        ax.grid(False)
+        ax.grid(which='minor', color='white', linewidth=.6, alpha=.6)
+        ax.tick_params(which='minor', bottom=False, left=False)
+        ax.set_title('Models vs Metrics', pad=10)
+        cbar = fig.colorbar(im, ax=ax, fraction=.046, pad=.04)
+        cbar.set_label('Metric score', labelpad=12)
+        cbar.set_ticks(np.linspace(0., 1., 6))
+        output = _as_path(config.p_plot)
+        stem = f'Heatmap_avg_edges_{config.n_edges}_epochs_{config.n_epo}'
+        # Save the same metric values used for both colors and annotations.
+        pd.DataFrame(mat, index=pd.Index(models, name='model'), columns=metric_keys).to_csv(_as_path(config.get("p_data",config.p_plot)) / f'{stem}.csv')
+        path = output / f'{stem}.pdf'
+        _save(fig, path, config.dpi)
+        print(f'Saved heatmap -> {path}', flush=True)
+        return path
+    finally:
+        plt.close(fig)

@@ -1,0 +1,40 @@
+{
+  "datasets": {
+    "GSE40279": {
+      "rows": 473034,
+      "non_cpg_rows": 2991,
+      "missing_values": 0,
+      "all_missing_cpgs": 0,
+      "samples": 656,
+      "cpgs": 470043,
+      "sha256": "1f6ef8b5ce08f9a5f1c09b047b36d1f3342757b6e8e19dce0398581bb76807eb",
+      "bytes": 1237679628,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE40nnn/GSE40279/matrix/GSE40279_series_matrix.txt.gz"
+    },
+    "GSE62298": {
+      "rows": 485512,
+      "non_cpg_rows": 3091,
+      "missing_values": 0,
+      "all_missing_cpgs": 0,
+      "samples": 68,
+      "cpgs": 482421,
+      "sha256": "5466a7e29c313272e15b3907c5729a748ab670cc3ec00bf9e10f82101319d56b",
+      "bytes": 168129372,
+      "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE62nnn/GSE62298/matrix/GSE62298_series_matrix.txt.gz"
+    }
+  },
+  "shared_cpgs": 470043,
+  "healthy_only_cpgs": 0,
+  "aml_only_cpgs": 12378,
+  "shared_gene_annotated_cpgs": 354088,
+  "shared_unannotated_cpgs": 115955,
+  "cpg_gene_rows": 393997,
+  "annotation_source": "https://ftp.ncbi.nlm.nih.gov/geo/platforms/GPL13nnn/GPL13534/soft/GPL13534_family.soft.gz",
+  "annotation_sha256": "ed608f3cc3098f51cfe4f4e46f36789ae4532f8704774609c434c88eb3e95cf7",
+  "SD": "sample standard deviation, denominator n-1",
+  "delta": "mean(GSE62298) - mean(GSE40279)",
+  "missing_policy": "omit missing beta values per CpG; no imputation; undefined statistics blank",
+  "gene_policy": "one row per unique RefGene symbol per CpG; unannotated retained in shared_cpg_statistics.tsv",
+  "harmonization": "exact intersection of cg probe IDs on GPL13534; published beta values unchanged",
+  "limitations": "Descriptive cross-study comparison; no batch, age, sex or cell-composition adjustment. GSE62298 is GEO, not TCGA."
+}

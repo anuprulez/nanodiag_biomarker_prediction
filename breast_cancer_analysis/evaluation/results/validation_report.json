@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "shared_cpgs_checked": 276046,
+  "cpg_gene_rows_checked": 227589,
+  "independently_recomputed_cpgs_per_dataset": [
+    "cg00000289",
+    "cg00000321",
+    "cg00000714"
+  ]
+}

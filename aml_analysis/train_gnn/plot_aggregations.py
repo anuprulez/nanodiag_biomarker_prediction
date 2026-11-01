@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+from artifact_layout import artifact_file
 from typing import Dict, Union
 
 import numpy as np
@@ -9,12 +12,18 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Patch
 import seaborn as sns
 import json
-import umap
 from sklearn.metrics import (
     precision_recall_curve,
     average_precision_score,
     confusion_matrix,
 )
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from pathlib import Path
+import random
 
 from sklearn.preprocessing import label_binarize
 
@@ -24,10 +33,10 @@ from omegaconf.omegaconf import OmegaConf
 sns.set_theme(style="whitegrid", context="talk")
 
 # for merging the results from multiple runs
-topk = 250  # 200 for best results so far
+topk = 200  # 200 for best results so far
 toshow = 20
-group_partition1 = 28
-group_partition2 = 28
+group_partition1 = 464
+group_partition2 = 62
 n_runs = 5
 
 
@@ -74,7 +83,7 @@ def plot_radar(config):
 
     agg_models_perf = dict()
     for model in models:
-        filename = f"{config.p_plot}all_metrics_{model}.json"
+        filename = f"{config.p_data}all_metrics_{model}.json"
         with open(filename, "r") as f:
             agg_models_perf[model] = json.load(f)
     print(agg_models_perf)
@@ -127,7 +136,7 @@ def plot_radar_runs_multiple(config):
     and generate:
       1) Improved overlay radar (models on axes, metrics in legend)
       2) Small-multiples radars (one radar per model, metrics on axes)
-      3) Metric-normalized heatmap (models x metrics)
+      3) Metric-score heatmap (models x metrics)
 
     Expects files at:
       {config.p_base}/runs/{run_id}/all_metrics_{Model}.json
@@ -149,7 +158,7 @@ def plot_radar_runs_multiple(config):
         "te_precision": "Precision",
         "te_recall": "Recall",
     }
-    models = ["PNA", "GATv2", "GCN", "GraphSage", "GraphTransformer"]
+    models = ["PNA", "GATV2", "GCN", "GraphSage", "GraphTransformer"]
 
     # Plot toggles & options
     MAKE_OVERLAY_RADAR = True
@@ -158,10 +167,9 @@ def plot_radar_runs_multiple(config):
 
     SORT_MODELS = True  # sort models for overlay/heatmap
     SORT_BY = "mean"  # "mean" or one of metric_keys
-    NORMALIZE_FOR_HEATMAP = True  # per-metric min-max to [0,1]
 
     plot_local_path = Path(getattr(config, "p_plot", "./plots"))
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 5)
@@ -177,7 +185,7 @@ def plot_radar_runs_multiple(config):
         # Collect all runs for this model
         for item in range(n_runs):
             run_id = item + 1
-            file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
+            file_path = str(artifact_file(Path(p_base)/"runs"/str(run_id),f"all_metrics_{model}.json"))
             with open(file_path, "r") as f:
                 values = json.load(f)
                 metrics_list.append(
@@ -365,22 +373,13 @@ def plot_radar_runs_multiple(config):
         print(f"Saved small-multiples radars -> {out_path_sm}")
 
     # ----------------------------
-    # 4) Metric-Normalized Heatmap
+    # 4) Metric-Score Heatmap
     # ----------------------------
     if MAKE_HEATMAP:
         A = mat.copy()  # models x metrics
 
-        if NORMALIZE_FOR_HEATMAP:
-            # Per-metric min-max normalization to [0,1] for contrast
-            mins = np.nanmin(A, axis=0)
-            maxs = np.nanmax(A, axis=0)
-            span = np.clip(maxs - mins, 1e-12, None)
-            A_norm = (A - mins) / span
-        else:
-            # Normalize globally for luminance calculation only
-            gmin, gmax = np.nanmin(A), np.nanmax(A)
-            gspan = max(gmax - gmin, 1e-12)
-            A_norm = (A - gmin) / gspan
+        # Keep colors, annotations and colorbar on the actual metric scale.
+        A_norm = A.copy()
 
         # Use a colormap with light low-end so text stays visible for small values
         cmap = plt.cm.YlGnBu  # low = light yellow, high = dark blue
@@ -390,7 +389,7 @@ def plot_radar_runs_multiple(config):
             figsize=(1.2 * len(metric_keys) + 2.5, 0.6 * len(models) + 2.5)
         )
         im = ax.imshow(
-            A_norm if NORMALIZE_FOR_HEATMAP else A_norm,
+            np.ma.masked_invalid(A_norm),
             aspect="auto",
             interpolation="nearest",
             cmap=cmap,
@@ -433,6 +432,7 @@ def plot_radar_runs_multiple(config):
         ax.set_title(f"Models vs Metrics", pad=10)
         cbar = plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
         cbar.ax.set_ylabel("Metric score", rotation=90, va="center", labelpad=12)
+        cbar.set_ticks(np.linspace(0., 1., 6))
 
         plt.tight_layout()
         out_path_hm = (
@@ -459,7 +459,7 @@ def plot_radar_runs(config):
         "te_precision",
         "te_recall",
     ]
-    models = ["PNA", "GATv2", "GCN", "GraphSage", "GraphTransformer"]
+    models = ["PNA", "GATV2", "GCN", "GraphSage", "GraphTransformer"]
 
     metric_labels = {
         "te_f1_macro": "F1 (macro)",
@@ -470,7 +470,7 @@ def plot_radar_runs(config):
     }
 
     plot_local_path = _as_path(config.p_plot)
-    p_base = getattr(config, "p_base", "./")
+    p_base = getattr(config, "p_generated_files", config.p_base)
     n_edges = getattr(config, "n_edges", 0)
     n_epo = getattr(config, "n_epo", 0)
     # n_runs = getattr(config, "n_runs", 2)
@@ -484,7 +484,7 @@ def plot_radar_runs(config):
         # Collect all runs for this model
         for item in range(n_runs):
             run_id = item + 1
-            file_path = f"{p_base}runs/{run_id}/all_metrics_{model}.json"
+            file_path = str(artifact_file(Path(p_base)/"runs"/str(run_id),f"all_metrics_{model}.json"))
             with open(file_path, "r") as f:
                 values = json.load(f)
                 metrics_list.append(
@@ -578,7 +578,7 @@ def plot_mean_std_loss_acc(config):
 
     for item in range(n_runs):
         run_id = item + 1
-        file_path = f"{config.p_base}runs/{run_id}/all_metrics_{chosen_model}.json"
+        file_path = str(artifact_file(Path(config.get("p_generated_files", config.p_base))/"runs"/str(run_id),f"all_metrics_{chosen_model}.json"))
         with open(file_path) as f:
             metrics_list.append(json.load(f))
     print(metrics_list)
@@ -697,12 +697,9 @@ def plot_xai_nodes_raw_values(config):
     dpi = getattr(config, "dpi", 200)
     # topk = 50
     cmap = "cividis"  # cividis viridis  inferno
-    path_pred_LP = (
-        config.p_base
-        + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
-    )
-    # path_pred_LP = config.p_base + f"pred_negatives_{chosen_model}.csv"
-    path_signals = config.p_base + "combined_pos_neg_signals_aml.csv"
+    # path_pred_LP = config.p_base + f"pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"
+    path_pred_LP = config.p_data + f"pred_negatives_{chosen_model}.csv"
+    path_signals = config.p_combined_pos_neg_signals
     df_pred_LP = pd.read_csv(path_pred_LP, sep="\t")
     df_signals = pd.read_csv(path_signals, sep="\t")
 
@@ -710,9 +707,9 @@ def plot_xai_nodes_raw_values(config):
     list_nodes = xai_nodes["test_gene_names"].tolist()
     df_top_signals = df_signals[list_nodes]
 
-    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
+    group_labels = ["Healthy"] * group_partition1 + ["AML"] * group_partition2
     df_top_signals["Group"] = group_labels
-    group_colors = {"Day0": "darkred", "Day8": "steelblue"}
+    group_colors = {"Healthy": "darkred", "AML": "steelblue"}
     row_colors = df_top_signals["Group"].map(group_colors)
 
     # Drop the group column before plotting
@@ -744,7 +741,7 @@ def plot_xai_nodes_raw_values(config):
     cb.set_label("β-value", rotation=90, labelpad=10)
 
     # --- add group legend (row_colors) outside under the colorbar ---
-    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Healthy", "AML"]]
     g.fig.legend(
         handles=handles,
         title="Group",
@@ -753,17 +750,17 @@ def plot_xai_nodes_raw_values(config):
     )
     # Titles and formatting
     g.ax_heatmap.set_title(
-        f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Day0 vs Day8 Patients)",
+        f"DNA methylation of predicted top {topk} likely positive features (probe_genes) \n(Healthy controls vs AML patients)",
         pad=4,
         fontsize=14,
     )
     g.ax_col_dendrogram.set_visible(False)
     plt.tight_layout()
-    # path = plot_local_path / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     path = (
         plot_local_path
-        / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
+        / f"Top_negative_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     )
+    # path = plot_local_path / f"Top_likely_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}.pdf"
     plt.savefig(path, dpi=dpi, bbox_inches="tight")
 
 
@@ -781,6 +778,7 @@ def _find_run_file(base, run_id, chosen_model):
     """Try a few plausible filenames/locations for each run; return first that exists."""
     candidates = [
         # os.path.join(base, f"runs/{run_id}/pred_likely_pos_no_training_genes_probes_aml_{chosen_model}.csv"),
+        os.path.join(base, f"runs/{run_id}/data/pred_negatives_{chosen_model}.csv"),
         os.path.join(base, f"runs/{run_id}/pred_negatives_{chosen_model}.csv"),
     ]
     for p in candidates:
@@ -800,31 +798,11 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     print(f"Seed nodes: {seed_nodes[:5], len(seed_nodes)}")
     print("df_signals")
     print(df_signals)
-    """seed_nodes = ["cg09242307_SOX5", 
-                  "cg10990959_SOX5",
-                  "cg02147465_ZBTB20",
-                  "cg13697223_GALNTL6", 
-                  "cg06126815_PON2",
-                  "cg09962458_SIPA1L1",
-                  "cg16036046_RIT2"
-                  ]"""
-    seed_nodes = [
-        "cg26246840_CD226",
-        "cg26626251_OPCML",
-        "cg12915585_MYT1L",
-        "cg05592278_LRRC37A3",
-        "cg22862734_FREM2",
-    ]
-    # seed_nodes = seed_nodes[:100]
+    seed_nodes = [name for name in seed_nodes if name in df_signals][:5]
     df_seed = df_signals[seed_nodes]
-    print("Seed signals")
-    print(df_seed)
-    print("Top LP signals")
-    # top_lp = "cg13985132_LOC390595"
-    top_lp = "cg00315391_SCNN1G"  # "cg23281527_KLHDC7A" #"cg23281527_KLHDC7A"
-    df_lp = df_signals[[top_lp]]
-    print(df_lp)
-
+    if df_lp.empty or not seed_nodes:
+        return
+    df_lp = df_lp.iloc[:, :1].copy()
     df_seed = df_seed.apply(pd.to_numeric, errors="coerce")
     df_lp = df_lp.apply(pd.to_numeric, errors="coerce")
 
@@ -850,18 +828,14 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
     # --- Plot correlations for each LP signal ---
     for lp_col in df_lp.columns:
         corr_series = df_corr[lp_col].sort_values(ascending=False)
-        corr_series = corr_series.astype(float)
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(6, 6))
         bar_colors = sns.color_palette("viridis", len(corr_series))
         sns.barplot(
             x=corr_series.index,
             y=corr_series.values,
-            ### uncommment for 2025 node prediction show
-            # x=np.arange(0, len(corr_series)),
             # palette=bar_colors
         )
-        ### uncommment for 2025 node prediction show
-        # plt.xticks(np.arange(0, len(corr_series), 50), fontsize=16)
+
         plt.xticks(rotation=90, fontsize=16)
         plt.yticks(fontsize=16)
         plt.ylabel("Pearson correlation", fontsize=18)
@@ -881,7 +855,6 @@ def plot_top_nodes_correlation(config, df_signals, df_lp):
 def plot_xai_nodes_raw_values_averaged_runs(config):
     # ---- Fixed model & runs ----
     chosen_model = "PNA"  # enforce PNA as requested
-    # n_runs = 5
 
     plot_local_path = _as_path(config.p_plot)
     n_edges = config.n_edges
@@ -891,7 +864,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     cmap = "cividis"  # cividis / viridis / inferno
 
     # Signals matrix (patients x features), shared across runs
-    path_signals = os.path.join(config.p_base, "combined_pos_neg_signals_aml.csv")
+    path_signals = config.p_combined_pos_neg_signals
     df_signals = pd.read_csv(path_signals, sep="\t")
 
     # ------------------------------
@@ -899,7 +872,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # ------------------------------
     per_run_lists = []
     for run_id in range(1, n_runs + 1):
-        path_pred = _find_run_file(config.p_base, run_id, chosen_model)
+        path_pred = _find_run_file(config.get("p_generated_files", config.p_base), run_id, chosen_model)
         df_pred = pd.read_csv(path_pred, sep="\t")
         print("All: ", df_pred)
         N = [5]
@@ -950,7 +923,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
     # 4) Groups & cosmetics
     # ------------------------------
     # Adjust these counts if your cohort sizes differ
-    group_labels = ["Day0"] * group_partition1 + ["Day8"] * group_partition2
+    group_labels = ["Healthy"] * group_partition1 + ["AML"] * group_partition2
     if len(group_labels) != len(df_top_signals):
         raise ValueError(
             f"Group label length ({len(group_labels)}) doesn't match data rows ({len(df_top_signals)}). "
@@ -958,8 +931,8 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         )
 
     df_top_signals["Group"] = group_labels
-    group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
-    hue_order = ["Day0", "Day8"]
+    group_colors = {"Healthy": "#dd8452", "AML": "#4c72b0"}
+    hue_order = ["Healthy", "AML"]
     row_colors = df_top_signals["Group"].map(group_colors)
 
     data = df_top_signals.drop(columns=["Group"])
@@ -970,7 +943,7 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         / f"violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.pdf"
     )
     df_top_signals.to_csv(
-        plot_local_path
+        _as_path(config.p_data)
         / f"data_for_violin_top_{pred_type}_predicted_genes_edges_{n_edges}_links_{n_epo}_epochs_{chosen_model}_5runs.csv"
     )
 
@@ -979,8 +952,8 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
         if group_colors is None:
             # fallback colors if not provided
             group_colors = {
-                "Day0": "#1f77b4",
-                "Day8": "#ff7f0e",
+                "Healthy": "#1f77b4",
+                "AML": "#ff7f0e",
             }
 
         title_font = 24
@@ -1015,7 +988,9 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
         # Δμ = Day0 − Day8 (order given by hue_order)
         day0, day8 = hue_order
-        group_means_all["DeltaMu"] = group_means_all[day0] - group_means_all[day8]
+        group_means_all["DeltaMu"] = np.abs(
+            group_means_all[day8] - group_means_all[day0]
+        )
 
         # Sort features by Δμ descending
         features_sorted = (
@@ -1139,20 +1114,10 @@ def plot_xai_nodes_raw_values_averaged_runs(config):
 
         plt.close(ax.figure)
 
-    print(f"Saved multipage PDF (PNA aggregated over 5 runs) to: {out_path_voilin}")
-
-
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-import random
-
 
 def plot_positive_xai_nodes_raw_values(config):
     """
-    Violin plot of top 20 positive CpG features comparing Day0 vs Day8.
+    Violin plot of top 20 positive CpG features comparing Healthy controls vs AML.
     Each half of violin uses group color; means and Δμ are annotated.
     """
     base_path = Path(config.p_plot)
@@ -1161,12 +1126,12 @@ def plot_positive_xai_nodes_raw_values(config):
     x_y_font = 16
     mean_annot_font = 14
 
+    n_edges = config.n_edges
+    n_epo = config.n_epo
+
     # --- Load data ---
-    df_nebit_features = pd.read_csv(
-        base_path / "df_nebit_dnam_features_aml_PNA.csv", sep=","
-    )
-    df_signals = pd.read_csv(base_path / "combined_pos_neg_signals_aml.csv", sep="\t")
-    df_seed_genes = pd.read_csv(base_path / "out_gene_rankings_aml.csv", sep=" ")
+    df_signals = pd.read_csv(config.p_combined_pos_neg_signals, sep="\t")
+    df_seed_genes = pd.read_csv(config.p_out_gene_rankings, sep=" ", header=None)
 
     df_seed_genes.columns = ["names", "associations", "labels"]
     df_seed_genes = df_seed_genes[df_seed_genes["labels"] == 1]
@@ -1179,22 +1144,26 @@ def plot_positive_xai_nodes_raw_values(config):
     # --- Select top 20 features and split into groups ---
     topk_features = toshow
     df = seed_signals.iloc[:, :topk_features].copy()
-    group1 = df.iloc[:group_partition1].assign(Group="Day0")
-    group2 = df.iloc[group_partition2:].assign(Group="Day8")
+    group1 = df.iloc[:group_partition1].assign(Group="Healthy")
+    group2 = df.iloc[group_partition1:].assign(Group="AML")
 
     df_melted = pd.concat([group1, group2], axis=0).melt(
         id_vars="Group", var_name="CpG", value_name="Value"
     )
 
     # --- Colors and ordering ---
-    hue_order = ["Day0", "Day8"]  # legend order: blue, orange
-    group_colors = {"Day0": "#dd8452", "Day8": "#4c72b0"}
+    hue_order = ["Healthy", "AML"]  # legend order: blue, orange
+    group_colors = {"Healthy": "#dd8452", "AML": "#4c72b0"}
 
     df_melted["Group"] = pd.Categorical(
         df_melted["Group"], categories=hue_order, ordered=True
     )
     df_melted["CpG"] = pd.Categorical(
         df_melted["CpG"], categories=list(df.columns), ordered=True
+    )
+    df_melted.to_csv(
+        _as_path(config.p_data)
+        / f"data_for_violin_top_positive_genes_edges_{n_edges}_links_{n_epo}_epochs_aml.csv"
     )
 
     # --- Plot ---
@@ -1234,7 +1203,7 @@ def plot_positive_xai_nodes_raw_values(config):
 
     # clean duplicate legend
     _, labels = ax.get_legend_handles_labels()
-    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Day0", "Day8"]]
+    handles = [Patch(facecolor=group_colors[k], label=k) for k in ["Healthy", "AML"]]
     ax.legend(
         handles[-2:],
         labels[-2:],
@@ -1246,6 +1215,8 @@ def plot_positive_xai_nodes_raw_values(config):
 
     # --- Compute per-feature means ---
     group_means = df_melted.groupby(["CpG", "Group"])["Value"].mean().unstack("Group")
+
+    print(group_means)
 
     # annotate per-group means at markers
     point_lines = [ln for ln in ax.lines if ln.get_marker() == "o"]
@@ -1266,16 +1237,18 @@ def plot_positive_xai_nodes_raw_values(config):
                 bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.6),
             )
 
-    # Δμ (Day0 − Day8) above each CpG
+    # Δμ (normal - bc) above each CpG
     ymax_per_cpg = df_melted.groupby("CpG")["Value"].max()
     for i, cpg in enumerate(df.columns):
         if cpg not in group_means.index:
             continue
-        mu_day0 = group_means.loc[cpg].get("Day0", np.nan)
-        mu_day8 = group_means.loc[cpg].get("Day8", np.nan)
-        if np.isnan(mu_day0) or np.isnan(mu_day8):
+        mu_aml = group_means.loc[cpg].get("Healthy", np.nan)
+        mu_normal = group_means.loc[cpg].get("AML", np.nan)
+
+        print(f"{cpg}: normal {mu_normal}, bc {mu_aml}")
+        if np.isnan(mu_aml) or np.isnan(mu_normal):
             continue
-        dmu = mu_day0 - mu_day8
+        dmu = mu_aml - mu_normal
         ytxt = ymax_per_cpg.get(cpg, df_melted["Value"].max()) + 0.02
         ax.text(
             i,
@@ -1297,22 +1270,307 @@ def plot_positive_xai_nodes_raw_values(config):
     ax.tick_params(axis="y", labelsize=x_y_font)
 
     title_main = (
-        "Distribution and mean differences per feature (β-values): Day0 vs Day8"
+        "Distribution and mean differences per feature (β-values): Healthy controls vs AML"
     )
     ax.set_title(f"{title_main}", fontsize=title_font, pad=10)
 
     plt.tight_layout()
-    out_path = base_path / "violin_positive_seeds_day0_day8.pdf"
+    out_path = base_path / "violin_positive_seeds_aml_normal.pdf"
     plt.savefig(out_path, dpi=300, bbox_inches="tight")
     plt.close()
     print(f"[+] Saved: {out_path}")
 
 
 if __name__ == "__main__":
-    config = OmegaConf.load("../config/config.yaml")
-    plot_xai_nodes_raw_values_averaged_runs(config)
-    # plot_positive_xai_nodes_raw_values(config)
-    # plot_radar_runs_multiple(config)
-    # plot_radar_runs(config)
-    # plot_mean_std_loss_acc(config)
-    # plot_xai_nodes_raw_values(config)
+    import argparse
+    import os
+    import sys
+    root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(root))
+    from dataset_configs import downstream_configs
+    from model_settings import apply_model_settings
+    parser = argparse.ArgumentParser(description="Plot XAI outputs using each dataset's tuned config")
+    parser.add_argument('--config', type=Path, default=root/'config/config.yaml')
+    args = parser.parse_args()
+    config_path = args.config.resolve()
+    os.chdir(root/'train_gnn')
+    for config in downstream_configs(config_path):
+        current = apply_model_settings(config, str(config.best_trained_model))
+        plot_xai_nodes_raw_values_averaged_runs(current)
+
+
+def plot_likely_positive_cpg_overlap(runs, output, dpi=200):
+    """Count unique CpG IDs by the number of PNA runs predicting them."""
+    from collections import Counter
+    import re
+
+    memberships = {}
+    sources = []
+    for run in runs:
+        manifest = json.loads((run/'run.json').read_text())
+        if 'PNA' not in manifest['models']:
+            continue
+        paths = list((run/'generated').rglob('pred_likely_pos_aml_PNA.csv'))
+        if not paths:
+            print(f'{run.name}: no PNA likely-positive export; excluded from CpG overlap', flush=True)
+            continue
+        if len(paths) != 1:
+            raise ValueError(f'{run}: expected one PNA likely-positive export, found {len(paths)}')
+        path = paths[0]
+        frame = pd.read_csv(path, sep=None, engine='python')
+        if 'test_gene_names' not in frame:
+            raise ValueError(f'{path}: missing test_gene_names column')
+        # A CpG can have several gene annotations; it counts once in each run.
+        cpgs = set()
+        for name in frame['test_gene_names']:
+            match = re.fullmatch(r'(cg[0-9]+)(?:_.*)?', str(name), flags=re.I)
+            if not match:
+                raise ValueError(f'{path}: invalid CpG feature name: {name!r}')
+            cpgs.add(match[1].lower())
+        sources.append({'run': run.name, 'source': str(path), 'unique_cpgs': len(cpgs)})
+        for cpg in cpgs:
+            memberships.setdefault(cpg, []).append(run.name)
+    if not sources:
+        print('No PNA likely-positive exports available for CpG overlap; pie chart skipped', flush=True)
+        return
+    output = Path(output)
+    data = _as_path(output/'data')
+    plots = _as_path(output/'plots')
+    n_runs = len(sources)
+    counts = Counter(len(names) for names in memberships.values())
+    pd.DataFrame([{'runs_predicted': k, 'unique_cpgs': counts[k]}
+                  for k in range(1, n_runs+1)]).to_csv(data/'PNA_likely_positive_cpg_overlap_counts.csv', index=False)
+    pd.DataFrame([{'cpg': cpg, 'n_runs': len(names), 'runs': ';'.join(names)}
+                  for cpg, names in sorted(memberships.items())],
+                 columns=['cpg', 'n_runs', 'runs']).to_csv(data/'PNA_likely_positive_cpg_membership.csv', index=False)
+    summary = {'included_runs': sources, 'n_runs': n_runs,
+               'union_cpgs': len(memberships),
+               'common_to_all_runs': counts[n_runs]}
+    (data/'PNA_likely_positive_cpg_overlap.json').write_text(json.dumps(summary, indent=2)+'\n')
+    fig, ax = plt.subplots(figsize=(9, 7))
+    if memberships:
+        categories = [k for k in range(1, n_runs+1) if counts[k]]
+        values = [counts[k] for k in categories]
+        labels = [f'{k} of {n_runs} runs: {counts[k]} CpGs' for k in categories]
+        ax.pie(values, labels=labels, autopct='%1.1f%%', startangle=90)
+    else:
+        ax.text(.5, .5, 'No likely-positive CpG sites in the included runs',
+                ha='center', va='center', transform=ax.transAxes)
+        ax.set_axis_off()
+    ax.set_title(f'PNA likely-positive CpG overlap across {n_runs} runs\n'
+                 f'{counts[n_runs]} common to all runs; {len(memberships)} unique CpGs total')
+    fig.tight_layout()
+    stem = plots/'PNA_likely_positive_cpg_overlap_pie'
+    try:
+        for extension in ('pdf', 'png'):
+            fig.savefig(stem.with_suffix('.'+extension), dpi=dpi, bbox_inches='tight')
+    finally:
+        plt.close(fig)
+    plot_cpg_overlap_venn(memberships, sources, plots, dpi)
+    return summary
+
+
+def plot_cpg_overlap_venn(memberships, sources, plots, dpi=200):
+    """Plot exact run membership; CpGs with several genes count only once."""
+    from collections import Counter
+
+    sets = {source['run']: set() for source in sources}
+    for cpg, names in memberships.items():
+        for name in names:
+            sets[name].add(cpg)
+    n_runs = len(sets)
+    fig, ax = plt.subplots(figsize=(11, 10))
+    try:
+        if not memberships:
+            ax.text(.5, .5, 'No likely-positive CpG sites in the included runs',
+                    ha='center', va='center', transform=ax.transAxes)
+            ax.set_axis_off()
+        elif 2 <= n_runs <= 6:
+            from venn import venn
+            labels = {f'{name} ({len(cpgs):,} CpGs)': cpgs for name, cpgs in sets.items()}
+            venn(labels, ax=ax, cmap=['#4c78a8', '#f58518', '#54a24b',
+                                    '#e45756', '#b279a2', '#72b7b2'], fontsize=18)
+        elif n_runs == 1:
+            from matplotlib.patches import Circle
+            ax.add_patch(Circle((.5, .5), .35, color='#4c78a8', alpha=.4))
+            ax.text(.5, .5, f'{len(memberships):,}', ha='center', va='center', fontsize=18)
+            ax.text(.5, .9, next(iter(sets)), ha='center')
+            ax.set(xlim=(0, 1), ylim=(0, 1), aspect='equal')
+            ax.set_axis_off()
+        else:
+            # More than six sets cannot use this Venn layout. Preserve exact
+            # intersection counts in a bar chart rather than dropping runs.
+            regions = Counter(tuple(names) for names in memberships.values())
+            ordered = sorted(regions, key=lambda names: (len(names), names))
+            ax.barh(range(len(ordered)), [regions[names] for names in ordered])
+            ax.set_yticks(range(len(ordered)), [' & '.join(names) for names in ordered], fontsize=9)
+            ax.set_xlabel('Unique CpGs in exactly these runs')
+        common = sum(len(names) == n_runs for names in memberships.values())
+        ax.set_title(f'PNA likely-positive test CpG overlap across {n_runs} runs\n'
+                     f'{len(memberships):,} unique CpGs; {common:,} shared by all runs',
+                     fontsize=16, pad=20)
+        fig.tight_layout()
+        stem = Path(plots)/('PNA_likely_positive_cpg_overlap_venn' if n_runs <= 6
+                           else 'PNA_likely_positive_cpg_overlap_intersections')
+        for extension in ('pdf', 'png'):
+            fig.savefig(stem.with_suffix('.'+extension), dpi=dpi, bbox_inches='tight')
+    finally:
+        plt.close(fig)
+
+
+def plot_metric_boxplots(histories, provenance, config):
+    """Use the heatmap's model order and metrics, with one observation per run."""
+    from train_gnn.plot_gnn import MODEL_COMPARISON_METRICS
+
+    models = list(histories)
+    rows = []
+    for model, records in histories.items():
+        for run, record in zip(provenance[model], records):
+            for key in MODEL_COMPARISON_METRICS:
+                value = record.get(key)
+                if isinstance(value, (list, tuple, np.ndarray)):
+                    value = value[-1] if len(value) else None
+                if value is not None and np.isfinite(float(value)):
+                    rows.append({'model': model, 'run': run, 'metric': key, 'value': float(value)})
+    frame = pd.DataFrame(rows, columns=['model', 'run', 'metric', 'value'])
+    frame.to_csv(_as_path(config.p_data)/'accuracy_metrics_by_run.csv', index=False)
+    output = _as_path(config.p_plot)
+    for key, label in MODEL_COMPARISON_METRICS.items():
+        selected = frame.loc[frame.metric.eq(key)]
+        if selected.empty:
+            print(f'{label}: no finite saved-run values; box plot skipped', flush=True)
+            continue
+        fig, ax = plt.subplots(figsize=(max(9, 1.3*len(models)), 7))
+        try:
+            sns.boxplot(data=selected, x='model', y='value', order=models,
+                        color='#a8c8e4', showfliers=False, ax=ax)
+            # Show every run, including when a model has only one observation.
+            sns.stripplot(data=selected, x='model', y='value', order=models,
+                          color='#233d53', jitter=False, size=6, alpha=.8, ax=ax)
+            counts = selected.groupby('model').size()
+            ax.set_xticks(range(len(models)))
+            ax.set_xticklabels([f'{model}\n(n={counts.get(model, 0)})' for model in models],
+                               rotation=30, ha='right')
+            ax.set(xlabel='Model', ylabel=label, ylim=(-.03, 1.03),
+                   title=f'{label} across training runs')
+            fig.tight_layout()
+            for extension in ('pdf', 'png'):
+                fig.savefig(output/f'boxplot_{key}_across_runs.{extension}',
+                            dpi=config.get('dpi', 200), bbox_inches='tight')
+        finally:
+            plt.close(fig)
+    return frame
+
+
+def plot_cumulative_runs(config, models=None):
+    """Average completed run metrics, with radar and variable-length histories."""
+    from training_runs import completed_runs
+    from train_gnn.plot_gnn import plot_model_comparison, MODEL_COMPARISON_METRICS
+
+    runs = completed_runs(config.p_base)
+    if not runs:
+        print(f'No archived training runs in {config.p_base}; cumulative plots skipped', flush=True)
+        return
+    models = list(models or config.model_type)
+    output = Path(config.p_base)/'accumulated_results'
+    if 'PNA' in models:
+        from train_gnn.umap_composites import plot_umap_run_composites
+        plot_umap_run_composites(runs, output, config.get('dpi', 300))
+        plot_likely_positive_cpg_overlap(runs, output, config.get('dpi', 200))
+    current = OmegaConf.create(OmegaConf.to_container(config, resolve=False))
+    current.p_plot = str(output/'plots')+'/'
+    current.p_data = str(output/'data')+'/'
+    current.MAKE_HEATMAP = True
+    keys = list(MODEL_COMPARISON_METRICS)
+    histories = {}
+    provenance = {}
+    averages = {}
+    rows = []
+    for model in models:
+        records = []
+        sources = []
+        for run in runs:
+            manifest = json.loads((run/'run.json').read_text())
+            if model not in manifest['models']:
+                continue
+            # Model overrides may store outputs below a custom generated root.
+            paths = list((run/'generated').rglob(f'all_metrics_{model}.json'))
+            if len(paths) != 1:
+                raise ValueError(f'{run}: expected one metrics file for {model}, found {len(paths)}')
+            records.append(json.loads(paths[0].read_text()))
+            sources.append(run.name)
+        if not records:
+            continue
+        histories[model] = records
+        provenance[model] = sources
+        averages[model] = {}
+        for key in keys:
+            values = []
+            for record in records:
+                value = record.get(key)
+                if isinstance(value, list):
+                    value = value[-1] if value else None
+                if value is not None and np.isfinite(float(value)):
+                    values.append(float(value))
+            if values:
+                averages[model][key] = float(np.mean(values))
+                rows.append({'model': model, 'metric': key, 'mean': np.mean(values),
+                             'std': np.std(values), 'n_runs': len(values)})
+    if not averages:
+        print('No matching archived model metrics; cumulative plots skipped', flush=True)
+        return
+    data_path = _as_path(current.p_data)
+    pd.DataFrame(rows).to_csv(data_path/'metrics_mean_std.csv', index=False)
+    (data_path/'included_runs.json').write_text(json.dumps(provenance, indent=2)+'\n')
+    plot_model_comparison(averages, list(averages), current)
+    plot_metric_boxplots(histories, provenance, current)
+
+    # A radar compares the actual averaged scores on their common [0, 1] scale.
+    angles = np.linspace(0, 2*np.pi, len(keys), endpoint=False)
+    closed_angles = np.r_[angles, angles[0]]
+    fig, ax = plt.subplots(figsize=(10, 8), subplot_kw={'projection': 'polar'})
+    for model, metrics in averages.items():
+        values = [metrics.get(key, np.nan) for key in keys]
+        ax.plot(closed_angles, values+[values[0]], label=f'{model} (n={len(histories[model])})')
+    ax.set_xticks(angles)
+    ax.set_xticklabels(keys)
+    ax.set_ylim(0, 1)
+    ax.legend(loc='upper left', bbox_to_anchor=(1.1, 1.1))
+    ax.set_title('Mean performance across training runs')
+    _save(fig, Path(current.p_plot)/'radar_mean_metrics.pdf', config.get('dpi', 200))
+
+    for model, records in histories.items():
+        for kind, series in [('loss', ['tr_loss', 'val_loss', 'te_loss']),
+                             ('accuracy', ['tr_acc', 'val_acc', 'te_acc'])]:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            plotted = False
+            for key in series:
+                arrays = [np.asarray(record.get(key, []), dtype=float).reshape(-1) for record in records]
+                length = max((len(a) for a in arrays), default=0)
+                if not length:
+                    continue
+                padded = np.full((len(arrays), length), np.nan)
+                for i, values in enumerate(arrays):
+                    padded[i, :len(values)] = values
+                valid = np.isfinite(padded).sum(axis=0)
+                keep = valid > 0
+                mean = np.divide(np.nansum(padded, axis=0), valid,
+                                 out=np.full(length, np.nan), where=keep)
+                variance = np.divide(np.nansum((padded-mean)**2, axis=0), valid,
+                                     out=np.full(length, np.nan), where=keep)
+                std = np.sqrt(variance)
+                epochs = np.arange(1, length+1)
+                line, = ax.plot(epochs, mean, label=key)
+                ax.fill_between(epochs, mean-std, mean+std, alpha=.2, color=line.get_color())
+                pd.DataFrame({'epoch': epochs, 'mean': mean, 'std': std, 'n_runs': valid}).to_csv(
+                    data_path/f'{model}_{key}_mean_std.csv', index=False)
+                plotted = True
+            if plotted:
+                ax.set(xlabel='Epoch', ylabel=kind.title(), title=f'{model}: mean ± std across runs')
+                ax.legend()
+                _save(fig, Path(current.p_plot)/f'{model}_{kind}_mean_std.pdf', config.get('dpi', 200))
+            else:
+                plt.close(fig)
+    from train_gnn.accuracy_composites import plot_accuracy_composite
+    plot_accuracy_composite(config.p_base, list(histories), config.get('dpi', 200))
+    return output

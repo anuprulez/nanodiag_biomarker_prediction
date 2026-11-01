@@ -1,0 +1,95 @@
+SEED: 32
+n_edges: 6095982 #6066700 #6066700 #14124836 #14124836 # 6095982 knn values # 6066700 KNN No CR
+# all edges 14124836 with 0.5 correlation and 10000 negatives
+n_epo: 20
+batch_size: 32 #128
+num_classes: 5
+gene_dim: 62 #62 # Number of NedBit features + 28 day0 + 28 day8 ##46 # Number of NedBit features + 20 day0 + 20 day8
+hidden_dim: 128
+learning_rate: 5e-4 #5e-4
+weight_decay: 1e-3
+test_size: 0.33
+keep_feature_names: "degree,ring,NetRank,NetShort,HeatDiff,InfoDiff"
+# All NedBit features (provide in order): degree,ring,NetRank,NetShort,HeatDiff,InfoDiff
+umap_n_neighbors: 20
+umap_min_dist: 0.8
+umap_metric: "correlation"
+cutoff_pval: 5e-2
+dropout: 0.2 # set dropout as "0.4" for GATV2, for others 0.2
+heads: 4
+class_ticks: ["Positive (P)", "Likely Positive (LP)", "Weakly Negative (WN)", "Likely Negative (LN)", "Reliable Negative (RN)"]
+dpi: 300
+model_type: "PNA" # PNA, GCN, GraphSage, GATv2, GraphTransformer  ### gcn2, appnet
+best_trained_model: ${model_type} # Find the best trained model via training and then set it
+neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all in one-hop
+explain_neighbors_spread: [-1, 100, 50] #[-1, 50, 25] #[-1, 50, 25] # Good results: [-1, 50, 25] [500] [15, 10] for two-hop; [-1] for all
+explanation_nodes_ratio: 1.0
+neighbour_predictions: [0, 1, 2, 3, 4]
+src_neighbour_predictions: [0, 1, 2, 3, 4] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+tgt_neighbour_predictions: [0, 1, 2, 3, 4] # 0 positive, 1 likely positive, 2 weakly negative, 3 likely negative, 4 reliable negative
+masks_for_seed: 3
+explainer_epochs: 200  # Number of explanation epochs
+graph_subtype: "bidirectional" # directional; induced
+show_num_neighbours: 50
+knn_neighbours: 3000
+p_base: ../data_corr_0.5_negative_10000_no_gene_expr_03_12/ #../data_corr_0.5_negative_10000_updated/
+p_significant_edges: ${p_base}significant_gene_relations.tsv
+p_cross_reactive_probes: ${p_base}cross_reactive_probes.csv
+p_significant_edges_with_corr: ${p_base}significant_gene_relations_with_corr.tsv
+p_merged_signals: ${p_base}merged_signals_aml.csv
+p_seed_features: ${p_base}seed_features.tsv
+p_out_links: ${p_base}out_links_aml.csv
+p_out_genes: ${p_base}out_genes_aml.csv
+p_out_gene_rankings: ${p_base}out_gene_rankings_aml.csv
+p_nedbit_features: ${p_base}nedbit_features_aml.csv
+p_combined_pos_neg_signals: ${p_base}combined_pos_neg_signals_aml.csv
+p_dnam_features: ${p_base}dnam_features_aml_${model_type}.csv
+p_nedbit_dnam_features: ${p_base}df_nebit_dnam_features_aml_${model_type}.csv
+p_nedbit_dnam_features_norm: ${p_base}df_nebit_dnam_features_norm_${model_type}.csv
+p_test_probe_genes: ${p_base}test_probe_genes_aml_${model_type}.csv
+p_train_probe_genes: ${p_base}train_probe_genes_aml_${model_type}.csv
+p_pred_likely_pos: ${p_base}pred_likely_pos_aml_${model_type}.csv
+p_pred_likely_pos_no_training_genes_probes: ${p_base}pred_likely_pos_no_training_genes_probes_aml_${model_type}.csv
+p_pred_negatives: ${p_base}pred_negatives_${model_type}.csv
+p_torch_data: ${p_base}data_aml_${model_type}.pt
+p_torch_test_data: ${p_base}test_data_aml_${model_type}.pt
+p_torch_embed: ${p_base}embed_conv_aml_${model_type}.pt
+p_torch_embed_batch_norm: ${p_base}embed_batch_norm_aml_${model_type}.pt
+p_true_labels: ${p_base}true_labels_aml_${model_type}.pt
+p_torch_model: ${p_base}best_model_aml_${model_type}.pt
+p_pred_labels: ${p_base}pred_labels_aml_${model_type}.pt
+p_all_class_pred_probs: ${p_base}all_class_pred_probs_aml_${model_type}.pt
+p_best_class_pred_probs: ${p_base}best_class_pred_probs_aml_${model_type}.pt
+p_test_loader_ids: ${p_base}test_ids_aml_${model_type}.pt
+p_plot: ${p_base}
+p_data: ${p_base}
+p_model: ../model/
+
+# Preprocess AML Illumina arrays
+# Input files
+p_arrays: ${p_base}GSE175758_GEO_processed.txt # Path to arrays matrix (TSV).
+p_mapper: ${p_base}GPL13534-11288-mapper-HMBC450.txt # Path to probe-gene mapper (TSV with columns: probeID, UCSC_RefGene_Name).
+p_snp_probes: ${p_base}snp_7998probes.vh20151030.txt # Path to SNP probe IDs (CSV single column).
+p_seeds_methylated_cpgs: ${p_base}non-randomly-demethylated-CpGs.tsv # Path to seed probes (TSV with columns: probeID, deltaBeta, P.Value, CHR).
+p_seeds_gene_methylation_expr: ${p_base}genes_symbol_methylation_expression.tsv # Path to gene methylation-expression file (CSV with columns: Gene, Methylation, Expression).
+# Parameters
+size_negative: 10000 # Number of negative samples to draw
+corr_threshold: 0.5 #0.5 # Correlation threshold for gene-gene links
+
+# Parameters for assigning pre-labels
+nedbit_header: 1 # data header 0/1
+quantile_1: 0.05 # quantile threshold 1
+quantile_2: 0.2 # quantile threshold 2
+
+# Preprocessed data path
+download_raw_data: true # true: downloads raw data from Zenodo using the link from 'p_raw_data'
+p_raw_data: https://zenodo.org/records/17202627/files/aml_raw_datasets.zip?download=1
+
+download_preprocessed_data: false # true: downloads preprocessed data from Zenodo using the link from 'p_processed_data'
+p_processed_data: https://zenodo.org/api/records/19050582/files-archive
+
+# https://zenodo.org/records/17193720/files/aml_processed_datasets_c_0.33_te_10000.zip?download=1
+
+# https://zenodo.org/records/17205435/files/aml_processed_datasets_c_0.5_te_10000.zip?download=1
+
+color_palette: "tab10" # Color scale for UMAP plots

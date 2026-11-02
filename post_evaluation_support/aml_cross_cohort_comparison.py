@@ -99,23 +99,24 @@ def make_plot(frame,stats,out):
     with plt.rc_context({'font.family':'DejaVu Sans','font.size':14.3,'axes.labelsize':14.3,
                          'xtick.labelsize':14.3,'ytick.labelsize':14.3,'pdf.fonttype':42,'svg.fonttype':'none'}):
         fig,ax=plt.subplots(figsize=(11,8.5))
-        for category,color,marker in [('Unannotated in plot','#aaaaaa','o'),('Gene body','#0072B2','o'),('Promoter','#D55E00','^'),('Promoter + gene body','#7B2CBF','D')]:
-            part=f.loc[f.plot_display_class.eq(category)]
-            if len(part):ax.scatter(part.expression_log2FC,part.methylation_delta_beta,s=65,color=color,marker=marker,edgecolor='white',linewidth=.5,alpha=.9,label=f'{category} (n={len(part)})',zorder=3)
+        inverse=f.expression_log2FC.mul(f.methylation_delta_beta).lt(0)
+        for mask,color,label in [(~inverse,'#B8BEC5','Other measured CpGs'),
+                                 (inverse,'#D55E00','Opposite Δβ / log₂FC directions')]:
+            part=f.loc[mask]
+            if len(part):
+                ax.scatter(part.expression_log2FC,part.methylation_delta_beta,s=75 if mask.equals(inverse) else 55,
+                           color=color,marker='o',edgecolor='white',linewidth=.7,
+                           alpha=.95,label=f'{label} (n={len(part)})',zorder=3)
         extent=max(f.expression_log2FC.abs().max()*1.25,.5)
         ax.set_xlim(-extent,extent);ax.margins(y=.22)
         ax.axvline(0,color='#aaaaaa',lw=1,zorder=0);ax.axhline(0,color='#aaaaaa',lw=1,zorder=0)
-        ax.set_xlabel('GSE15061 expression log₂FC (AML / non-leukemia)')
+        ax.set_xlabel('GSE15061 expression log₂FC (AML / control)')
         ax.set_ylabel('Methylation Δβ (AML − control)')
-        title='AML: GSE15061 gene expression\nwith methylation of 17 CpGs'
-        if len(f)!=17:title+=f'\n({len(f)}/17 CpGs have evaluable expression)'
-        title+=f'\nPearson r = {stats["pearson_r"]:.3f}, p = {stats["pearson_p"]:.3g}  |  Spearman ρ = {stats["spearman_rho"]:.3f}, p = {stats["spearman_p"]:.3g}'
-        ax.set_title(title,fontsize=16.9,pad=12)
+        ax.set_title('AML: GSE15061 gene expression\nwith Δβ of 17 CpGs',fontsize=16.9,pad=12)
         ax.tick_params(direction='out',length=4,width=.8)
         ax.spines[['top','right']].set_visible(False)
-        handles,names=ax.get_legend_handles_labels()
-        order=sorted(range(len(names)),key=lambda i:next(j for j,c in enumerate(['Promoter (','Gene body (','Promoter + gene body (','Unannotated in plot (']) if names[i].startswith(c)))
-        fig.legend([handles[i] for i in order],[names[i] for i in order],loc='lower center',bbox_to_anchor=(.53,.005),ncol=2,frameon=False,fontsize=11.7)
+        handles,legend_labels=ax.get_legend_handles_labels()
+        fig.legend(handles[::-1],legend_labels[::-1],loc='lower center',bbox_to_anchor=(.53,.015),ncol=1,frameon=False,fontsize=11.7)
         fig.tight_layout(rect=[0,.105,1,1],pad=.7)
         labels=f.loc[f.expression_log2FC.mul(f.methylation_delta_beta).lt(0)].copy()
         # Curated positions preserve readable labels while arrowheads identify
@@ -214,7 +215,7 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
 - Primary differential expression: limma empirical Bayes with trend, expression ~ group + center. The AML coefficient is adjusted log2FC versus non-leukemia. Full-rank design checked. Unadjusted group-only sensitivity is supplied. Gene-level 95% intervals, raw p-values and BH FDR across all tested genes are retained.
 - CpG mapping: existing GPL13534/hg19 legacy gene and transcript-context annotations, with unambiguous HGNC previous-symbol updates. No nearest-gene replacement or imputed expression is used. A point is the mean available annotated-gene log2FC; all gene-level results are supplied separately. This panel has {len(frame)} CpGs, {int(frame.expression_log2FC.notna().sum())} evaluable, unavailable: {missing}.
 - Methylation primary Y: the existing internal AML-minus-control delta beta: 62 GSE58477 AML samples minus 464 GSE50660 peripheral-blood controls. The values are preserved exactly from the fixed panel; external contrasts are sensitivity results only. Expression and methylation GSM overlap: {len(overlap)}.
-- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Legacy promoter orange triangles, body blue circles, both purple diamonds, other gray. Both-negative points muted gray. Only inverse-direction (top-left / bottom-right) points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
+- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Inverse-sign CpGs are orange and other measured CpGs are gray; genomic-region categories are not shown. Only inverse-direction (top-left / bottom-right) points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
 
 ## Findings
 

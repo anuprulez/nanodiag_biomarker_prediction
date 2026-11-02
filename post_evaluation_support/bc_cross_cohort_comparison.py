@@ -57,20 +57,25 @@ def main(base):
     primary=summary.iloc[0];prom=summary.iloc[1]
     with plt.rc_context({'font.family':'DejaVu Sans','font.size':14.3,'axes.labelsize':14.3,'xtick.labelsize':14.3,'ytick.labelsize':14.3,'pdf.fonttype':42,'svg.fonttype':'none'}):
         fig,ax=plt.subplots(figsize=(11,8.5))
-        for category,color,marker in [('Unannotated in plot','#aaaaaa','o'),('Gene body','#0072B2','o'),('Promoter','#D55E00','^'),('Promoter + gene body','#7B2CBF','D')]:
-            subset=plotted.loc[plotted.plot_display_class.eq(category)]
-            ax.scatter(subset.TCGA_BRCA_log2FC,subset.GSE66695_delta_beta,s=65,color=color,marker=marker,edgecolor='white',linewidth=.5,alpha=.9,label=f'{category} (n={len(subset)})')
+        inverse=plotted.TCGA_BRCA_log2FC.mul(plotted.GSE66695_delta_beta).lt(0)
+        for mask,color,label in [(~inverse,'#B8BEC5','Other measured CpGs'),
+                                 (inverse,'#D55E00','Opposite Δβ / log₂FC directions')]:
+            part=plotted.loc[mask]
+            if len(part):
+                ax.scatter(part.TCGA_BRCA_log2FC,part.GSE66695_delta_beta,s=75 if mask.equals(inverse) else 55,
+                           color=color,marker='o',edgecolor='white',linewidth=.7,
+                           alpha=.95,label=f'{label} (n={len(part)})',zorder=3)
         # Symmetric expression limits put the biological zero at the panel center.
         x_extent = float(plotted['TCGA_BRCA_log2FC'].abs().max()) * 1.15
         ax.set_xlim(-x_extent, x_extent)
         ax.margins(y=.18)
         ax.tick_params(direction='out', length=4, width=.8)
         ax.axvline(0,color='#aaaaaa',lw=1,zorder=0);ax.axhline(0,color='#aaaaaa',lw=1,zorder=0)
-        ax.set(xlabel='TCGA-BRCA expression log₂FC (tumor / normal)',ylabel='GSE66695 methylation Δβ (tumor − normal)',title='Breast cancer: TGCA-BRCA gene expression with methylation of 33 CpGs')
-        ax.set_title(ax.get_title().replace(' with methylation', '\nwith methylation')+f'\nPearson r = {primary.pearson_r:.3f}, p = {primary.pearson_p:.3g}  |  Spearman ρ = {primary.spearman_rho:.3f}, p = {primary.spearman_p:.3g}',fontsize=16.9, pad=12)
+        ax.set(xlabel='TCGA-BRCA expression log₂FC (tumor / normal)',ylabel='GSE66695 methylation Δβ (tumor − normal)')
+        ax.set_title('Breast cancer: TGCA-BRCA gene expression\nwith Δβ of 33 CpGs',fontsize=16.9,pad=12)
         ax.spines[['top','right']].set_visible(False)
-        handles,labels=ax.get_legend_handles_labels();order=[2,1,3,0]
-        fig.legend([handles[i] for i in order],[labels[i] for i in order],loc='lower center',bbox_to_anchor=(.53,.005),ncol=2,frameon=False,fontsize=11.7)
+        handles,legend_labels=ax.get_legend_handles_labels()
+        fig.legend(handles[::-1],legend_labels[::-1],loc='lower center',bbox_to_anchor=(.53,.015),ncol=1,frameon=False,fontsize=11.7)
         fig.tight_layout(rect=[0,.105,1,1],pad=.7)
         # Explicit label positions spread the near-zero cluster across both sides.
         labels=plotted.loc[plotted.TCGA_BRCA_log2FC.mul(plotted.GSE66695_delta_beta).lt(0),
@@ -143,7 +148,7 @@ The separate robust_followup analysis found negative within-tumor associations f
 
 ## Files
 
-- plots/GSE66695_delta_beta_vs_TCGA_expression_log2FC.pdf, .svg and 300-dpi .png: 33-point plot with expression log₂FC on X and methylation Δβ on Y, using the same colors/symbols as the 189-site figure: orange promoter-only triangles, blue body-only circles, purple overlapping promoter/body diamonds, gray other/unannotated circles; inverse-quadrant labels use arrows to identify crowded points.
+- plots/GSE66695_delta_beta_vs_TCGA_expression_log2FC.pdf, .svg and 300-dpi .png: 33-point plot with expression log₂FC on X and methylation Δβ on Y, highlighting inverse-sign CpGs in orange and other measured CpGs in gray; inverse-quadrant labels use arrows to identify crowded points.
 - data/all_33_cross_cohort_CpGs.tsv: exactly one row per candidate, with gene-coverage and mixed-direction flags.
 - data/gene_level_cross_cohort_results.tsv: every annotated CpG–gene pair, limma log₂FC, raw p, genome-wide FDR and coefficient interval.
 - data/promoter_specific_comparison.tsv: correct promoter-linked targets.

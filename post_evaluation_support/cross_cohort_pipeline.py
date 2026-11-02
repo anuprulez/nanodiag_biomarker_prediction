@@ -113,7 +113,9 @@ def _run(root,config,rscript=None,offline=False,refresh=False):
                                   lambda:subprocess.run([executable,str(HERE/'aml_expression_limma.R'),str(target)],check=True),refresh)
         plot(out,hgnc_path=hgnc);validate(out)
         figure=target/'plots/AML_17_CpGs_methylation_vs_GSE15061_expression'
-    artifacts=[Path(str(figure)+'.'+ext) for ext in ['pdf','svg','png']]
+    from .expression_publication import run as publication_figures
+    extra_figures=publication_figures(out,disease)
+    artifacts=[Path(str(figure)+'.'+ext) for ext in ['pdf','svg','png']]+extra_figures
     for path in artifacts:
         if not path.is_file() or not path.stat().st_size:raise FileNotFoundError(path)
     manifest=dict(status='complete',disease=disease,stage='post-evaluation',steps=steps,rscript=executable,

@@ -6,6 +6,7 @@ import pandas as pd
 from scipy.stats import binomtest,spearmanr,pearsonr
 import matplotlib.pyplot as plt
 from .publication import save_publication
+from .cpg_scatter_style import scatter_context,unobstructed_labels
 from .point_labels import label_cpg_points
 
 
@@ -56,62 +57,20 @@ def main(base):
     summary.to_csv(out/'data/summary_statistics.tsv',sep='\t',index=False)
     primary=summary.iloc[0];prom=summary.iloc[1]
     with plt.rc_context({'font.family':'DejaVu Sans','font.size':14.3,'axes.labelsize':14.3,'xtick.labelsize':14.3,'ytick.labelsize':14.3,'pdf.fonttype':42,'svg.fonttype':'none'}):
-        fig,ax=plt.subplots(figsize=(11,8.5))
-        inverse=plotted.TCGA_BRCA_log2FC.mul(plotted.GSE66695_delta_beta).lt(0)
-        for mask,color,label in [(~inverse,'#B8BEC5','Other measured CpGs'),
-                                 (inverse,'#D55E00','Opposite Δβ / log₂FC directions')]:
-            part=plotted.loc[mask]
-            if len(part):
-                ax.scatter(part.TCGA_BRCA_log2FC,part.GSE66695_delta_beta,s=75 if mask.equals(inverse) else 55,
-                           color=color,marker='o',edgecolor='white',linewidth=.7,
-                           alpha=.95,label=f'{label} (n={len(part)})',zorder=3)
+        fig,ax=plt.subplots(figsize=(12.5,8.5))
+        handles,legend_labels=scatter_context(ax,plotted,base.parent/'data/candidate_genomic_annotation.tsv','TCGA_BRCA_log2FC','GSE66695_delta_beta',out)
         # Symmetric expression limits put the biological zero at the panel center.
         x_extent = float(plotted['TCGA_BRCA_log2FC'].abs().max()) * 1.15
         ax.set_xlim(-x_extent, x_extent)
         ax.margins(y=.18)
         ax.tick_params(direction='out', length=4, width=.8)
         ax.axvline(0,color='#aaaaaa',lw=1,zorder=0);ax.axhline(0,color='#aaaaaa',lw=1,zorder=0)
-        ax.set(xlabel='TCGA-BRCA expression log₂FC (tumor / normal)',ylabel='GSE66695 methylation Δβ (tumor − normal)')
+        ax.set(xlabel='TCGA-BRCA expression log₂FC (breast cancer / normal)',ylabel='GSE66695 methylation Δβ (breast cancer − normal)')
         ax.set_title('Breast cancer: TGCA-BRCA gene expression\nwith Δβ of 33 CpGs',fontsize=16.9,pad=12)
         ax.spines[['top','right']].set_visible(False)
-        handles,legend_labels=ax.get_legend_handles_labels()
-        fig.legend(handles[::-1],legend_labels[::-1],loc='lower center',bbox_to_anchor=(.53,.015),ncol=1,frameon=False,fontsize=11.7)
-        fig.tight_layout(rect=[0,.105,1,1],pad=.7)
-        # Explicit label positions spread the near-zero cluster across both sides.
-        labels=plotted.loc[plotted.TCGA_BRCA_log2FC.mul(plotted.GSE66695_delta_beta).lt(0),
-                           ['CpG_ID','expression_genes_used','TCGA_BRCA_log2FC','GSE66695_delta_beta']].copy()
-        upper=labels.loc[labels.TCGA_BRCA_log2FC.lt(0)]
-        for row in upper.itertuples(index=False):
-            below = row.CpG_ID in {'cg14947478','cg02623991'}
-            ax.annotate(row.CpG_ID+'\n'+row.expression_genes_used.replace(';',' / '),
-                        xy=(row.TCGA_BRCA_log2FC,row.GSE66695_delta_beta),
-                        xytext=(0,-10 if below else 10),textcoords='offset points',ha='center',va='top' if below else 'bottom',
-                        fontsize=11.05,zorder=5)
-        lower=labels.loc[labels.TCGA_BRCA_log2FC.gt(0)].sort_values(
-            ['GSE66695_delta_beta','TCGA_BRCA_log2FC'],ascending=[False,False])
-        positions = {
-            'cg03235603': (-.12, -.045, 'right'),
-            'cg27133038': (-.12, -.135, 'right'),
-            'cg24516399': (-.12, -.200, 'right'),
-            'cg21570818': (-.12, -.260, 'right'),
-            'cg25961292': (.24, -.045, 'left'),
-            'cg23237765': (.88, -.100, 'left'),
-            'cg20592707': (.73, -.156, 'left'),
-            'cg15350780': (.50, -.220, 'left'),
-            'cg15242225': (.50, -.306, 'left'),
-        }
-        for row in lower.itertuples(index=False):
-            label_x,label_y,alignment=positions[row.CpG_ID]
-            ax.annotate(row.CpG_ID+'\n'+row.expression_genes_used.replace(';',' / '),
-                        xy=(row.TCGA_BRCA_log2FC,row.GSE66695_delta_beta),
-                        xytext=(label_x,label_y),textcoords='data',
-                        ha=alignment,va='center',fontsize=11.05,zorder=5,
-                        arrowprops=dict(arrowstyle='->',color='#666666',lw=.8,
-                                        shrinkA=4,shrinkB=5,
-                                        relpos=(1 if alignment=='right' else 0,.5),
-                                        connectionstyle='arc3,rad=0'),
-                        bbox=dict(facecolor='white',edgecolor='none',pad=.4))
-        labels.to_csv(out/'data/displayed_CpG_gene_labels.tsv',sep='\t',index=False)
+        fig.legend(handles,legend_labels,loc='lower center',bbox_to_anchor=(.53,.008),ncol=3,frameon=False,fontsize=10.5,columnspacing=1.3,handletextpad=.5,labelspacing=.45)
+        fig.tight_layout(rect=[0,.105,1,1],pad=.65)
+        unobstructed_labels(fig,ax,plotted,'TCGA_BRCA_log2FC','GSE66695_delta_beta',out)
 
     save_publication(fig,out,'GSE66695_delta_beta_vs_TCGA_expression_log2FC')
     text=f'''# BC: cross-cohort methylation–expression comparison
@@ -148,7 +107,7 @@ The separate robust_followup analysis found negative within-tumor associations f
 
 ## Files
 
-- plots/GSE66695_delta_beta_vs_TCGA_expression_log2FC.pdf, .svg and 300-dpi .png: 33-point plot with expression log₂FC on X and methylation Δβ on Y, highlighting inverse-sign CpGs in orange and other measured CpGs in gray; inverse-quadrant labels use arrows to identify crowded points.
+- plots/GSE66695_delta_beta_vs_TCGA_expression_log2FC.pdf, .svg and 300-dpi .png: 33-point plot with expression log₂FC on X and methylation Δβ on Y, using distinct colors and symbols for promoter (TSS200/TSS1500), enhancer (legacy array Enhancer flag), gene body and overlapping contexts; other contexts are gray unless signs are opposite, and dark outlines mark opposite signs; inverse-quadrant labels use arrows to identify crowded points.
 - data/all_33_cross_cohort_CpGs.tsv: exactly one row per candidate, with gene-coverage and mixed-direction flags.
 - data/gene_level_cross_cohort_results.tsv: every annotated CpG–gene pair, limma log₂FC, raw p, genome-wide FDR and coefficient interval.
 - data/promoter_specific_comparison.tsv: correct promoter-linked targets.

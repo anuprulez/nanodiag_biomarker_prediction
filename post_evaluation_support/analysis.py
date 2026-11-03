@@ -539,6 +539,10 @@ def main(root=None):
     root=Path(root) if root else args.config.resolve().parent.parent
     config=OmegaConf.load(args.config.resolve());base=Path(config.p_base).resolve()
     disease='BC' if root.name=='breast_cancer_analysis' else 'AML';expected=33 if disease=='BC' else 17
+    if args.post_evaluation_analysis=='candidate-tables':
+        from .candidate_tables import run as candidate_tables
+        candidate_tables(base/'accumulated_results/post_evaluation', disease)
+        return
     if args.post_evaluation_analysis=='cross-cohort':
         run_cross_cohort(root,config,args.rscript,args.offline,args.refresh_expression)
         return

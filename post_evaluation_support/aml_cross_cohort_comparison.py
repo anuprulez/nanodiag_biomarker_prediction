@@ -7,6 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import pearsonr,spearmanr,binomtest
 from .publication import save_publication
+from .cpg_scatter_style import scatter_context,unobstructed_labels
 
 
 def geo_metadata(path):
@@ -98,47 +99,22 @@ def make_plot(frame,stats,out):
     f=frame.loc[frame.expression_log2FC.notna()].copy()
     with plt.rc_context({'font.family':'DejaVu Sans','font.size':14.3,'axes.labelsize':14.3,
                          'xtick.labelsize':14.3,'ytick.labelsize':14.3,'pdf.fonttype':42,'svg.fonttype':'none'}):
-        fig,ax=plt.subplots(figsize=(11,8.5))
-        inverse=f.expression_log2FC.mul(f.methylation_delta_beta).lt(0)
-        for mask,color,label in [(~inverse,'#B8BEC5','Other measured CpGs'),
-                                 (inverse,'#D55E00','Opposite Δβ / log₂FC directions')]:
-            part=f.loc[mask]
-            if len(part):
-                ax.scatter(part.expression_log2FC,part.methylation_delta_beta,s=75 if mask.equals(inverse) else 55,
-                           color=color,marker='o',edgecolor='white',linewidth=.7,
-                           alpha=.95,label=f'{label} (n={len(part)})',zorder=3)
+        fig,ax=plt.subplots(figsize=(12.5,8.5))
+        handles,legend_labels=scatter_context(ax,f,out.parents[1]/'data/candidate_genomic_annotation.tsv','expression_log2FC','methylation_delta_beta',out)
         extent=max(f.expression_log2FC.abs().max()*1.25,.5)
         ax.set_xlim(-extent,extent);ax.margins(y=.22)
         ax.axvline(0,color='#aaaaaa',lw=1,zorder=0);ax.axhline(0,color='#aaaaaa',lw=1,zorder=0)
+        y_span=float(f.methylation_delta_beta.max()-f.methylation_delta_beta.min())
+        ax.set_ylim(f.methylation_delta_beta.min()-.25*y_span,f.methylation_delta_beta.max()+.25*y_span)
         ax.set_xlabel('GSE15061 expression log₂FC (AML / control)')
         ax.set_ylabel('Methylation Δβ (AML − control)')
         ax.set_title('AML: GSE15061 gene expression\nwith Δβ of 17 CpGs',fontsize=16.9,pad=12)
         ax.tick_params(direction='out',length=4,width=.8)
         ax.spines[['top','right']].set_visible(False)
-        handles,legend_labels=ax.get_legend_handles_labels()
-        fig.legend(handles[::-1],legend_labels[::-1],loc='lower center',bbox_to_anchor=(.53,.015),ncol=1,frameon=False,fontsize=11.7)
-        fig.tight_layout(rect=[0,.105,1,1],pad=.7)
-        labels=f.loc[f.expression_log2FC.mul(f.methylation_delta_beta).lt(0)].copy()
-        # Curated positions preserve readable labels while arrowheads identify
-        # the tightly clustered true data coordinates.
-        positions={
-            'cg09233392':(-.45,.530), 'cg04046669':(-.45,.470),
-            'cg16108059':(.50,.430), 'cg23291534':(.50,.360),
-            'cg03323696':(-.45,.400), 'cg11637712':(.50,.240),
-            'cg19936032':(-1.20,.220), 'cg12892506':(-.45,.130),
-            'cg27527630':(.50,.140), 'cg26781466':(-1.20,.390),
-            'cg18990313':(-2.10,.260),
-        }
-        for row in labels.itertuples():
-            xx,yy=positions[row.CpG_ID]
-            alignment='left' if xx>0 else 'right'
-            ax.annotate(row.CpG_ID+'\n'+row.expression_genes_used.replace(';',' / '),
-                        xy=(row.expression_log2FC,row.methylation_delta_beta),
-                        xytext=(xx,yy),ha=alignment,va='center',fontsize=11.05,zorder=5,
-                        arrowprops=dict(arrowstyle='->',color='#666666',lw=.8,
-                                        shrinkA=4,shrinkB=5,relpos=(0 if xx>0 else 1,.5)),
-                        bbox=dict(facecolor='white',edgecolor='none',pad=.3))
-        labels[['CpG_ID','expression_genes_used','expression_log2FC','methylation_delta_beta']].to_csv(out/'data/displayed_CpG_gene_labels.tsv',sep='\t',index=False)
+        fig.legend(handles,legend_labels,loc='lower center',bbox_to_anchor=(.53,.008),ncol=3,frameon=False,fontsize=10.5,columnspacing=1.3,handletextpad=.5,labelspacing=.45)
+        fig.tight_layout(rect=[0,.105,1,1],pad=.65)
+        unobstructed_labels(fig,ax,f,'expression_log2FC','methylation_delta_beta',out)
+
     save_publication(fig,out,'AML_17_CpGs_methylation_vs_GSE15061_expression')
 
 
@@ -215,7 +191,7 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
 - Primary differential expression: limma empirical Bayes with trend, expression ~ group + center. The AML coefficient is adjusted log2FC versus non-leukemia. Full-rank design checked. Unadjusted group-only sensitivity is supplied. Gene-level 95% intervals, raw p-values and BH FDR across all tested genes are retained.
 - CpG mapping: existing GPL13534/hg19 legacy gene and transcript-context annotations, with unambiguous HGNC previous-symbol updates. No nearest-gene replacement or imputed expression is used. A point is the mean available annotated-gene log2FC; all gene-level results are supplied separately. This panel has {len(frame)} CpGs, {int(frame.expression_log2FC.notna().sum())} evaluable, unavailable: {missing}.
 - Methylation primary Y: the existing internal AML-minus-control delta beta: 62 GSE58477 AML samples minus 464 GSE50660 peripheral-blood controls. The values are preserved exactly from the fixed panel; external contrasts are sensitivity results only. Expression and methylation GSM overlap: {len(overlap)}.
-- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Inverse-sign CpGs are orange and other measured CpGs are gray; genomic-region categories are not shown. Only inverse-direction (top-left / bottom-right) points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
+- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Colors and symbols show promoter (TSS200/TSS1500), enhancer (legacy array Enhancer flag), gene body and overlapping contexts. Other contexts are gray unless signs are opposite; dark outlines mark opposite signs. Enhancer flags are not tissue-specific validation. Text placement checks all plotted points and previously placed labels. Only inverse-direction (top-left / bottom-right) points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
 
 ## Findings
 

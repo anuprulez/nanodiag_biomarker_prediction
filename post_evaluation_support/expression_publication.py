@@ -4,7 +4,7 @@ Adaptations of Liu et al., Bioscience Reports 2020 (PMC7263199). These plots
 use the selected CpGs, not the paper's genome-wide or multi-cancer analyses.
 """
 from pathlib import Path
-import argparse,json,hashlib
+import argparse,json,hashlib,shutil,os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -218,9 +218,9 @@ The paper's actual Figure 3 requires matched patient methylation/expression, Fig
 
 Methylation β values describe the original and external cohorts. Δβ uses the original cohort. Expression uses the existing TCGA-BRCA patient-blocked model for BC or GSE15061 center-adjusted model for AML. Gene effects are genome-wide moderated limma results from the existing workflow. AML expression is available for 16/17 CpGs; the unavailable site remains gray in effect heatmaps. All 17 are present in methylation and annotation figures. Multiple gene annotations can share a CpG and are not independent features.
 
-The existing main cross-cohort scatterplot has the requested two-line title with Δβ and omits Pearson/Spearman coefficients and their P values. Numerical statistics remain in saved tables. CpG labels remain restricted to inverse-sign quadrants. BC's requested title spelling TGCA-BRCA is retained; source metadata correctly identify TCGA-BRCA.
+The existing main cross-cohort scatterplot has the requested two-line title with Δβ and omits Pearson/Spearman coefficients and their P values. Numerical statistics remain in saved tables. CpG labels remain restricted to inverse-sign quadrants and avoid all plotted points. Colors and symbols indicate promoter, enhancer, gene body and overlapping contexts; dark outlines indicate inverse signs. CpGs outside those contexts are gray unless signs are inverse. Enhancer membership comes from the legacy array annotation, not tissue-specific enhancer validation. BC's requested title spelling TGCA-BRCA is retained; source metadata correctly identify TCGA-BRCA.
 
-Exports: vector PDF, editable SVG and 300-dpi PNG. The five-page candidate_methylation_expression_figures.pdf combines the updated main scatterplot with the four adapted figures. Data tables retain memberships, effect matrices and heatmap sample/CpG orders for review. External-label-based selection and study/cell-composition confounding remain relevant; these figures are exploratory.
+Exports: vector PDF, editable SVG and 300-dpi PNG. The five-page candidate_methylation_expression_figures.pdf combines the updated main scatterplot with the four adapted figures. Each of these five figures is also exported as an individual PDF directly in the parent methylation_expression folder. Data tables retain memberships, effect matrices and heatmap sample/CpG orders for review. External-label-based selection and study/cell-composition confounding remain relevant; these figures are exploratory.
 
 ## Recreate
 
@@ -254,13 +254,21 @@ python -m post_evaluation_support.expression_publication --out {source} --diseas
     for path in [main_pdf,*[out/'plots'/f'{stem}.pdf' for stem in stems]]:writer.append(str(path))
     with bundle.open('wb') as f:writer.write(f)
     writer.close();exports.append(bundle)
+    # Also expose the five figures individually at the requested analysis root.
+    individual_dir=source/'methylation_expression'
+    individual_exports=[]
+    for path in [main_pdf,*[out/'plots'/f'{stem}.pdf' for stem in stems]]:
+        target=individual_dir/path.name
+        shutil.copy2(path,target)
+        individual_exports.append(target)
+    exports.extend(individual_exports)
     inputs_list=[source/'data/candidate_genomic_annotation.tsv',
                  source/'methylation_expression/cross_cohort_comparison/data'/('all_33_cross_cohort_CpGs.tsv' if disease=='BC' else 'all_17_cross_cohort_CpGs.tsv'),
                  source/'methylation_expression/cross_cohort_comparison/data'/('gene_level_cross_cohort_results.tsv' if disease=='BC' else 'all_CpG_gene_expression_results.tsv'),
                  *[source/'data'/f'{cohort}_{kind}' for cohort in ['original','external'] for kind in ['candidate_beta.tsv.gz','patient_annotations.tsv']]]
     manifest=dict(status='complete',disease=disease,n_CpGs=len(ann),expression_CpGs=int(effects.expression_log2FC.notna().sum()),
                   reference='PMC7263199',scope='Candidate-panel adaptations; no matched-sample correlation, pan-cancer specificity or chromatin-accessibility claims',
-                  checks=checks,input_sha256={str(p):digest(p) for p in inputs_list},script_sha256=digest(Path(__file__)),outputs={str(p.relative_to(out)):digest(p) for p in exports})
+                  checks=checks,input_sha256={str(p):digest(p) for p in inputs_list},script_sha256=digest(Path(__file__)),outputs={os.path.relpath(p,out):digest(p) for p in exports})
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
     print(f'{name}: {len(exports)} publication exports -> {out}',flush=True)
     return exports

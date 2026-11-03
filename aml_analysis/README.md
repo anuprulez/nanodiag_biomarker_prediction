@@ -520,3 +520,7 @@ See [external methylation evaluation](evaluation/README.md) for reference-cohort
 preparation and [shared post-evaluation methods](../post_evaluation_support/README.md)
 for detailed modeling and statistical procedures. Generated `REPORT.md` and
 validation manifests describe the actual run.
+
+## Complete candidate CpG table
+
+All 17 AML CpGs, both cohort delta-beta values, genes, gene regions, island contexts and probe coordinates are exported under `accumulated_results/post_evaluation/data/AML_17_CpG_genomic_context.{tsv,csv,md,json}`. Run `python run_pipeline.py --stage post-evaluation --folder data_corr_0.33_knn_n_3000_n_neg_10000 --post-evaluation-analysis candidate-tables --offline`. See the project README section “Complete candidate CpG tables” for column definitions and cohort provenance.

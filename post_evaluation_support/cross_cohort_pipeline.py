@@ -9,8 +9,8 @@ HERE=Path(__file__).resolve().parent
 
 
 def add_arguments(parser):
-    parser.add_argument('--post-evaluation-analysis',choices=['all','cross-cohort'],default='all',
-                        help='Default: existing post-evaluation plus cross-cohort plots; cross-cohort: run only download-to-plot analyses')
+    parser.add_argument('--post-evaluation-analysis',choices=['all','cross-cohort','candidate-tables'],default='all',
+                        help='all: full post-evaluation; cross-cohort: download-to-plot analyses; candidate-tables: export complete saved CpG panels only')
     parser.add_argument('--rscript',help='Rscript executable with limma and statmod; defaults to RSCRIPT/PATH or local analysis environment')
     parser.add_argument('--refresh-expression',action='store_true',help='Rebuild expression matrices and refit limma from cached/downloaded sources')
 
@@ -113,6 +113,8 @@ def _run(root,config,rscript=None,offline=False,refresh=False):
                                   lambda:subprocess.run([executable,str(HERE/'aml_expression_limma.R'),str(target)],check=True),refresh)
         plot(out,hgnc_path=hgnc);validate(out)
         figure=target/'plots/AML_17_CpGs_methylation_vs_GSE15061_expression'
+    from .candidate_tables import run as candidate_tables
+    candidate_tables(out, disease)
     from .expression_publication import run as publication_figures
     extra_figures=publication_figures(out,disease)
     artifacts=[Path(str(figure)+'.'+ext) for ext in ['pdf','svg','png']]+extra_figures

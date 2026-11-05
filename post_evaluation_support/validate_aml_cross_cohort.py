@@ -31,15 +31,22 @@ def main(base):
     assert m.label.value_counts().to_dict()=={0:464,1:62}
     delta=betas.loc[m.label.eq(1)].mean()-betas.loc[m.label.eq(0)].mean()
     np.testing.assert_allclose(f.methylation_delta_beta,f.CpG_ID.map(delta),atol=1e-12,rtol=1e-12)
+    # Independently reconstruct filtered CpG aggregates from all saved gene pairs.
+    pairs=pd.read_csv(data/'all_CpG_gene_expression_results.tsv',sep='\t')
+    pairs=pairs.loc[pairs.model.eq('center_adjusted')]
+    selected=pairs.loc[(pairs.expression_p < 0.01)&(pairs.expression_FDR_genome < 0.01)&pairs.expression_log2FC.notna()].drop_duplicates(['CpG_ID','expression_gene'])
+    expected=selected.groupby('CpG_ID').expression_log2FC.mean()
+    np.testing.assert_allclose(f.expression_log2FC,f.CpG_ID.map(expected),equal_nan=True,atol=1e-12)
+    assert set(f.loc[f.expression_log2FC.notna(),'CpG_ID'])==set(expected.index)
     labels=pd.read_csv(data/'displayed_CpG_gene_labels.tsv',sep='\t')
-    assert len(labels)>0 and (labels.expression_log2FC*labels.methylation_delta_beta<0).all()
-    assert set(labels.CpG_ID)==set(f.loc[f.direction.eq('inverse'),'CpG_ID'])
-    assert f.expression_log2FC.notna().sum()==16
-    assert f.loc[f.expression_log2FC.isna(),'CpG_ID'].tolist()==['cg07911080']
+    assert len(labels)>0 and labels.CpG_ID.is_unique
+    assert set(labels.CpG_ID)==set(f.loc[f.expression_log2FC.notna(),'CpG_ID'])
+    assert f.expression_log2FC.notna().sum()==len(expected)
+    assert pd.isna(f.set_index('CpG_ID').loc['cg07911080','expression_log2FC'])
     assert not set(meta.sample_id)&set(m.index)
-    checks=dict(status='passed',genes_tested=len(x),unique_expression_samples=len(meta),frozen_CpGs=len(f),evaluable_CpGs=16,labels=len(labels),
+    checks=dict(status='passed',genes_tested=len(x),unique_expression_samples=len(meta),frozen_CpGs=len(f),evaluable_CpGs=len(expected),labels=len(labels),
                 checks=['Genome-wide limma coefficients match independent numpy OLS','Genome-wide BH FDR matches scipy','Gene coefficient confidence intervals contain point estimate',
-                        'Methylation contrasts reproduce 62 vs 464 raw cached sample means','Frozen CpG identities unchanged','All and only inverse-direction CpGs labeled',
+                        'Methylation contrasts reproduce 62 vs 464 raw cached sample means','Frozen CpG identities unchanged','All plotted CpGs labeled',
                         'DS-only unique biological samples','No methylation/expression GSM overlap'])
     (out/'validation.json').write_text(json.dumps(checks,indent=2))
     print(json.dumps(checks,indent=2))

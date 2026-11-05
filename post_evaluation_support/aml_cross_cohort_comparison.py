@@ -1,5 +1,6 @@
 """AML fixed-panel cross-cohort effect comparison with audited GEO expression data."""
 from pathlib import Path
+from types import SimpleNamespace
 import argparse,csv,gzip,hashlib,json,subprocess,textwrap
 from collections import defaultdict
 import numpy as np
@@ -7,6 +8,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from scipy.stats import pearsonr,spearmanr,binomtest
 from .publication import save_publication
+from .expression_filter import expression_selected
 from .cpg_scatter_style import scatter_context,unobstructed_labels
 
 
@@ -89,7 +91,7 @@ def summary(frame,x,y,label):
     f=frame.loc[np.isfinite(frame[[x,y]]).all(axis=1)]
     nz=f.loc[f[x].ne(0)&f[y].ne(0)];k=int(nz[x].mul(nz[y]).lt(0).sum())
     b=binomtest(k,len(nz),.5);ci=b.proportion_ci()
-    r=pearsonr(f[x],f[y]);s=spearmanr(f[x],f[y])
+    r=pearsonr(f[x],f[y]) if len(f)>1 else SimpleNamespace(statistic=np.nan,pvalue=np.nan);s=spearmanr(f[x],f[y]) if len(f)>1 else SimpleNamespace(statistic=np.nan,pvalue=np.nan)
     return dict(comparison=label,n_CpGs=len(f),inverse_direction=k,fraction_inverse=k/len(nz),fraction_CI_low=ci.low,fraction_CI_high=ci.high,
                 binomial_p_two_sided=b.pvalue,binomial_p_greater=binomtest(k,len(nz),.5,alternative='greater').pvalue,
                 pearson_r=r.statistic,pearson_p=r.pvalue,spearman_rho=s.statistic,spearman_p=s.pvalue)
@@ -108,12 +110,12 @@ def make_plot(frame,stats,out):
         ax.set_ylim(f.methylation_delta_beta.min()-.25*y_span,f.methylation_delta_beta.max()+.25*y_span)
         ax.set_xlabel('GSE15061 expression log₂FC (AML / control)')
         ax.set_ylabel('Methylation Δβ (AML − control)')
-        ax.set_title('AML: GSE15061 gene expression\nwith Δβ of 17 CpGs',fontsize=16.9,pad=12)
+        ax.set_title(f'AML: GSE15061 gene expression\nwith Δβ of {len(f)} CpGs | FDR < 0.01 and p < 0.01',fontsize=16.9,pad=12)
         ax.tick_params(direction='out',length=4,width=.8)
         ax.spines[['top','right']].set_visible(False)
         fig.legend(handles,legend_labels,loc='lower center',bbox_to_anchor=(.53,.008),ncol=3,frameon=False,fontsize=10.5,columnspacing=1.3,handletextpad=.5,labelspacing=.45)
         fig.tight_layout(rect=[0,.105,1,1],pad=.65)
-        unobstructed_labels(fig,ax,f,'expression_log2FC','methylation_delta_beta',out)
+        unobstructed_labels(fig,ax,f,'expression_log2FC','methylation_delta_beta',out,label_all=True)
 
     save_publication(fig,out,'AML_17_CpGs_methylation_vs_GSE15061_expression')
 
@@ -151,15 +153,19 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
                 pair=dict(CpG_ID=row.CpG_ID,annotated_gene=gene,expression_gene=mapped,model=model,promoter_linked=mapped in promoters,
                           methylation_delta_beta=c['methylation_delta_beta'],mapping_method='exact' if mapped==gene else 'unambiguous HGNC previous symbol')
                 if mapped in de.index:
-                    v=de.loc[mapped];measured[mapped]=v.logFC
-                    if mapped in promoters:promoter_effects[mapped]=v.logFC
-                    pair.update(status='measured',expression_log2FC=v.logFC,expression_p=v['P.Value'],expression_FDR_genome=v['adj.P.Val'],CI_low=v['CI.L'],CI_high=v['CI.R'])
+                    v=de.loc[mapped]
+                    passes=bool(expression_selected(v['P.Value'],v['adj.P.Val'])) and np.isfinite(v.logFC)
+                    if passes:
+                        measured[mapped]=v.logFC
+                        if mapped in promoters:promoter_effects[mapped]=v.logFC
+                    pair.update(status='measured',expression_selected=passes,expression_log2FC=v.logFC,expression_p=v['P.Value'],expression_FDR_genome=v['adj.P.Val'],CI_low=v['CI.L'],CI_high=v['CI.R'])
                 else:pair.update(status='not measured by unambiguous probes',expression_log2FC=np.nan)
                 pairs.append(pair)
             c[model+'_log2FC']=np.mean(list(measured.values())) if measured else np.nan
             c[model+'_genes_used']=';'.join(sorted(measured))
             c[model+'_promoter_log2FC']=np.mean(list(promoter_effects.values())) if promoter_effects else np.nan
-            c[model+'_all_genes_measured']=len(measured)==len({canonical(g) for g in genes})
+            c[model+'_all_genes_measured']=all(canonical(g) in de.index for g in genes)
+            c[model+'_all_genes_pass_expression_filter']=len(measured)==len({canonical(g) for g in genes})
         rows.append(c)
     frame=pd.DataFrame(rows)
     frame['expression_log2FC']=frame.center_adjusted_log2FC
@@ -168,7 +174,8 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
     frame['plot_display_class']=frame.genomic_region_class.replace({'Other / unannotated':'Unannotated in plot'})
     frame.loc[frame.expression_log2FC.lt(0)&frame.methylation_delta_beta.lt(0),'plot_display_class']='Unannotated in plot'
     frame.to_csv(out/'data/all_17_cross_cohort_CpGs.tsv',sep='\t',index=False)
-    pairs=pd.DataFrame(pairs);pairs.to_csv(out/'data/all_CpG_gene_expression_results.tsv',sep='\t',index=False)
+    pairs=pd.DataFrame(pairs);pairs['expression_selected']=pairs.expression_selected.fillna(False);pairs.to_csv(out/'data/all_CpG_gene_expression_results.tsv',sep='\t',index=False)
+    pairs.loc[pairs.model.eq('center_adjusted')&pairs.expression_selected].to_csv(out/'data/selected_gene_expression_results.tsv',sep='\t',index=False)
     result=[summary(frame,'expression_log2FC','methylation_delta_beta','Primary: original methylation vs center-adjusted GSE15061 expression'),
             summary(frame,'unadjusted_log2FC','methylation_delta_beta','Sensitivity: unadjusted GSE15061 expression'),
             summary(frame,'expression_log2FC','external_methylation_delta_beta','Sensitivity: external GSE62298 minus GSE40279 methylation'),
@@ -179,7 +186,7 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
     methyl_meta=pd.read_csv(base/'data/original_patient_annotations.tsv',sep='\t')
     overlap=set(meta.sample_id)&set(methyl_meta.sample_id);assert not overlap
     s=result[0];missing=frame.loc[frame.expression_log2FC.isna(),'CpG_ID'].tolist()
-    inverse=pairs.loc[pairs.model.eq('center_adjusted')&pairs.expression_log2FC.mul(pairs.methylation_delta_beta).lt(0)].sort_values('expression_FDR_genome')
+    inverse=pairs.loc[pairs.model.eq('center_adjusted')&pairs.expression_selected&pairs.expression_log2FC.mul(pairs.methylation_delta_beta).lt(0)].sort_values('expression_FDR_genome')
     inverse.to_csv(out/'data/inverse_direction_gene_pairs.tsv',sep='\t',index=False)
     report=f'''# AML: cross-cohort comparison of 17 fixed CpGs
 
@@ -189,16 +196,15 @@ def main(base,rscript=None,prepare=False,hgnc_path=None):
 - The series has 870 GEO records but only 435 biological specimens, each represented as DS and DQN3. Only DS records are analyzed; DQN3 is a bounded rank-normalized signal and must not be treated as log2 expression. Duplicate records are never independent patients.
 - DS signals are log2 transformed and quantile normalized across the 271 selected specimens. Nonpositive/nonfinite probes, AFFX controls, missing mappings, and probes mapping ambiguously to multiple distinct genes are excluded. Multiple unambiguous probes are averaged on the log2 scale per gene before fitting. Mapping and sample-selection audits are supplied.
 - Primary differential expression: limma empirical Bayes with trend, expression ~ group + center. The AML coefficient is adjusted log2FC versus non-leukemia. Full-rank design checked. Unadjusted group-only sensitivity is supplied. Gene-level 95% intervals, raw p-values and BH FDR across all tested genes are retained.
-- CpG mapping: existing GPL13534/hg19 legacy gene and transcript-context annotations, with unambiguous HGNC previous-symbol updates. No nearest-gene replacement or imputed expression is used. A point is the mean available annotated-gene log2FC; all gene-level results are supplied separately. This panel has {len(frame)} CpGs, {int(frame.expression_log2FC.notna().sum())} evaluable, unavailable: {missing}.
+- CpG mapping: existing GPL13534/hg19 legacy gene and transcript-context annotations, with unambiguous HGNC previous-symbol updates. No nearest-gene replacement or imputed expression is used. Expression genes must pass raw p < 0.01 AND genome-wide BH FDR < 0.01; FDR is not recalculated on the candidate panel. A point is the mean qualifying annotated-gene log2FC; all gene-level results are supplied separately. This panel has {len(frame)} CpGs, {int(frame.expression_log2FC.notna().sum())} retained after filtering; omitted (unmeasured or fails thresholds): {missing}.
 - Methylation primary Y: the existing internal AML-minus-control delta beta: 62 GSE58477 AML samples minus 464 GSE50660 peripheral-blood controls. The values are preserved exactly from the fixed panel; external contrasts are sensitivity results only. Expression and methylation GSM overlap: {len(overlap)}.
-- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Colors and symbols show promoter (TSS200/TSS1500), enhancer (legacy array Enhancer flag), gene body and overlapping contexts. Other contexts are gray unless signs are opposite; dark outlines mark opposite signs. Enhancer flags are not tissue-specific validation. Text placement checks all plotted points and previously placed labels. Only inverse-direction (top-left / bottom-right) points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
+- X = expression log2FC, Y = methylation delta beta; symmetric X limits center zero. Colors and symbols show promoter (TSS200/TSS1500), enhancer (legacy array Enhancer flag), gene body and overlapping contexts. Other contexts are gray unless signs are opposite; dark outlines mark opposite signs. Enhancer flags are not tissue-specific validation. Text placement checks all plotted points and previously placed labels. All plotted points receive CpG and gene labels, with arrows anchored to their actual coordinates. No explanatory footer.
 
 ## Findings
 
 - Opposite signs: **{s['inverse_direction']}/{s['n_CpGs']} ({s['fraction_inverse']:.1%})**, exact 95% fraction interval {s['fraction_CI_low']:.1%}–{s['fraction_CI_high']:.1%}; two-sided binomial p={s['binomial_p_two_sided']:.4g}, one-sided p for excess above 50%={s['binomial_p_greater']:.4g}.
 - Pearson r={s['pearson_r']:.3f}, p={s['pearson_p']:.4g}; Spearman rho={s['spearman_rho']:.3f}, p={s['spearman_p']:.4g}. See summary_statistics.tsv for promoter-specific and sensitivity results.
-- Of the inverse-direction gene pairs, HTRA4, GCNT2, WIPF3 and RIPOR2 (legacy FAM65B) have expression FDR < 0.05. HTRA4 and RIPOR2 are promoter-associated in the legacy CpG annotation; WIPF3 is body-associated and GCNT2 carries exon/UTR context. These are exploratory priorities, not validated regulatory links. WT1 has a large positive log2FC with positive methylation delta beta and contributes to the positive cross-feature Pearson trend; it is not labeled because it is outside the inverse quadrants.
-- The center adjustment changes the inverse count from 6/16 (unadjusted) to 11/16 (adjusted). Thus, direction prioritization is sensitive to center composition; it should not be presented as robust validation. All four centers contain both comparison groups, but their group proportions differ strongly.
+- Passing inverse-direction genes: {', '.join(sorted(inverse.expression_gene.unique()))}. These are exploratory priorities, not validated regulatory links. Sensitivity models apply the same thresholds separately.
 - The plot is across CpG features, not a pooled patient-level methylation-expression correlation. No sample-wise correlation can be estimated by matching unrelated patients across these cohorts.
 - Candidate signs and differential-expression significance are separate. Inverse promoter signs are consistent with a silencing hypothesis; inverse body signs do not establish promoter regulation. Positive gene-body associations are also biologically plausible. Legacy annotations alone do not establish active regulatory targets.
 
@@ -220,7 +226,7 @@ See all_870_records_audit, sample metadata, probe-gene mapping, full normalized 
     manifest=dict(analysis='Cross-cohort disease effect comparison; not patient-level correlation',expression='GSE15061 DS only; AML202 vs non-leukemia69; center-adjusted limma',
                   methylation='GSE58477 AML62 minus GSE50660 controls464; inherited disease-study confounding',sources=source_urls,
                   annotation_download='GPL570 platform table extracted completely from start of gzip family stream; unused sample records and remaining stream not retained',
-                  fixed_CpGs=sorted(frame.CpG_ID),sample_overlap=sorted(overlap),unavailable_CpGs=missing,
+                  expression_filter=dict(raw_p_lt=0.01,genome_wide_BH_FDR_lt=0.01),fixed_CpGs=sorted(frame.CpG_ID),sample_overlap=sorted(overlap),unavailable_CpGs=missing,
                   hashes={str(p):hashlib.file_digest(p.open('rb'),'sha256').hexdigest() for p in inputs},statistics=result)
     (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
     print(pd.DataFrame(result).to_string(index=False))

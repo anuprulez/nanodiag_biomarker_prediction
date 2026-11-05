@@ -41,12 +41,12 @@ def scatter_context(ax,frame,annotation_path,x,y,out):
     return handles,labels
 
 
-def unobstructed_labels(fig,ax,frame,x,y,out):
+def unobstructed_labels(fig,ax,frame,x,y,out,label_all=False):
     """Greedy pixel-space layout, checking text against all points and labels."""
     fig.canvas.draw();renderer=fig.canvas.get_renderer()
     coordinates=ax.transData.transform(frame[[x,y]].to_numpy(float))
     point_boxes=[Bbox.from_bounds(px-9,py-9,18,18) for px,py in coordinates]
-    selected=frame.loc[frame[x].mul(frame[y]).lt(0)].copy()
+    selected=frame.copy() if label_all else frame.loc[frame[x].mul(frame[y]).lt(0)].copy()
     boxes=[];placements=[]
     # Position the widest labels first so narrow labels can fill smaller gaps.
     selected['text']=selected.CpG_ID+'\n'+selected.expression_genes_used.fillna('').str.replace(';',' / ',regex=False)

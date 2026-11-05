@@ -36,12 +36,18 @@ def main(out):
     ometa=pd.read_csv(out/'data/original_patient_annotations.tsv',sep='\t').set_index('sample_id').loc[betas.index]
     delta=betas.loc[ometa.label.eq(1)].mean()-betas.loc[ometa.label.eq(0)].mean()
     np.testing.assert_allclose(plotted.GSE66695_delta_beta,plotted.CpG_ID.map(delta),atol=1e-12)
+    # Independently reconstruct filtered CpG aggregates from all saved gene pairs.
+    pairs=pd.read_csv(base/'cross_cohort_comparison/data'/'gene_level_cross_cohort_results.tsv',sep='\t')
+    selected=pairs.loc[(pairs.expression_p < 0.01)&(pairs.expression_FDR_genome < 0.01)&pairs.logFC.notna()].drop_duplicates(['CpG_ID','expression_gene'])
+    expected=selected.groupby('CpG_ID').logFC.mean()
+    np.testing.assert_allclose(plotted.TCGA_BRCA_log2FC,plotted.CpG_ID.map(expected),equal_nan=True,atol=1e-12)
+    assert set(plotted.loc[plotted.TCGA_BRCA_log2FC.notna(),'CpG_ID'])==set(expected.index)
     labels=pd.read_csv(base/'cross_cohort_comparison/data/displayed_CpG_gene_labels.tsv',sep='\t')
-    assert (labels.GSE66695_delta_beta*labels.TCGA_BRCA_log2FC<0).all()
-    assert set(labels.CpG_ID)==set(plotted.loc[plotted.direction.eq('inverse'),'CpG_ID'])
+    assert labels.CpG_ID.is_unique
+    assert set(labels.CpG_ID)==set(plotted.loc[plotted.TCGA_BRCA_log2FC.notna(),'CpG_ID'])
     result=dict(status='passed',fixed_CpGs=33,labels=len(labels),expression_samples=n,blocked_genes=len(blocked),
                 checks=['Genome-wide patient-blocked GLS matches independent numpy calculation','Genome-wide BH FDR matches scipy',
-                        'Coefficient intervals contain point estimates','Frozen CpGs and original sample-level methylation contrasts match','Only inverse-sign candidates labeled'])
+                        'Coefficient intervals contain point estimates','Frozen CpGs and original sample-level methylation contrasts match','All plotted candidates labeled'])
     (base/'cross_cohort_comparison/validation.json').write_text(json.dumps(result,indent=2))
     print(json.dumps(result,indent=2),flush=True)
     return result

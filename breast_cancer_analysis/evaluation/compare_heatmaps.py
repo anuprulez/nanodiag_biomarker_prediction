@@ -176,7 +176,7 @@ def compare_heatmaps(folders, output, models=None):
             axes[0].set_ylabel('Preprocessing parameters')
             fig.colorbar(image, ax=axes, label='Accuracy', shrink=.75, ticks=np.linspace(0,1,6))
             cohort = 'AML' if ROOT.name=='aml_analysis' else 'Breast Cancer'
-            fig.suptitle(f'{cohort}: Model accuracy proprocessing configurations', fontsize=18, fontweight='normal')
+            fig.suptitle(f'{cohort}: Model accuracy across data preprocessing configurations', fontsize=18, fontweight='normal')
             for ext in ('pdf', 'svg', 'png'):
                 fig.savefig(output/f'validation_test_accuracy_by_preprocessing.{ext}', dpi=300, facecolor='white')
         finally:

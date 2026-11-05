@@ -1406,7 +1406,7 @@ def plot_cpg_overlap_venn(memberships, sources, plots, dpi=200):
             ax.set_yticks(range(len(ordered)), [' & '.join(names) for names in ordered], fontsize=9)
             ax.set_xlabel('Unique CpGs in exactly these runs')
         common = sum(len(names) == n_runs for names in memberships.values())
-        ax.set_title(f'PNA likely-positive test CpG overlap across {n_runs} runs\n'
+        ax.set_title(f'Breast cancer: PNA likely-positive test CpG overlap across {n_runs} runs\n'
                      f'{len(memberships):,} unique CpGs; {common:,} shared by all runs',
                      fontsize=16, pad=20)
         fig.tight_layout()

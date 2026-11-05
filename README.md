@@ -303,3 +303,20 @@ validity.
 
 Use the disease READMEs and generated reports/manifests for exact sample handling,
 coverage, source hashes, statistical assumptions and run-specific results.
+
+## Complete candidate CpG tables
+
+`post_evaluation_support/candidate_tables.py` exports exhaustive tables for all 17 AML and 33 BC frozen candidate CpGs. No CpGs are removed for missing expression or annotation, and multi-gene sites remain one row per CpG. Exports are automatically refreshed by the `all` and `cross-cohort` post-evaluation analyses. To regenerate only these tables from existing saved inputs, run from the project directory containing the disease folders:
+
+```bash
+python aml_analysis/run_pipeline.py --stage post-evaluation --folder data_corr_0.33_knn_n_3000_n_neg_10000 --post-evaluation-analysis candidate-tables --offline
+python breast_cancer_analysis/run_pipeline.py --stage post-evaluation --folder data_corr_0.33_knn_n_3000_n_neg_10000 --post-evaluation-analysis candidate-tables --offline
+```
+
+Outputs are in each dataset's `accumulated_results/post_evaluation/data/`: `AML_17_CpG_genomic_context.{tsv,csv,md,json}` or `BC_33_CpG_genomic_context.{tsv,csv,md,json}`. CSV and TSV retain full numeric precision; Markdown displays six decimal places. JSON records input hashes and source columns. These exports require existing `fixed_candidate_panel.tsv` and `candidate_genomic_annotation.tsv`; missing or mismatched inputs fail explicitly.
+
+Columns: `CpG_site`, `Gene`, `Delta_beta_external`, `Delta_beta_original`, `Gene_locations`, `Island_locations`, `Chromosome`, and `CpG_coordinate_MAPINFO`. CSV/TSV additionally preserve `Gene_annotation_raw` and `Gene_locations_raw`, including repeated transcript entries. Display columns deduplicate semicolon-separated genes/regions without discarding unique memberships; their list positions should not be interpreted as gene-region pairs. Coordinates are CpG probe coordinates copied from the legacy GPL13534 annotation, not gene boundaries or newly mapped positions.
+
+Both delta-beta columns mean disease mean beta minus healthy/control mean beta, on the beta scale (positive = hypermethylated). Original AML values use the original cohort; external AML values compare GSE62298 AML with GSE40279 healthy controls. Original BC values use GSE66695; external BC values compare GSE226569 BC with GSE101961 controls. External cases and controls come from separate studies, so these differences can include study effects.
+
+`Gene_locations` retains all annotated gene-relative regions (TSS1500, TSS200, 5'UTR, 1stExon, Body, 3'UTR as available). Missing genes/regions are labeled `Unannotated`; missing island context is labeled `Unspecified / open sea`, without claiming that a blank annotation proves open-sea membership. Gene symbols are the original annotation symbols. No expression filtering, new candidate selection, enrichment testing, or gene-symbol remapping is performed.

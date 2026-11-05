@@ -158,6 +158,27 @@ prepares matrices, fits limma, maps genes to CpGs, calculates direction concorda
 and correlations, validates results, and exports PDF, editable SVG and 300-dpi PNG.
 No manual download or R command is required between these steps.
 
+### Methylation/expression publication figures
+
+The post-evaluation stage also creates candidate-panel adaptations of Figures 2,
+3, 4B/C and 6 from [Liu et al., 2020](https://pmc.ncbi.nlm.nih.gov/articles/PMC7263199/)
+under `<dataset>/accumulated_results/post_evaluation/methylation_expression/publication_figures/`.
+The existing cross-cohort scatterplot omits correlation coefficients and their
+P values and uses the requested two-line title with Δβ.
+
+The additional plots show genomic context, disease-effect heatmaps, original and
+external methylation heatmaps, and candidate-locus annotations. These are adapted
+to the saved data: Figure 3 is **not** matched-patient cis/trans correlation,
+Figure 4C shows the external cohort **rather than other cancer types**, and
+Figure 6 shows annotations/effects **without ATAC-seq or ChIP-seq signal**.
+See the generated `publication_figures/README.md` for methods and limitations.
+AML retains all 17 CpGs in methylation/annotation plots and marks unavailable
+expression explicitly (16/17 evaluable). Outputs include PDF, editable SVG,
+300-dpi PNG, source tables, clustering orders and a manifest.
+
+Run these with the standard stage, or use `--post-evaluation-analysis cross-cohort`
+to avoid rerunning patient classifiers. Existing source downloads are reused.
+
 ### NIAPU rankings comparison and UMAP
 
 ```bash
@@ -475,3 +496,7 @@ See [external methylation evaluation](evaluation/README.md) for reference-cohort
 preparation and [shared post-evaluation methods](../post_evaluation_support/README.md)
 for detailed modeling and statistical procedures. Generated `REPORT.md` and
 validation manifests describe the actual run.
+
+## Complete candidate CpG table
+
+All 33 BC CpGs, both cohort delta-beta values, genes, gene regions, island contexts and probe coordinates are exported under `accumulated_results/post_evaluation/data/BC_33_CpG_genomic_context.{tsv,csv,md,json}`. Run `python run_pipeline.py --stage post-evaluation --folder data_corr_0.33_knn_n_3000_n_neg_10000 --post-evaluation-analysis candidate-tables --offline`. See the project README section “Complete candidate CpG tables” for column definitions and cohort provenance.

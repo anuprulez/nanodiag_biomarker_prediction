@@ -1,0 +1,17 @@
+name: nanodiag-cross-cohort
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python>=3.11
+  - numpy
+  - pandas>=2
+  - scipy>=1.11
+  - matplotlib
+  - pypdf>=5
+  - scikit-learn
+  - requests
+  - omegaconf
+  - r-base
+  - r-statmod
+  - bioconductor-limma

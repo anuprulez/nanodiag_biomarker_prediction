@@ -12,8 +12,8 @@ from matplotlib.ticker import MaxNLocator, MultipleLocator
 import pandas as pd
 
 MODELS = ('GCN', 'GATv2', 'GraphSAGE', 'GraphTransformer', 'PNA')
-SERIES = (('tr_acc', 'Training accuracy', '#0072B2'),
-          ('val_acc', 'Validation accuracy', '#D55E00'))
+SERIES = (('tr_acc', 'Training accuracy (mean ± SD)', '#0072B2'),
+          ('val_acc', 'Validation accuracy (mean ± SD)', '#D55E00'))
 
 
 def plot_accuracy_composite(folder, models=None, dpi=200):
@@ -50,15 +50,20 @@ def plot_accuracy_composite(folder, models=None, dpi=200):
         'svg.fonttype': 'none', 'axes.grid': False,
     }
 
+    legend_entries = {model: [] for model in selected}
+
     def draw(ax, model, panel=None):
+        legend_entries[model] = []
         for frame, label, color in tables[model]:
             epochs = frame['epoch'].to_numpy()
             mean = frame['mean'].to_numpy()
             std = frame['std'].to_numpy()
-            ax.plot(epochs, mean, label=label, color=color, linewidth=1.5,
+            # Combine the mean line and its SD band into one legend entry.
+            line, = ax.plot(epochs, mean, color=color, linewidth=1.5,
                     linestyle='-', zorder=3)
-            ax.fill_between(epochs, mean-std, mean+std, alpha=.18,
+            band = ax.fill_between(epochs, mean-std, mean+std, alpha=.22,
                             color=color, linewidth=0, zorder=2)
+            legend_entries[model].append(((band, line), label))
         ax.set_title(f'{panel}. {model}' if panel is not None else model,
                      pad=8, loc='center', fontweight='normal')
         ax.set(xlim=(0, last_epoch), ylim=(0, 1.02))
@@ -67,22 +72,38 @@ def plot_accuracy_composite(folder, models=None, dpi=200):
         ax.tick_params(direction='out', length=3, width=.7)
         ax.grid(axis='y', color='#E5E5E5', linewidth=.5, zorder=0)
 
+    def draw_sd(ax, model):
+        for frame, _, color in tables[model]:
+            ax.plot(frame['epoch'], frame['std'], color=color, linewidth=1)
+        # Shared across models and cohorts for direct SD comparison.
+        ax.set_ylim(0, .06)
+        ax.set_ylabel('SD', fontsize=8, labelpad=3)
+        ax.yaxis.set_major_locator(MultipleLocator(.03))
+        ax.xaxis.set_major_locator(MaxNLocator(nbins=4, integer=True, min_n_ticks=3))
+        ax.tick_params(labelsize=7, direction='out', length=2, width=.6)
+        ax.grid(axis='y', color='#E5E5E5', linewidth=.5)
+
     resolution = max(600, dpi)
     with mpl.rc_context(style):
-        fig = plt.figure(figsize=(7.2, 4.8))
+        fig = plt.figure(figsize=(8.4, 6.6))
+        fig.suptitle('AML: Training and validation accuracy across epochs', fontsize=12, y=.985)
         # Center the two lower panels instead of leaving an empty sixth panel.
         grid = fig.add_gridspec(2, 6, left=.09, right=.985, bottom=.19,
-                               top=.92, wspace=1.4, hspace=.65)
+                               top=.90, wspace=1.6, hspace=.55)
         positions = ((0, 0), (0, 2), (0, 4), (1, 1), (1, 3))
         try:
             axes = []
             for index, (model, (row, col)) in enumerate(zip(selected, positions)):
-                ax = fig.add_subplot(grid[row, col:col+2])
+                cell = grid[row, col:col+2].subgridspec(2, 1, height_ratios=(3, 1), hspace=.12)
+                ax = fig.add_subplot(cell[0])
                 draw(ax, model, chr(65+index))
+                ax.tick_params(labelbottom=False)
+                sd_ax = fig.add_subplot(cell[1], sharex=ax)
+                draw_sd(sd_ax, model)
                 axes.append(ax)
             fig.supxlabel('Epoch', x=.53, y=.105, fontsize=10)
             fig.supylabel('Accuracy', x=.012, y=.56, fontsize=10)
-            handles, labels = axes[0].get_legend_handles_labels()
+            handles, labels = zip(*legend_entries[selected[0]])
             fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(.53, .012),
                        ncol=2, frameon=False, handlelength=2.8, columnspacing=2)
             for extension in ('pdf', 'svg', 'png'):
@@ -91,12 +112,16 @@ def plot_accuracy_composite(folder, models=None, dpi=200):
         finally:
             plt.close(fig)
         for model in selected:
-            fig, ax = plt.subplots(figsize=(3.5, 2.8))
+            fig, (ax, sd_ax) = plt.subplots(2, 1, figsize=(4.5, 4.0), sharex=True,
+                                                gridspec_kw={'height_ratios': (3, 1), 'hspace': .15})
             try:
                 draw(ax, model)
-                ax.set(xlabel='Epoch', ylabel='Accuracy')
-                ax.legend(loc='lower right', frameon=False, fontsize=8)
-                fig.tight_layout(pad=.8)
+                ax.set_ylabel('Accuracy')
+                draw_sd(sd_ax, model)
+                sd_ax.set_xlabel('Epoch')
+                handles, labels = zip(*legend_entries[model])
+                ax.legend(handles, labels, loc='lower right', frameon=False, fontsize=7)
+                fig.subplots_adjust(left=.16, right=.97, bottom=.13, top=.91)
                 fig.savefig(plots / f'{model}_accuracy_mean_std.pdf',
                             dpi=resolution, bbox_inches='tight', facecolor='white')
             finally:
@@ -111,12 +136,14 @@ def plot_accuracy_composite(folder, models=None, dpi=200):
         'Solid blue lines show mean training accuracy; solid vermilion lines show mean '
         'validation accuracy. Shaded regions represent ±1 population standard deviation '
         'across available archived runs at each epoch, not confidence intervals. '
+        'The lower panel beneath each accuracy plot shows training and validation SD '
+        'directly, using the same colors and a common SD axis range of 0–0.06 across models and cohorts. '
         'Runs contribute until their recorded history ends; no extrapolation is applied. '
         'Test accuracy is omitted. Axes use common scales. Run counts per epoch: '
         + '; '.join(counts) + '.\n'
     )
-    (plots / 'GNN_accuracy_mean_std_composite_caption.txt').write_text(caption)
-    return plots / 'GNN_accuracy_mean_std_composite.pdf'
+    (plots / f'GNN_accuracy_mean_std_composite_caption.txt').write_text(caption)
+    return plots / f'GNN_accuracy_mean_std_composite.pdf'
 
 
 def main():

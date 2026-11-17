@@ -152,7 +152,7 @@ def external_distribution_figure(panel, matrix, metadata, disease, group_label='
                         label=f'Healthy · {healthy_studies} · n={labels.eq(0).sum()}'),
                   Patch(facecolor=matplotlib.colors.to_rgba(colors[1], .3), edgecolor=colors[1],
                         label=f'{disease_name} · {disease_studies} · n={labels.eq(1).sum()}')]
-        title = ('Breast cancer: External cohort methylation distribution | 33 candiate CpGs'
+        title = ('Breast cancer: External cohort methylation distribution | 33 candidate CpGs'
                  if is_bc_candidates else
                  'AML: External cohort methylation distribution | 17 candidate CpGs'
                  if is_aml_candidates else

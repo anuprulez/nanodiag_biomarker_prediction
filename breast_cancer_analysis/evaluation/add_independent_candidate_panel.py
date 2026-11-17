@@ -1,0 +1,108 @@
+#!/usr/bin/env python3
+"""Add GSE52865 transfer results as C and within-cohort CV accuracy as D of the 33-CpG comparison."""
+from pathlib import Path
+import hashlib
+import json
+import shutil
+import sys
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.colors import LinearSegmentedColormap
+import numpy as np
+import pandas as pd
+from sklearn.metrics import confusion_matrix
+from pypdf import PdfReader, PdfWriter
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT.parent))
+from post_evaluation_support.publication import STYLE, save_publication
+from post_evaluation_support.candidate_comparison import MODELS
+
+
+def main():
+    parent = ROOT/'data_corr_0.33_knn_n_3000_n_neg_10000/accumulated_results/post_evaluation'
+    out = ROOT/'evaluation/independent_classification/GSE52865'
+    original_path = parent/'data/classifier_patient_predictions.tsv'
+    independent_path = parent/'independent_feature_verification/data/patient_predictions.tsv'
+    previous = pd.read_csv(original_path, sep='\t')
+    independent = pd.read_csv(independent_path, sep='\t')
+    assert set(independent.series) == {'GSE52865'}
+    independent['cohort'] = 'independent_GSE52865'
+    cv_predictions = pd.read_csv(out/'cross_validation/out_of_fold_predictions.tsv', sep='\t')
+    predictions = pd.concat([previous, independent, cv_predictions], ignore_index=True)
+    predictions = predictions.loc[predictions.panel.eq('candidates_only') & predictions.model.isin([m for m,_ in MODELS])]
+    cohorts = [('original_patient_CV', 'A  Original cohort: five-fold cross-validation', '#0072B2'),
+               ('external_transfer_selected_cohort', 'B  Train on original cohort, predict on external cohort', '#D55E00'),
+               ('independent_GSE52865', 'C  Train on original cohort, predict on independent GSE52865', '#009E73'),
+               ('GSE52865_patient_CV', 'D  Independent GSE52865: five-fold cross-validation', '#7B2CBF')]
+    records = []
+    with plt.rc_context(STYLE):
+        fig = plt.figure(figsize=(17,19))
+        grid = fig.add_gridspec(4,len(MODELS),height_ratios=[1,1,1,1])
+        axes = np.array([[fig.add_subplot(grid[row,col]) for col in range(len(MODELS))] for row in range(4)])
+        fig.subplots_adjust(left=.085,right=.90,bottom=.065,top=.90,wspace=.90,hspace=.95)
+        for row,(cohort,heading,color) in enumerate(cohorts):
+            cmap = LinearSegmentedColormap.from_list(cohort,['#ffffff',color])
+            for col,(model,label) in enumerate(MODELS):
+                frame = predictions.loc[predictions.model.eq(model) & predictions.cohort.eq(cohort)]
+                assert len(frame) and not frame.sample_id.duplicated().any()
+                assert np.array_equal(frame.predicted_label_at_0_5, (frame.probability >= .5).astype(int))
+                if row >= 2:
+                    assert len(frame) == 57 and frame.label.sum() == 40
+                matrix = confusion_matrix(frame.label,frame.predicted_label_at_0_5,labels=[0,1])
+                fractions = matrix/matrix.sum(axis=1,keepdims=True)
+                ax = axes[row,col]
+                image = ax.imshow(fractions,cmap=cmap,vmin=0,vmax=1)
+                for i in range(2):
+                    for j in range(2):
+                        ax.text(j,i,f'{matrix[i,j]:,}\n({fractions[i,j]:.1%})',ha='center',va='center',fontsize=15.5,
+                                color='white' if fractions[i,j]>.6 else '#202020')
+                        records.append(dict(panel='ABCD'[row],cohort=cohort,model=model,observed=i,predicted=j,count=int(matrix[i,j]),within_class_fraction=float(fractions[i,j])))
+                labels = ['Normal' if row >= 2 else 'Healthy','Breast cancer']
+                ax.set_xticks([0,1],labels);ax.set_yticks([0,1],labels)
+                ax.set_xlabel('Predicted class',fontsize=17,labelpad=8)
+                ax.set_ylabel('Ground truth',fontsize=17,labelpad=8)
+                ax.set_title(label,fontsize=20,pad=13)
+                ax.tick_params(length=0,labelsize=14,pad=6)
+                ax.tick_params(axis='x',labelrotation=25)
+                for spine in ax.spines.values():spine.set_visible(False)
+            fig.canvas.draw()
+            box = axes[row,-1].get_position()
+            fig.text(.50,box.y1+.048,heading,ha='center',fontsize=20)
+            color_axis = fig.add_axes([.935,box.y0,.012,box.height])
+            colorbar = fig.colorbar(image,cax=color_axis,ticks=[0,.5,1])
+            colorbar.ax.set_yticklabels(['0%','50%','100%'])
+            colorbar.set_label('Within-class percentage',fontsize=15,labelpad=10)
+            colorbar.ax.tick_params(labelsize=13,length=3)
+            colorbar.outline.set_visible(False)
+        fig.suptitle('Breast cancer: 33 candidate CpGs',fontsize=25,y=.98)
+        save_publication(fig,out,'candidate_cohort_confusion_matrices')
+    # Preserve the previous two-panel figure before updating its existing location.
+    backup = out/'previous_AB_figure'
+    backup.mkdir(parents=True,exist_ok=True)
+    stem = 'candidate_cohort_confusion_matrices'
+    for ext in ['pdf','svg','png']:
+        target = parent/'plots'/f'{stem}.{ext}'
+        if target.exists() and not (backup/target.name).exists():shutil.copy2(target,backup/target.name)
+        shutil.copy2(out/'plots'/target.name,target)
+    combined = parent/'candidate_cohort_comparison.pdf'
+    if combined.exists():
+        if not (backup/combined.name).exists():shutil.copy2(combined,backup/combined.name)
+        reader = PdfReader(combined)
+        assert len(reader.pages) == 3
+        writer = PdfWriter()
+        writer.add_page(reader.pages[0]);writer.add_page(reader.pages[1])
+        writer.add_page(PdfReader(out/'plots'/f'{stem}.pdf').pages[0])
+        destination = out/'candidate_cohort_comparison.pdf'
+        with destination.open('wb') as handle:writer.write(handle)
+        shutil.copy2(destination,combined)
+    pd.DataFrame(records).to_csv(out/'candidate_cohort_confusion_counts_ABCD.tsv',sep='\t',index=False)
+    manifest = dict(title='Breast cancer: 33 candidate CpGs',panels={letter:heading for letter,(_,heading,_) in zip('ABCD',cohorts)},
+                    sources={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in [original_path,independent_path,out/'cross_validation/out_of_fold_predictions.tsv']},
+                    n_features=33,threshold=.5,procedure='A/B/C reuse saved predictions; D uses new stratified five-fold out-of-fold GSE52865 predictions with fixed features/settings, training-only imputation and no threshold tuning',
+                    previous_figure=str(backup))
+    (out/'candidate_panel_C_manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+    print(out/'plots'/f'{stem}.pdf')
+    print('Verified 16 confusion matrices; panels C and D each contain 57 specimens per model.')
+
+if __name__ == '__main__':main()
